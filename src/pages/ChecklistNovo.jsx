@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../supabase'
 
 // ─── Constantes (iguais ao original) ─────────────────────────
 const DASHBOARD_LIGHTS = [
@@ -168,6 +169,8 @@ export default function ChecklistNovo() {
   const location = useLocation()
   const ckEditar = location.state?.editar || null
 
+  const [ckIdNovo] = useState(() => Date.now())
+
   const [passo, setPasso] = useState(1)
   const [erros, setErros] = useState({})
   const [buscandoCep, setBuscandoCep] = useState(false)
@@ -296,17 +299,36 @@ export default function ChecklistNovo() {
     setLuzesPainel(p => p.includes(luz) ? p.filter(l => l !== luz) : [...p, luz])
   }
 
+  // ── Salva rascunho no Supabase para o link remoto ser válido ────
+  async function salvarRascunho() {
+    if (ckEditar) return
+    await supabase.from('checklists').upsert({
+      id: String(ckIdNovo),
+      data: {
+        clienteNome: cliente.nome,
+        clienteTelefone: cliente.telefone,
+        veiculoModelo: veiculo.modelo,
+        veiculoPlaca: veiculo.placa,
+        status: 'Aguardando diagnóstico',
+      }
+    })
+  }
+
   // ── Link de assinatura remota ────────────────────────────────
   async function enviarWhatsApp() {
+    await salvarRascunho()
     const fone = cliente.telefone.replace(/\D/g, '')
     const primeiroNome = cliente.nome.split(' ')[0]
-    const link = `${window.location.origin}/?mode=signature&cliente=${encodeURIComponent(cliente.nome)}`
+    const ckId = ckEditar?.id || ckIdNovo
+    const link = `${window.location.origin}/assinar/${ckId}`
     const msg = `Olá ${primeiroNome}, por favor assine a autorização de serviço para o veículo ${veiculo.modelo} (${veiculo.placa}) neste link: ${link}`
     window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
   async function copiarLink() {
-    const link = `${window.location.origin}/?mode=signature&cliente=${encodeURIComponent(cliente.nome)}&placa=${encodeURIComponent(veiculo.placa)}`
+    await salvarRascunho()
+    const ckId = ckEditar?.id || ckIdNovo
+    const link = `${window.location.origin}/assinar/${ckId}`
     await navigator.clipboard.writeText(link)
     setLinkCopiado(true)
     setTimeout(() => setLinkCopiado(false), 2500)
@@ -422,7 +444,7 @@ export default function ChecklistNovo() {
       navigate('/checklist/gerenciar')
     } else {
       setChecklists(prev => [{
-        id: Date.now(),
+        id: ckIdNovo,
         numero: gerarNumeroChecklist(),
         status: 'Aguardando diagnóstico',
         criadoEm: agora,
