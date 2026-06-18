@@ -49,6 +49,8 @@ async function supabaseDiff(tableName, prev, next) {
 }
 
 export function AppProvider({ children }) {
+  const [carregando, setCarregando] = useState(true)
+
   const [clientes, _setClientes] = useState([])
   const [veiculos, _setVeiculos] = useState([])
   const [ordens, _setOrdens] = useState([])
@@ -120,8 +122,9 @@ export function AppProvider({ children }) {
       const turno = turnoRows?.[0] ? { id: 'caixa-turno', ...turnoRows[0].data } : null
       r.current.caixaTurno = turno
       _setCaixaTurno(turno)
+      setCarregando(false)
     }
-    init().catch(console.error)
+    init().catch(e => { console.error(e); setCarregando(false) })
   }, [])
 
   // Factory de setter com atualização otimista + persistência Supabase
@@ -437,6 +440,7 @@ export function AppProvider({ children }) {
       getCliente, getVeiculo, getFuncionario,
       checklists, setChecklists, gerarNumeroChecklist,
       veiculosPorCliente, ordensPorCliente, ordensPorVeiculo,
+      carregando,
     }}>
       {children}
     </AppContext.Provider>

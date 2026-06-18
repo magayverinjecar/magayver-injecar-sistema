@@ -30,7 +30,7 @@ function formatPlacaBusca(v) {
 }
 
 export default function ChecklistGerenciar() {
-  const { checklists, setChecklists } = useApp()
+  const { checklists, setChecklists, carregando } = useApp()
   const { currentUser } = useAuth()
   const navigate = useNavigate()
 
@@ -228,6 +228,13 @@ export default function ChecklistGerenciar() {
       </div>
     )
   }
+
+  if (carregando) return (
+    <div className="p-6 flex flex-col items-center justify-center min-h-64 gap-3 text-slate-400">
+      <div className="w-8 h-8 border-4 border-slate-200 border-t-primary-500 rounded-full animate-spin" />
+      <p className="text-sm">Carregando fichas...</p>
+    </div>
+  )
 
   return (
     <div className="p-6 space-y-5 max-w-3xl mx-auto">
