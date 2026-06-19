@@ -30,7 +30,7 @@ export default function Orcamentos() {
   const [modalItem, setModalItem] = useState(false)
   const [item, setItem] = useState(VAZIO_ITEM)
   const [criarNovo, setCriarNovo] = useState(false)
-  const [novoForm, setNovoForm] = useState({ nome: '', preco: '', codigo: '', categoria: '' })
+  const [novoForm, setNovoForm] = useState({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
 
   const totalGeral = itens.reduce((s, it) => s + (parseNum(it.valorUnitario) * parseNum(it.quantidade) - parseNum(it.desconto)), 0)
 
@@ -87,15 +87,15 @@ export default function Orcamentos() {
     if (!novoForm.nome.trim()) return
     const id = Date.now()
     if (item.tipo === 'Serviço') {
-      const novo = { id, nome: novoForm.nome, preco: novoForm.preco || '0' }
+      const novo = { id, nome: novoForm.nome, categoria: novoForm.categoria || '', preco: novoForm.preco || '0', tempo: novoForm.tempo || '' }
       setServicos(prev => [...prev, novo])
       setItem(it => ({ ...it, refId: String(id), descricao: novo.nome, valorUnitario: novo.preco }))
     } else {
-      const novo = { id, nome: novoForm.nome, codigo: novoForm.codigo || '', categoria: novoForm.categoria || '', preco: novoForm.preco || '0', precoCusto: '', estoque: 0, minimo: 0 }
+      const novo = { id, nome: novoForm.nome, codigo: novoForm.codigo || '', categoria: novoForm.categoria || '', precoCusto: novoForm.precoCusto || '', preco: novoForm.preco || '0', estoque: Number(novoForm.estoque) || 0, minimo: Number(novoForm.minimo) || 0 }
       setEstoque(prev => [...prev, novo])
       setItem(it => ({ ...it, refId: String(id), descricao: novo.nome, valorUnitario: novo.preco }))
     }
-    setNovoForm({ nome: '', preco: '', codigo: '', categoria: '' })
+    setNovoForm({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
     setCriarNovo(false)
   }
 
@@ -438,7 +438,11 @@ export default function Orcamentos() {
                     <div className="border border-blue-200 rounded-xl p-3 bg-blue-50 space-y-2">
                       <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Novo Serviço</p>
                       <input value={novoForm.nome} onChange={e => setNovoForm(f => ({ ...f, nome: e.target.value }))} placeholder="Nome do serviço *" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                      <input value={novoForm.preco} onChange={e => setNovoForm(f => ({ ...f, preco: e.target.value }))} placeholder="Preço (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                      <input value={novoForm.categoria} onChange={e => setNovoForm(f => ({ ...f, categoria: e.target.value }))} placeholder="Categoria (Ex: Manutenção)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input value={novoForm.preco} onChange={e => setNovoForm(f => ({ ...f, preco: e.target.value }))} placeholder="Preço (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        <input value={novoForm.tempo} onChange={e => setNovoForm(f => ({ ...f, tempo: e.target.value }))} placeholder="Tempo (Ex: 1h30)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                      </div>
                       <button type="button" onClick={salvarNovo} className="w-full bg-blue-500 hover:bg-blue-600 text-white py-1.5 rounded-lg text-sm font-medium transition-colors">Salvar e selecionar</button>
                     </div>
                   )}
@@ -463,10 +467,23 @@ export default function Orcamentos() {
                       <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide">Nova Peça / Produto</p>
                       <input value={novoForm.nome} onChange={e => setNovoForm(f => ({ ...f, nome: e.target.value }))} placeholder="Nome da peça *" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input value={novoForm.codigo} onChange={e => setNovoForm(f => ({ ...f, codigo: e.target.value }))} placeholder="Código / Ref." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        <input value={novoForm.codigo} onChange={e => setNovoForm(f => ({ ...f, codigo: e.target.value }))} placeholder="Código / Referência" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                         <input value={novoForm.categoria} onChange={e => setNovoForm(f => ({ ...f, categoria: e.target.value }))} placeholder="Categoria" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                       </div>
-                      <input value={novoForm.preco} onChange={e => setNovoForm(f => ({ ...f, preco: e.target.value }))} placeholder="Preço de venda (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input value={novoForm.precoCusto} onChange={e => setNovoForm(f => ({ ...f, precoCusto: e.target.value }))} placeholder="Preço de custo (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        <input value={novoForm.preco} onChange={e => setNovoForm(f => ({ ...f, preco: e.target.value }))} placeholder="Preço de venda (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-slate-500 mb-1 block">Qtd. inicial</label>
+                          <input type="number" value={novoForm.estoque} onChange={e => setNovoForm(f => ({ ...f, estoque: e.target.value }))} placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-slate-500 mb-1 block">Qtd. mínima</label>
+                          <input type="number" value={novoForm.minimo} onChange={e => setNovoForm(f => ({ ...f, minimo: e.target.value }))} placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        </div>
+                      </div>
                       <button type="button" onClick={salvarNovo} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-1.5 rounded-lg text-sm font-medium transition-colors">Salvar e selecionar</button>
                     </div>
                   )}
