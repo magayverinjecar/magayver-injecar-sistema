@@ -22,7 +22,7 @@ function itensTableRows(itens) {
   return itens.map(it => {
     const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
     return `<tr>
-      <td>${it.descricao} <span style="font-size:9px;color:#888">(${it.tipo === 'servico' ? 'serviço' : 'peça'})</span></td>
+      <td>${it.descricao}</td>
       <td style="text-align:center">${it.quantidade}</td>
       <td style="text-align:right">${fmt(pNum(it.valorUnitario))}</td>
       <td style="text-align:right">${fmt(sub)}</td>
