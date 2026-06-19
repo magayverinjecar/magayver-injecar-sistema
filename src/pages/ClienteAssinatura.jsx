@@ -136,10 +136,15 @@ export default function ClienteAssinatura() {
 
     if (!stored) { setAutenticado(true); return }
 
-    if (input === stored) {
+    if (input.length < 8) {
+      setErroTelefone('Digite pelo menos 8 dígitos.')
+      return
+    }
+
+    if (input === stored || stored.endsWith(input)) {
       setAutenticado(true)
     } else {
-      setErroTelefone('Número não confere com o cadastrado. Digite o número completo.')
+      setErroTelefone('Número não confere com o cadastrado. Tente novamente.')
     }
   }
 
@@ -228,8 +233,12 @@ export default function ClienteAssinatura() {
                 <input
                   type="tel"
                   value={telefone}
-                  onChange={e => setTelefone(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value
+                    if (val.replace(/\D/g, '').length <= 11) setTelefone(val)
+                  }}
                   placeholder="(XX) XXXXX-XXXX"
+                  maxLength={15}
                   required
                   className="w-full pl-10 pr-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-600 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-colors"
                 />
