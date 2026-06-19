@@ -294,7 +294,8 @@ export function AppProvider({ children }) {
     const nova = {
       id, numero, fornecedorId: '', fornecedorNome: '',
       status: 'Rascunho', observacoes: '', itens: [], total: 0,
-      recebida: false, data: new Date().toLocaleDateString('pt-BR'),
+      recebida: false, vencimento: '',
+      data: new Date().toLocaleDateString('pt-BR'),
     }
     setCompras(prev => [nova, ...prev])
     return id
@@ -307,15 +308,36 @@ export function AppProvider({ children }) {
   function receberCompra(id) {
     const compra = r.current.compras.find(c => c.id === id)
     if (!compra || compra.recebida) return
+
+    // Atualiza quantidade dos itens já cadastrados no estoque
     setEstoque(prev => prev.map(item => {
       const entrada = compra.itens.find(i => Number(i.produtoId) === item.id)
       if (entrada) return { ...item, estoque: Number(item.estoque) + Number(entrada.quantidade) }
       return item
     }))
+
+    // Cadastra novas peças no estoque (itens marcados com cadastrarNova)
+    const novasEntradas = compra.itens.filter(i => i.cadastrarNova && i.novoItemDados?.nome)
+    if (novasEntradas.length > 0) {
+      setEstoque(prev => [
+        ...prev,
+        ...novasEntradas.map(i => ({
+          id: Date.now() + Math.random(),
+          nome: i.novoItemDados.nome,
+          codigo: i.novoItemDados.codigo || '',
+          categoria: i.novoItemDados.categoria || '',
+          preco: i.novoItemDados.precoVenda || i.valorUnitario || '0',
+          minimo: Number(i.novoItemDados.minimo) || 0,
+          estoque: Number(i.quantidade),
+        })),
+      ])
+    }
+
     adicionarLancamento({
       descricao: `Compra ${compra.numero} - ${compra.fornecedorNome || 'Fornecedor'}`,
       tipo: 'despesa',
       valor: compra.total.toFixed(2).replace('.', ','),
+      vencimento: compra.vencimento || '',
       compraId: id,
     })
     atualizarCompra(id, { recebida: true, status: 'Recebida' })
