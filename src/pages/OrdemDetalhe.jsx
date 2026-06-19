@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, Lock, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, Lock, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Banknote, Smartphone, CreditCard, ArrowRightLeft } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { STATUS_OS, statusColor } from './OrdensServico'
 import { imprimirOS } from '../utils/print'
@@ -25,7 +25,7 @@ export default function OrdemDetalhe() {
   const {
     ordens, checklists, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque,
     atualizarOrdem, adicionarItemOrdem, removerItemOrdem, mudarStatusOrdem,
-    excluirOrdem, totalOrdem,
+    excluirOrdem, totalOrdem, caixaTurno, registrarVendaCaixa, pagarOrdem,
   } = useApp()
 
   const os = ordens.find(o => o.id === osId)
@@ -34,6 +34,8 @@ export default function OrdemDetalhe() {
   const [modalItem, setModalItem] = useState(false)
   const [menuImpressao, setMenuImpressao] = useState(false)
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
+  const [modalFinalizar, setModalFinalizar] = useState(false)
+  const [formaPagamento, setFormaPagamento] = useState('PIX')
 
   if (!os) {
     return (
@@ -102,6 +104,32 @@ export default function OrdemDetalhe() {
     }
   }
 
+  const FORMAS_PGTO = [
+    { label: 'PIX', icon: Smartphone },
+    { label: 'Dinheiro', icon: Banknote },
+    { label: 'Cartão Débito', icon: CreditCard },
+    { label: 'Cartão Crédito', icon: CreditCard },
+    { label: 'Transferência', icon: ArrowRightLeft },
+    { label: 'Boleto', icon: FileText },
+  ]
+
+  function confirmarFinalizar(imprimir) {
+    mudarStatusOrdem(os.id, 'Concluída')
+    pagarOrdem(os.id)
+    if (caixaTurno) {
+      registrarVendaCaixa({
+        total,
+        pagamentos: [{ forma: formaPagamento, valor: String(total) }],
+        clienteNome: cliente?.nome || 'Cliente',
+        osId: os.id,
+      })
+    }
+    setModalFinalizar(false)
+    if (imprimir) {
+      setTimeout(() => imprimirOS(os, cliente, veiculo, mecanico, total, 'a4det'), 300)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Cabeçalho */}
@@ -136,6 +164,11 @@ export default function OrdemDetalhe() {
           </div>
           <button onClick={whatsapp} className="flex items-center gap-1.5 border border-green-200 text-green-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-green-50 transition-colors whitespace-nowrap flex-shrink-0"><MessageCircle size={14} />WhatsApp</button>
           <button onClick={gerarOrcamento} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><FileText size={14} />Gerar Orçamento</button>
+          {os.status !== 'Concluída' && os.status !== 'Cancelada' && (
+            <button onClick={() => setModalFinalizar(true)} className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
+              <CheckCircle2 size={14} />Finalizar OS
+            </button>
+          )}
           <button onClick={excluir} className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"><Trash2 size={14} />Excluir</button>
         </div>
       </div>
@@ -346,6 +379,56 @@ export default function OrdemDetalhe() {
 
       {modalEditar && <ModalEditar os={os} funcionarios={funcionarios} onClose={() => setModalEditar(false)} onSalvar={d => { atualizarOrdem(os.id, d); setModalEditar(false) }} />}
       {modalItem && <ModalAdicionarItem servicos={servicos} estoque={estoque} onClose={() => setModalItem(false)} onAdd={item => { adicionarItemOrdem(os.id, item); setModalItem(false) }} />}
+
+      {/* Modal Finalizar OS */}
+      {modalFinalizar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setModalFinalizar(false)} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-800">Finalizar OS {os.id}</h3>
+              <button onClick={() => setModalFinalizar(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X size={18} /></button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div className="bg-slate-50 rounded-lg px-4 py-3 flex items-center justify-between">
+                <span className="text-sm text-slate-500">Total da OS</span>
+                <span className="text-xl font-bold text-primary-600">{fmt(total)}</span>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Forma de Pagamento</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {FORMAS_PGTO.map(({ label, icon: Icon }) => (
+                    <button key={label} type="button" onClick={() => setFormaPagamento(label)}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${formaPagamento === label ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      <Icon size={15} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {!caixaTurno && (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg">
+                  <AlertTriangle size={14} />
+                  Caixa fechado — o valor será lançado no financeiro mas não no caixa.
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => confirmarFinalizar(false)}
+                  className="flex-1 border border-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
+                  Confirmar
+                </button>
+                <button type="button" onClick={() => confirmarFinalizar(true)}
+                  className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5">
+                  <Printer size={15} />Confirmar e Imprimir
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
