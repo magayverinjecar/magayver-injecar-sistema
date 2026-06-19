@@ -29,6 +29,7 @@ export default function Orcamentos() {
   const [validade, setValidade] = useState('7 dias')
   const [modalItem, setModalItem] = useState(false)
   const [item, setItem] = useState(VAZIO_ITEM)
+  const [modoOrc, setModoOrc] = useState('cadastrado') // 'cadastrado' | 'avulso'
   const [criarNovo, setCriarNovo] = useState(false)
   const [novoForm, setNovoForm] = useState({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
 
@@ -402,14 +403,27 @@ export default function Orcamentos() {
       {/* === MODAL ADICIONAR ITEM === */}
       {modalItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => { setModalItem(false); setCriarNovo(false) }} />
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => { setModalItem(false); setCriarNovo(false); setModoOrc('cadastrado') }} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <h3 className="font-semibold text-slate-800">Adicionar Item</h3>
-              <button onClick={() => { setModalItem(false); setCriarNovo(false) }} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"><X size={18} /></button>
+              <button onClick={() => { setModalItem(false); setCriarNovo(false); setModoOrc('cadastrado') }} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"><X size={18} /></button>
             </div>
 
             <div className="px-5 py-4 space-y-3">
+
+              {/* Toggle Do Cadastro / Avulso */}
+              <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+                <button type="button" onClick={() => { setModoOrc('cadastrado'); setCriarNovo(false); setItem(VAZIO_ITEM) }}
+                  className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${modoOrc === 'cadastrado' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                  Do Cadastro
+                </button>
+                <button type="button" onClick={() => { setModoOrc('avulso'); setCriarNovo(false); setItem(VAZIO_ITEM) }}
+                  className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${modoOrc === 'avulso' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                  Avulso
+                </button>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
                 <select value={item.tipo} onChange={e => { setItem(it => ({ ...VAZIO_ITEM, tipo: e.target.value })); setCriarNovo(false) }}
@@ -419,7 +433,7 @@ export default function Orcamentos() {
                 </select>
               </div>
 
-              {item.tipo === 'Serviço' ? (
+              {modoOrc === 'cadastrado' && item.tipo === 'Serviço' ? (
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-sm font-medium text-slate-700">Serviço cadastrado</label>
@@ -447,7 +461,7 @@ export default function Orcamentos() {
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : modoOrc === 'cadastrado' ? (
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-sm font-medium text-slate-700">Produto do estoque</label>
@@ -488,12 +502,13 @@ export default function Orcamentos() {
                     </div>
                   )}
                 </div>
-              )}
+              ) : null}
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Descrição *</label>
                 <input value={item.descricao} onChange={e => setItem(it => ({ ...it, descricao: e.target.value }))}
-                  placeholder="Descreva o serviço ou peça" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  placeholder={modoOrc === 'avulso' ? 'Descreva o serviço ou peça...' : 'Descrição'}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
 
               <div className="grid grid-cols-3 gap-3">

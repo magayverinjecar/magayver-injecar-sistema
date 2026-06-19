@@ -423,6 +423,7 @@ function Campo({ label, children }) {
 }
 
 function ModalAdicionarItem({ servicos, estoque, onClose, onAdd }) {
+  const [modo, setModo] = useState('cadastrado') // 'cadastrado' | 'avulso'
   const [tipo, setTipo] = useState('servico')
   const [busca, setBusca] = useState('')
   const [selId, setSelId] = useState('')
@@ -434,6 +435,14 @@ function ModalAdicionarItem({ servicos, estoque, onClose, onAdd }) {
   const lista = tipo === 'servico'
     ? servicos.filter(s => s.nome.toLowerCase().includes(busca.toLowerCase()))
     : estoque.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()) || (p.codigo || '').toLowerCase().includes(busca.toLowerCase()))
+
+  function trocarModo(m) {
+    setModo(m)
+    setSelId('')
+    setBusca('')
+    setDescricao('')
+    setValorUnitario('')
+  }
 
   function selecionar(item) {
     setSelId(item.id)
@@ -457,29 +466,46 @@ function ModalAdicionarItem({ servicos, estoque, onClose, onAdd }) {
   return (
     <ModalBase title="Adicionar Item" onClose={onClose}>
       <div className="space-y-3">
+
+        {/* Toggle Cadastrado / Avulso */}
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+          <button type="button" onClick={() => trocarModo('cadastrado')}
+            className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${modo === 'cadastrado' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            Do Cadastro
+          </button>
+          <button type="button" onClick={() => trocarModo('avulso')}
+            className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${modo === 'avulso' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            Avulso
+          </button>
+        </div>
+
         <Campo label="Tipo">
-          <select value={tipo} onChange={e => { setTipo(e.target.value); setSelId(''); setBusca('') }} className="inp">
+          <select value={tipo} onChange={e => { setTipo(e.target.value); setSelId(''); setBusca(''); setDescricao(''); setValorUnitario('') }} className="inp">
             <option value="servico">Serviço</option>
             <option value="peca">Peça</option>
           </select>
         </Campo>
-        <Campo label={tipo === 'servico' ? 'Serviço cadastrado' : 'Produto do estoque'}>
-          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder={tipo === 'servico' ? 'Pesquisar serviço...' : 'Pesquisar produto...'} className="inp mb-1" />
-          <div className="border border-slate-200 rounded-lg max-h-36 overflow-y-auto">
-            {lista.map(item => (
-              <button key={item.id} onClick={() => selecionar(item)}
-                className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${selId === item.id ? 'bg-primary-500 text-white' : 'hover:bg-slate-50 text-slate-700'}`}>
-                <span>{item.nome}{tipo === 'peca' && item.codigo ? ` (${item.codigo})` : ''}</span>
-                <span className={selId === item.id ? 'text-white' : 'text-slate-400'}>{fmt(pNum(item.preco))}</span>
-              </button>
-            ))}
-            {lista.length === 0 && <p className="text-xs text-slate-400 px-3 py-2">Nada encontrado.</p>}
-          </div>
-        </Campo>
-        <Campo label="Descrição *"><input value={descricao} onChange={e => setDescricao(e.target.value)} className="inp" /></Campo>
+
+        {modo === 'cadastrado' && (
+          <Campo label={tipo === 'servico' ? 'Serviço cadastrado' : 'Produto do estoque'}>
+            <input value={busca} onChange={e => setBusca(e.target.value)} placeholder={tipo === 'servico' ? 'Pesquisar serviço...' : 'Pesquisar produto...'} className="inp mb-1" />
+            <div className="border border-slate-200 rounded-lg max-h-36 overflow-y-auto">
+              {lista.map(item => (
+                <button key={item.id} onClick={() => selecionar(item)}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${selId === item.id ? 'bg-primary-500 text-white' : 'hover:bg-slate-50 text-slate-700'}`}>
+                  <span>{item.nome}{tipo === 'peca' && item.codigo ? ` (${item.codigo})` : ''}</span>
+                  <span className={selId === item.id ? 'text-white' : 'text-slate-400'}>{fmt(pNum(item.preco))}</span>
+                </button>
+              ))}
+              {lista.length === 0 && <p className="text-xs text-slate-400 px-3 py-2">Nada encontrado.</p>}
+            </div>
+          </Campo>
+        )}
+
+        <Campo label="Descrição *"><input value={descricao} onChange={e => setDescricao(e.target.value)} placeholder={modo === 'avulso' ? 'Descreva o serviço ou peça...' : ''} className="inp" /></Campo>
         <div className="grid grid-cols-3 gap-3">
           <Campo label="Quantidade"><input type="number" value={quantidade} onChange={e => setQuantidade(e.target.value)} className="inp" /></Campo>
-          <Campo label="Valor Unitário"><input value={valorUnitario} onChange={e => setValorUnitario(e.target.value)} className="inp" /></Campo>
+          <Campo label="Valor Unitário"><input value={valorUnitario} onChange={e => setValorUnitario(e.target.value)} placeholder="0,00" className="inp" /></Campo>
           <Campo label="Desconto (R$)"><input value={desconto} onChange={e => setDesconto(e.target.value)} className="inp" /></Campo>
         </div>
         <button onClick={adicionar} disabled={!descricao.trim()} className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">Adicionar</button>
