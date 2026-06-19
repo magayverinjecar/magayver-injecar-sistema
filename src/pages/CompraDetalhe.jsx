@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, X, Trash2, Package, Save, Search, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Plus, X, Trash2, Package, Save, Search, CheckCircle2, AlertTriangle, CalendarDays } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 const statusColor = {
@@ -181,25 +181,107 @@ export default function CompraDetalhe() {
           </div>
         </div>
 
-        {/* Vencimento do boleto */}
+        {/* Parcelas / Vencimentos */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Vencimento do Boleto</label>
-          <input
-            type="date"
-            value={compra.vencimento || ''}
-            onChange={e => salvarDados('vencimento', e.target.value)}
-            disabled={recebida}
-            className="w-full md:w-64 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50"
-          />
-          {compra.vencimento && !recebida && (() => {
-            const hoje = new Date(); hoje.setHours(0,0,0,0)
-            const venc = new Date(compra.vencimento + 'T00:00:00')
-            const diff = Math.ceil((venc - hoje) / 86400000)
-            if (diff < 0) return <p className="text-xs text-red-500 mt-1">Vencido há {Math.abs(diff)} dia(s)</p>
-            if (diff === 0) return <p className="text-xs text-amber-500 mt-1">Vence hoje!</p>
-            if (diff <= 3) return <p className="text-xs text-amber-500 mt-1">Vence em {diff} dia(s)</p>
-            return <p className="text-xs text-slate-400 mt-1">Vence em {diff} dia(s)</p>
-          })()}
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-slate-700 flex items-center gap-1.5">
+              <CalendarDays size={15} className="text-slate-400" />
+              Parcelas / Vencimentos
+            </label>
+            {!recebida && (
+              <button
+                type="button"
+                onClick={() => {
+                  const parcelas = compra.parcelas || []
+                  const restante = Math.max(0, totalCompra - parcelas.reduce((s, p) => s + parseNum(p.valor), 0))
+                  const nova = { id: Date.now(), valor: restante.toFixed(2).replace('.', ','), vencimento: '' }
+                  salvarDados('parcelas', [...parcelas, nova])
+                }}
+                className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
+              >
+                <Plus size={13} />Adicionar parcela
+              </button>
+            )}
+          </div>
+
+          {(!compra.parcelas || compra.parcelas.length === 0) && (
+            <p className="text-xs text-slate-400 italic">
+              {recebida ? 'Sem parcelamento definido.' : 'Nenhuma parcela. Clique em "Adicionar parcela" para definir o vencimento.'}
+            </p>
+          )}
+
+          {(compra.parcelas || []).length > 0 && (
+            <div className="space-y-2">
+              {(compra.parcelas || []).map((p, idx) => {
+                const hoje = new Date(); hoje.setHours(0,0,0,0)
+                const venc = p.vencimento ? new Date(p.vencimento + 'T00:00:00') : null
+                const diff = venc ? Math.ceil((venc - hoje) / 86400000) : null
+                let alerta = null
+                if (diff !== null && !recebida) {
+                  if (diff < 0) alerta = <span className="text-[11px] text-red-500">Vencida</span>
+                  else if (diff === 0) alerta = <span className="text-[11px] text-amber-500">Vence hoje</span>
+                  else if (diff <= 3) alerta = <span className="text-[11px] text-amber-500">{diff}d</span>
+                }
+                return (
+                  <div key={p.id} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                    <span className="text-xs font-semibold text-slate-400 w-5 flex-shrink-0">{idx + 1}.</span>
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap gap-y-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-slate-500">R$</span>
+                        <input
+                          type="text"
+                          value={p.valor}
+                          disabled={recebida}
+                          onChange={e => {
+                            const novas = (compra.parcelas || []).map(x => x.id === p.id ? { ...x, valor: e.target.value } : x)
+                            salvarDados('parcelas', novas)
+                          }}
+                          className="w-24 border border-slate-200 rounded px-2 py-1 text-sm font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:bg-transparent disabled:border-transparent"
+                          placeholder="0,00"
+                        />
+                      </div>
+                      <span className="text-xs text-slate-300">·</span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="date"
+                          value={p.vencimento}
+                          disabled={recebida}
+                          onChange={e => {
+                            const novas = (compra.parcelas || []).map(x => x.id === p.id ? { ...x, vencimento: e.target.value } : x)
+                            salvarDados('parcelas', novas)
+                          }}
+                          className="border border-slate-200 rounded px-2 py-1 text-sm text-slate-600 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:bg-transparent disabled:border-transparent"
+                        />
+                        {alerta}
+                      </div>
+                    </div>
+                    {!recebida && (
+                      <button
+                        type="button"
+                        onClick={() => salvarDados('parcelas', (compra.parcelas || []).filter(x => x.id !== p.id))}
+                        className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors flex-shrink-0"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+              {/* Totalizador das parcelas */}
+              {!recebida && (() => {
+                const somaParcelas = (compra.parcelas || []).reduce((s, p) => s + parseNum(p.valor), 0)
+                const diff = totalCompra - somaParcelas
+                const ok = Math.abs(diff) < 0.01
+                return (
+                  <div className={`text-xs px-3 py-1.5 rounded-lg flex items-center justify-between ${ok ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                    <span>Total parcelas: <strong>{fmt(somaParcelas)}</strong></span>
+                    {!ok && <span>Falta: <strong>{fmt(Math.abs(diff))}</strong>{diff < 0 ? ' (excede)' : ''}</span>}
+                    {ok && <CheckCircle2 size={13} />}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
         </div>
 
         <div className="mb-4">
@@ -291,8 +373,10 @@ export default function CompraDetalhe() {
             <div>
               <p className="font-semibold text-slate-800">Receber Compra</p>
               <p className="text-sm text-slate-500">
-                Atualiza o estoque automaticamente e gera conta a pagar de {fmt(totalCompra)}
-                {compra.vencimento && ` (venc. ${new Date(compra.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')})`}
+                Atualiza o estoque e gera {(compra.parcelas || []).length > 1
+                ? `${compra.parcelas.length} lançamentos no financeiro`
+                : `conta a pagar de ${fmt(totalCompra)}`
+              }
               </p>
             </div>
           </div>

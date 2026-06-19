@@ -294,7 +294,7 @@ export function AppProvider({ children }) {
     const nova = {
       id, numero, fornecedorId: '', fornecedorNome: '',
       status: 'Rascunho', observacoes: '', itens: [], total: 0,
-      recebida: false, vencimento: '',
+      recebida: false, parcelas: [],
       data: new Date().toLocaleDateString('pt-BR'),
     }
     setCompras(prev => [nova, ...prev])
@@ -333,13 +333,26 @@ export function AppProvider({ children }) {
       ])
     }
 
-    adicionarLancamento({
-      descricao: `Compra ${compra.numero} - ${compra.fornecedorNome || 'Fornecedor'}`,
-      tipo: 'despesa',
-      valor: compra.total.toFixed(2).replace('.', ','),
-      vencimento: compra.vencimento || '',
-      compraId: id,
-    })
+    const parcelas = compra.parcelas || []
+    if (parcelas.length > 0) {
+      parcelas.forEach((p, idx) => {
+        adicionarLancamento({
+          descricao: `Compra ${compra.numero} - ${compra.fornecedorNome || 'Fornecedor'} (${idx + 1}/${parcelas.length})`,
+          tipo: 'despesa',
+          valor: parseFloat((p.valor || '0').toString().replace(',', '.')).toFixed(2).replace('.', ','),
+          vencimento: p.vencimento || '',
+          compraId: id,
+        })
+      })
+    } else {
+      adicionarLancamento({
+        descricao: `Compra ${compra.numero} - ${compra.fornecedorNome || 'Fornecedor'}`,
+        tipo: 'despesa',
+        valor: compra.total.toFixed(2).replace('.', ','),
+        vencimento: '',
+        compraId: id,
+      })
+    }
     atualizarCompra(id, { recebida: true, status: 'Recebida' })
   }
 
