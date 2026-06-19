@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { Plus, FileText, Eye, Copy, MessageCircle, Printer, ArrowRight, Trash2, X, List, Search, ChevronDown } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 const statusColor = {
@@ -18,6 +19,7 @@ function parseNum(v) {
 const fmt = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function Orcamentos() {
+  const navigate = useNavigate()
   const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, getCliente, novaOrdem } = useApp()
 
   const [aba, setAba] = useState('salvos')
@@ -110,13 +112,15 @@ export default function Orcamentos() {
   }
 
   function salvar() {
-    if (!dados.nome.trim()) { alert('Informe o nome do cliente.'); return }
+    // aceita nome digitado na busca mesmo sem selecionar do dropdown
+    const nomeCliente = dados.nome.trim() || buscaCliente.trim()
+    if (!nomeCliente) { alert('Informe o nome do cliente.'); return }
     const numero = '#' + Math.floor(1000 + Math.random() * 9000)
     const novo = {
       id: Date.now(),
       numero,
       clienteId: dados.clienteId ? Number(dados.clienteId) : null,
-      nome: dados.nome,
+      nome: nomeCliente,
       telefone: dados.telefone,
       veiculo: dados.veiculo,
       placa: dados.placa,
@@ -129,6 +133,11 @@ export default function Orcamentos() {
       data: new Date().toLocaleDateString('pt-BR'),
     }
     setOrcamentos(prev => [novo, ...prev])
+    setDados(VAZIO_CLIENTE)
+    setBuscaCliente('')
+    setItens([])
+    setObservacoes('')
+    setValidade('7 dias')
     setAba('salvos')
   }
 
@@ -153,23 +162,23 @@ export default function Orcamentos() {
     const itensOS = (orc.itens || []).map(i => ({
       id: Date.now() + Math.random(),
       tipo: i.tipo === 'Serviço' ? 'servico' : 'peca',
-      produtoId: i.tipo !== 'Serviço' ? Number(i.refId) || null : null,
-      servicoId: i.tipo === 'Serviço' ? Number(i.refId) || null : null,
+      produtoId: i.tipo !== 'Serviço' && i.tipo !== 'servico' ? Number(i.refId) || null : null,
+      servicoId: i.tipo === 'Serviço' || i.tipo === 'servico' ? Number(i.refId) || null : null,
       descricao: i.descricao,
       quantidade: Number(i.quantidade) || 1,
       valorUnitario: i.valorUnitario,
       desconto: i.desconto || '0',
     }))
 
-    novaOrdem({
+    const osId = novaOrdem({
       clienteId: orc.clienteId ? Number(orc.clienteId) : null,
       veiculoId: veiculo?.id || null,
-      descricaoProblema: orc.observacoes || `Orçamento ${orc.numero}`,
+      descricaoProblema: orc.observacoes || `Convertido do Orçamento ${orc.numero}`,
       status: 'Aberta',
       itens: itensOS,
     })
     mudarStatus(orc.id, 'Convertido')
-    alert(`Orçamento ${orc.numero} convertido em OS com sucesso!`)
+    navigate(`/ordens/${osId}`)
   }
 
   function enviarWhatsapp() {
