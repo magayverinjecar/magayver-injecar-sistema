@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { Plus, FileText, Eye, Copy, MessageCircle, Printer, ArrowRight, Trash2, X, List, Search } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 const statusColor = {
@@ -18,6 +19,7 @@ function parseNum(v) {
 const fmt = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function Orcamentos() {
+  const navigate = useNavigate()
   const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, estoque, getCliente, novaOrdem } = useApp()
 
   const [aba, setAba] = useState('salvos')
@@ -405,7 +407,7 @@ export default function Orcamentos() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-sm font-medium text-slate-700">Serviço cadastrado</label>
-                    <span className="text-xs text-primary-500 cursor-default">+ Criar novo</span>
+                    <button type="button" onClick={() => { setModalItem(false); navigate('/servicos') }} className="text-xs text-primary-500 hover:text-primary-700 font-medium">+ Criar novo</button>
                   </div>
                   <select value={item.refId} onChange={e => selecionarServico(e.target.value)}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
@@ -417,7 +419,7 @@ export default function Orcamentos() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-sm font-medium text-slate-700">Produto do estoque</label>
-                    <span className="text-xs text-primary-500 cursor-default">+ Criar novo</span>
+                    <button type="button" onClick={() => { setModalItem(false); navigate('/estoque') }} className="text-xs text-primary-500 hover:text-primary-700 font-medium">+ Criar novo</button>
                   </div>
                   <select value={item.refId} onChange={e => selecionarProduto(e.target.value)}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
