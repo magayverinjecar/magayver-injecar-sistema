@@ -128,7 +128,10 @@ export default function CompraDetalhe() {
   }
 
   function excluir() {
-    if (confirm('Excluir esta compra?')) {
+    const msg = recebida
+      ? 'Esta compra já foi recebida. Excluir não desfaz as entradas no estoque nem os lançamentos financeiros. Confirmar exclusão?'
+      : 'Excluir esta compra?'
+    if (confirm(msg)) {
       excluirCompra(compra.id)
       navigate('/compras')
     }
@@ -149,11 +152,9 @@ export default function CompraDetalhe() {
         </div>
         <div className="flex items-center gap-2">
           <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusColor[compra.status]}`}>{compra.status}</span>
-          {!recebida && (
-            <button onClick={excluir} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
-              <Trash2 size={16} />
-            </button>
-          )}
+          <button onClick={excluir} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors" title="Excluir compra">
+            <Trash2 size={16} />
+          </button>
         </div>
       </div>
 

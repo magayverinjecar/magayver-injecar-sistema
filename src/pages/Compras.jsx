@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { Plus, Eye, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 const statusColor = {
@@ -13,7 +13,7 @@ const statusColor = {
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function Compras() {
-  const { compras, criarCompra } = useApp()
+  const { compras, criarCompra, excluirCompra } = useApp()
   const navigate = useNavigate()
   const [filtro, setFiltro] = useState('Todos')
 
@@ -68,9 +68,15 @@ export default function Compras() {
                   <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-700">{fmt(c.total)}</td>
                   <td className="px-5 py-3.5 text-sm text-slate-500">{c.data}</td>
                   <td className="px-5 py-3.5">
-                    <div className="flex items-center justify-end">
-                      <button onClick={e => { e.stopPropagation(); navigate(`/compras/${c.id}`) }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={e => { e.stopPropagation(); navigate(`/compras/${c.id}`) }} className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Ver / Editar">
                         <Eye size={16} />
+                      </button>
+                      <button onClick={e => {
+                        e.stopPropagation()
+                        if (confirm(`Excluir compra ${c.numero}?`)) excluirCompra(c.id)
+                      }} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors" title="Excluir">
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
