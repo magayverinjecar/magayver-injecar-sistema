@@ -18,9 +18,14 @@ export default function Clientes() {
   function salvar() {
     if (!form.nome.trim()) { setErroNome(true); return }
     setErroNome(false)
-    setClientes(prev => [...prev, { ...form, id: Date.now() }])
-    setForm(vazio)
-    setModal(false)
+    try {
+      setClientes(prev => [...prev, { ...form, id: Date.now() }])
+      setForm(vazio)
+      setModal(false)
+    } catch (err) {
+      console.error('Erro ao salvar cliente:', err)
+      alert('Erro ao salvar cliente: ' + err.message)
+    }
   }
 
   function fecharModal() {
@@ -200,7 +205,7 @@ export default function Clientes() {
       )}
 
       {modal && (
-        <Modal title="Novo Cliente" onClose={fecharModal}>
+        <Modal title="Novo Cliente" onClose={fecharModal} backdropClose={false}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nome *</label>
@@ -222,8 +227,8 @@ export default function Clientes() {
               <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email@exemplo.com" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
             <div className="flex gap-3 pt-2">
-              <button onClick={fecharModal} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-              <button onClick={salvar} className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">Salvar</button>
+              <button type="button" onClick={fecharModal} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+              <button type="button" onClick={salvar} className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">Salvar</button>
             </div>
           </div>
         </Modal>
