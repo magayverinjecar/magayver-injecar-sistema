@@ -134,18 +134,12 @@ export default function ClienteAssinatura() {
     const input = telefone.replace(/\D/g, '')
     const stored = (checklist?.clienteTelefone || '').replace(/\D/g, '')
 
-    // Se não tem telefone cadastrado, libera direto
     if (!stored) { setAutenticado(true); return }
 
-    // Aceita: número completo, 8 últimos dígitos ou 4 últimos dígitos
-    if (
-      input === stored ||
-      (stored.length >= 8 && stored.slice(-8) === input.slice(-8)) ||
-      (stored.length >= 4 && stored.slice(-4) === input.slice(-4))
-    ) {
+    if (input === stored) {
       setAutenticado(true)
     } else {
-      setErroTelefone('Número não confere com o cadastro. Tente novamente.')
+      setErroTelefone('Número não confere com o cadastrado. Digite o número completo.')
     }
   }
 
