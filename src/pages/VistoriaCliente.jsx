@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { Car, User, Clock, Camera, CheckCircle2, AlertTriangle, X, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react'
+import {
+  Car, User, Clock, Camera, CheckCircle2, AlertTriangle,
+  X, ChevronLeft, ChevronRight, ZoomIn, Phone, Loader2
+} from 'lucide-react'
 
 function row2item(row) {
   const numId = Number(row.id)
@@ -17,25 +20,57 @@ const STATUS_BADGE = {
 
 export default function VistoriaCliente() {
   const { id } = useParams()
+
   const [ck, setCk] = useState(null)
-  const [erro, setErro] = useState(false)
+  const [carregando, setCarregando] = useState(true)
+  const [erro, setErro] = useState('')
+
+  // Verificação de telefone
+  const [telefone, setTelefone] = useState('')
+  const [autenticado, setAutenticado] = useState(false)
+  const [erroTelefone, setErroTelefone] = useState('')
+
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
 
   useEffect(() => {
     async function carregar() {
+      if (!id) { setErro('Link inválido.'); setCarregando(false); return }
       const { data, error } = await supabase
-        .from('checklists')
-        .select('id, data')
-        .eq('id', id)
-        .single()
-      if (error || !data) { setErro(true); return }
-      setCk(row2item(data))
+        .from('checklists').select('id, data').eq('id', id)
+      if (error || !data?.length) {
+        setErro('Vistoria não encontrada. Peça à oficina um novo link.')
+        setCarregando(false)
+        return
+      }
+      setCk(row2item(data[0]))
+      setCarregando(false)
     }
     carregar()
   }, [id])
 
+  // Mesma lógica da ClienteAssinatura
+  function verificarTelefone(e) {
+    e.preventDefault()
+    setErroTelefone('')
+    const input = telefone.replace(/\D/g, '')
+    const stored = (ck?.clienteTelefone || '').replace(/\D/g, '')
+
+    if (!stored) { setAutenticado(true); return }
+
+    if (input.length < 8) {
+      setErroTelefone('Digite pelo menos 8 dígitos.')
+      return
+    }
+
+    if (input === stored || stored.endsWith(input)) {
+      setAutenticado(true)
+    } else {
+      setErroTelefone('Número não confere com o cadastrado. Tente novamente.')
+    }
+  }
+
   const fotos = ck?.fotos || []
-  const inspecao = (ck?.inspecaoVisual || []).filter(i => i.status)
+  const inspecao = ck?.inspecaoVisual || []
 
   function navegarFoto(direcao) {
     const idx = fotos.findIndex(f => f.id === fotoAmpliada.id)
@@ -43,28 +78,89 @@ export default function VistoriaCliente() {
     if (novo >= 0 && novo < fotos.length) setFotoAmpliada(fotos[novo])
   }
 
-  if (erro) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 text-center max-w-sm w-full">
-          <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-            <X size={28} className="text-red-500" />
+  // ── Loading ──
+  if (carregando) return (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
+    </div>
+  )
+
+  // ── Erro ──
+  if (erro) return (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="bg-slate-800 rounded-2xl p-8 max-w-md w-full text-center border-l-4 border-red-500">
+        <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+        <h1 className="text-xl font-bold text-white mb-2">Link Inválido</h1>
+        <p className="text-slate-400">{erro}</p>
+      </div>
+    </div>
+  )
+
+  // ── Verificação de telefone ──
+  if (!autenticado) return (
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md bg-slate-800 rounded-2xl overflow-hidden border border-slate-700">
+        <div className="bg-orange-600 p-6 text-center">
+          <h1 className="text-xl font-bold text-white mb-1">Fotos e Vistoria</h1>
+          <p className="text-orange-100 text-sm">Magayver Injecar</p>
+        </div>
+        <div className="p-8">
+          <div className="mb-6 text-center">
+            <p className="text-slate-300">
+              Olá, <strong className="text-white">{ck?.clienteNome?.split(' ')[0] || 'Cliente'}</strong>
+            </p>
+            {(ck?.veiculoModelo || ck?.veiculoPlaca) && (
+              <p className="text-xs text-slate-500 mt-1">
+                {ck.veiculoModelo}
+                {ck.veiculoPlaca ? ` · ${ck.veiculoPlaca}` : ''}
+              </p>
+            )}
           </div>
-          <h2 className="text-lg font-bold text-slate-800 mb-2">Vistoria não encontrada</h2>
-          <p className="text-sm text-slate-500">O link pode ter expirado ou a vistoria foi removida.</p>
+
+          <form onSubmit={verificarTelefone} className="space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">
+                Confirme seu Telefone
+              </label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <input
+                  type="tel"
+                  value={telefone}
+                  onChange={e => {
+                    const val = e.target.value
+                    if (val.replace(/\D/g, '').length <= 11) setTelefone(val)
+                  }}
+                  placeholder="(XX) XXXXX-XXXX"
+                  maxLength={15}
+                  required
+                  className="w-full pl-10 pr-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-600 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-colors"
+                />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Digite o número de WhatsApp ou telefone informado no cadastro.
+              </p>
+            </div>
+
+            {erroTelefone && (
+              <div className="p-3 bg-red-900/20 text-red-400 text-sm rounded-lg flex items-center gap-2 border border-red-900/30">
+                <AlertTriangle size={16} /> {erroTelefone}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-colors active:scale-95"
+            >
+              Acessar Fotos e Vistoria
+            </button>
+          </form>
         </div>
       </div>
-    )
-  }
+    </div>
+  )
 
-  if (!ck) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
-  }
-
+  // ── Conteúdo autenticado ──
   return (
     <div className="min-h-screen bg-slate-100">
       {/* Lightbox */}
@@ -124,7 +220,7 @@ export default function VistoriaCliente() {
             <span className="inline-flex items-center gap-1 bg-slate-50 border border-slate-200 px-2 py-1 rounded-full">
               <Camera size={11} /> Somente visualização
             </span>
-            <span>{fotos.length} foto(s) · {inspecao.length} item(ns) vistoriado(s)</span>
+            <span>{fotos.length} foto(s) · {inspecao.filter(i => i.status).length} item(ns) vistoriado(s)</span>
           </div>
         </div>
 
@@ -168,33 +264,33 @@ export default function VistoriaCliente() {
           <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
             <CheckCircle2 size={14} className="text-green-500" />
             <h2 className="text-sm font-semibold text-slate-700">Checklist Visual</h2>
-            <span className="ml-auto text-xs text-slate-400">{inspecao.length} item(ns)</span>
+            <span className="ml-auto text-xs text-slate-400">{inspecao.filter(i => i.status).length} item(ns)</span>
           </div>
           <div className="divide-y divide-slate-50">
-            {(ck.inspecaoVisual || []).map(item => {
+            {inspecao.map(item => {
               const badge = STATUS_BADGE[item.status]
               return (
-                <div key={item.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
-                  <span className="text-sm text-slate-700 font-medium">{item.label}</span>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                <div key={item.id} className="px-5 py-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-slate-700 font-medium">{item.label}</span>
                     {badge ? (
-                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${badge.cls}`}>
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border flex-shrink-0 ${badge.cls}`}>
                         {item.status === 'ok' && <CheckCircle2 size={11} />}
                         {item.status === 'warning' && <AlertTriangle size={11} />}
                         {item.status === 'issue' && <X size={11} />}
                         {badge.label}
                       </span>
                     ) : (
-                      <span className="text-xs text-slate-300">—</span>
+                      <span className="text-xs text-slate-300 flex-shrink-0">—</span>
                     )}
                   </div>
                   {item.nota && badge && (
-                    <p className="text-xs text-slate-500 italic w-full col-span-2">"{item.nota}"</p>
+                    <p className="text-xs text-slate-500 italic mt-1">"{item.nota}"</p>
                   )}
                 </div>
               )
             })}
-            {(ck.inspecaoVisual || []).length === 0 && (
+            {inspecao.length === 0 && (
               <p className="px-5 py-6 text-center text-sm text-slate-400">Nenhum item de vistoria registrado.</p>
             )}
           </div>
