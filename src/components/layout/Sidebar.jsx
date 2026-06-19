@@ -56,7 +56,7 @@ const grupos = [
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }) {
   const { temPermissao } = useAuth()
 
   const gruposFiltrados = grupos.map(g => ({
@@ -68,7 +68,12 @@ export default function Sidebar() {
   })).filter(g => g.items.length > 0)
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm">
+    <aside className={`
+      fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm
+      transform transition-transform duration-200 ease-in-out
+      ${open ? 'translate-x-0' : '-translate-x-full'}
+      lg:relative lg:translate-x-0
+    `}>
       {/* Logo */}
       <div className="px-6 py-5 border-b border-slate-100">
         <div className="flex items-center gap-2">
@@ -92,6 +97,7 @@ export default function Sidebar() {
                 <li key={to}>
                   <NavLink
                     to={to}
+                    onClick={onClose}
                     className={({ isActive }) =>
                       `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                         isActive
@@ -113,7 +119,7 @@ export default function Sidebar() {
       {/* Footer */}
       <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
         <p className="text-xs text-slate-400">v1.0.0 • Magayver Injecar</p>
-        <NavLink to="/configuracoes" title="Configurações">
+        <NavLink to="/configuracoes" onClick={onClose} title="Configurações">
           <Settings size={16} className="text-slate-400 hover:text-slate-600 transition-colors" />
         </NavLink>
       </div>

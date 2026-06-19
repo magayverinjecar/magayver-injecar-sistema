@@ -40,21 +40,51 @@ export default function Clientes() {
   }
 
   return (
-    <div className="flex gap-5 h-full">
+    <div className="flex gap-5 h-full flex-col lg:flex-row">
       {/* Lista */}
-      <div className={`space-y-4 ${detalhe ? 'flex-1' : 'w-full'}`}>
-        <div className="flex items-center justify-between">
-          <div className="relative">
+      <div className={`space-y-4 ${detalhe ? 'lg:flex-1' : 'w-full'}`}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="relative flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input type="text" placeholder="Buscar cliente..." value={busca} onChange={e => setBusca(e.target.value)}
-              className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 w-64" />
+              className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 w-full" />
           </div>
-          <button onClick={() => setModal(true)} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+          <button onClick={() => setModal(true)} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
             <Plus size={16} />Novo Cliente
           </button>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+        {/* Cards — mobile */}
+        <div className="space-y-3 md:hidden">
+          {filtrados.length === 0 && <p className="text-center text-sm text-slate-400 py-8 bg-white rounded-xl border border-slate-100">Nenhum cliente encontrado.</p>}
+          {filtrados.map(c => {
+            const veics = veiculosPorCliente(c.id)
+            const ordens = ordensPorCliente(c.id)
+            return (
+              <div key={c.id} onClick={() => setDetalhe(detalhe === c.id ? null : c.id)}
+                className={`bg-white rounded-xl border border-slate-100 shadow-sm p-4 cursor-pointer transition-colors ${detalhe === c.id ? 'border-primary-300 bg-primary-50' : 'active:bg-slate-50'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 text-sm font-semibold flex-shrink-0">{c.nome[0]}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">{c.nome}</p>
+                    {c.telefone && <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><Phone size={11} />{c.telefone}</p>}
+                    {c.email && <p className="text-xs text-slate-400 truncate flex items-center gap-1"><Mail size={11} />{c.email}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0 text-xs text-slate-400">
+                    <span className="flex items-center gap-0.5"><Car size={12} />{veics.length}</span>
+                    <button onClick={e => { e.stopPropagation(); excluir(c.id) }} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                      <Trash2 size={14} />
+                    </button>
+                    <ChevronRight size={14} className={`text-slate-300 transition-transform ${detalhe === c.id ? 'rotate-90' : ''}`} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Tabela — desktop */}
+        <div className="hidden md:block bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
@@ -111,7 +141,7 @@ export default function Clientes() {
 
       {/* Painel de detalhe */}
       {clienteDetalhe && (
-        <div className="w-80 flex-shrink-0 space-y-4">
+        <div className="w-full lg:w-80 flex-shrink-0 space-y-4">
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-semibold text-slate-800 text-sm">{clienteDetalhe.nome}</h3>

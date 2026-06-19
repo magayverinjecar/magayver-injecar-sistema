@@ -110,7 +110,32 @@ export default function OrdensServico() {
         </select>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      {/* Cards — mobile */}
+      <div className="space-y-3 md:hidden">
+        {filtradas.length === 0 && <p className="text-center text-sm text-slate-400 py-10 bg-white rounded-xl border border-slate-100">Nenhuma OS encontrada.</p>}
+        {filtradas.map(o => {
+          const cliente = getCliente(o.clienteId)
+          const veiculo = getVeiculo(o.veiculoId)
+          const total = totalOrdem(o)
+          return (
+            <div key={o.id} onClick={() => navigate(`/ordens-servico/${encodeURIComponent(o.id)}`)} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 cursor-pointer active:bg-slate-50 transition-colors">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <span className="font-mono text-sm font-semibold text-slate-700">{o.id}</span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 ${statusColor[o.status] || 'bg-slate-100 text-slate-600'}`}>{o.status}</span>
+              </div>
+              <p className="text-sm font-semibold text-slate-800">{cliente?.nome || '—'}</p>
+              {veiculo && <p className="text-sm text-slate-500 mt-0.5">{veiculo.placa} · {veiculo.modelo}</p>}
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
+                <span className="text-xs text-slate-400">{o.data}</span>
+                <span className="text-sm font-bold text-slate-700">{total > 0 ? fmt(total) : '—'}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Tabela — desktop */}
+      <div className="hidden md:block bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">

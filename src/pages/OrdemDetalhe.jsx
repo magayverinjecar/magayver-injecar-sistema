@@ -117,11 +117,11 @@ export default function OrdemDetalhe() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => setModalEditar(true)} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"><Pencil size={14} />Editar</button>
-          <button onClick={() => imprimir('a4det')} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"><Printer size={14} />Nota de Serviço</button>
-          <div className="relative">
-            <button onClick={() => setMenuImpressao(v => !v)} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"><Receipt size={14} />Recibo<ChevronDown size={14} /></button>
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 flex-nowrap">
+          <button onClick={() => setModalEditar(true)} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><Pencil size={14} />Editar</button>
+          <button onClick={() => imprimir('a4det')} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><Printer size={14} />Nota de Serviço</button>
+          <div className="relative flex-shrink-0">
+            <button onClick={() => setMenuImpressao(v => !v)} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap"><Receipt size={14} />Recibo<ChevronDown size={14} /></button>
             {menuImpressao && (
               <div className="absolute right-0 mt-1 w-72 bg-white rounded-xl shadow-xl border border-slate-100 z-20 overflow-hidden">
                 <p className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase">Escolha o modelo de impressão</p>
@@ -134,15 +134,15 @@ export default function OrdemDetalhe() {
               </div>
             )}
           </div>
-          <button onClick={whatsapp} className="flex items-center gap-1.5 border border-green-200 text-green-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-green-50 transition-colors"><MessageCircle size={14} />WhatsApp</button>
-          <button onClick={gerarOrcamento} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"><FileText size={14} />Gerar Orçamento</button>
-          <button onClick={excluir} className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"><Trash2 size={14} />Excluir</button>
+          <button onClick={whatsapp} className="flex items-center gap-1.5 border border-green-200 text-green-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-green-50 transition-colors whitespace-nowrap flex-shrink-0"><MessageCircle size={14} />WhatsApp</button>
+          <button onClick={gerarOrcamento} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><FileText size={14} />Gerar Orçamento</button>
+          <button onClick={excluir} className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"><Trash2 size={14} />Excluir</button>
         </div>
       </div>
 
       {/* Alterar status */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 flex items-center gap-3">
-        <label className="text-sm font-medium text-slate-600">Alterar Status:</label>
+        <label className="text-sm font-medium text-slate-600 whitespace-nowrap">Alterar Status:</label>
         <select value={os.status} onChange={e => mudarStatusOrdem(os.id, e.target.value)}
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
           {STATUS_OS.map(s => <option key={s}>{s}</option>)}
@@ -150,11 +150,11 @@ export default function OrdemDetalhe() {
       </div>
 
       {/* Abas */}
-      <div className="border-b border-slate-200 flex gap-1">
+      <div className="border-b border-slate-200 flex gap-1 overflow-x-auto">
         {ABAS.map(a => (
           <button key={a} onClick={() => setAba(a)}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${aba === a ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-            {a === 'Checklist' || a === 'Fotos' ? `${a}` : a}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap flex-shrink-0 ${aba === a ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            {a}
           </button>
         ))}
       </div>
@@ -194,7 +194,8 @@ export default function OrdemDetalhe() {
           {(!os.itens || os.itens.length === 0) ? (
             <p className="text-center text-sm text-slate-400 py-10">Nenhum item adicionado</p>
           ) : (
-            <table className="w-full">
+            <div className="overflow-x-auto -mx-5 px-5">
+            <table className="w-full min-w-[480px]">
               <thead>
                 <tr className="border-y border-slate-100 text-xs text-slate-500 uppercase">
                   <th className="text-left py-2 font-semibold">Item</th>
@@ -228,6 +229,7 @@ export default function OrdemDetalhe() {
                 </tr>
               </tfoot>
             </table>
+            </div>
           )}
         </div>
       )}
