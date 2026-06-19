@@ -175,6 +175,14 @@ export default function ChecklistFotosDetalhe() {
     setTimeout(() => inputRef.current?.click(), 10)
   }
 
+  function salvarNoContexto(novasFotos, novaInspecao) {
+    setChecklists(prev => prev.map(c =>
+      c.id === ck.id
+        ? { ...c, fotos: novasFotos, inspecaoVisual: novaInspecao }
+        : c
+    ))
+  }
+
   async function handleFile(e) {
     if (!e.target.files?.[0]) return
     const file = e.target.files[0]
@@ -183,12 +191,15 @@ export default function ChecklistFotosDetalhe() {
       const blob = await comprimirImagem(file)
       const caminho = `fotos/checklists/${ck.id}/${Date.now()}.jpg`
       const url = await uploadFoto(blob, caminho)
-      setFotos(prev => [...prev, {
+      const novaFoto = {
         id: Date.now() + Math.random(),
         url,
         categoria: categoriaAtual,
         timestamp: new Date().toLocaleString('pt-BR'),
-      }])
+      }
+      const novasFotos = [...fotos, novaFoto]
+      setFotos(novasFotos)
+      salvarNoContexto(novasFotos, inspecao)
     } catch {
       alert('Erro ao enviar imagem.')
     } finally {
@@ -198,20 +209,22 @@ export default function ChecklistFotosDetalhe() {
   }
 
   function removerFoto(fotoId) {
-    setFotos(prev => prev.filter(f => f.id !== fotoId))
+    const novasFotos = fotos.filter(f => f.id !== fotoId)
+    setFotos(novasFotos)
+    salvarNoContexto(novasFotos, inspecao)
   }
 
   function atualizarInspecao(itemId, status, nota) {
-    setInspecao(prev => prev.map(i =>
+    const novaInspecao = inspecao.map(i =>
       i.id === itemId ? { ...i, status, nota } : i
-    ))
+    )
+    setInspecao(novaInspecao)
+    salvarNoContexto(fotos, novaInspecao)
   }
 
   function salvar() {
     setSalvando(true)
-    setChecklists(prev => prev.map(c =>
-      c.id === ck.id ? { ...c, fotos, inspecaoVisual: inspecao } : c
-    ))
+    salvarNoContexto(fotos, inspecao)
     setTimeout(() => { setSalvando(false); navigate('/checklist/fotos') }, 500)
   }
 
