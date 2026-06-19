@@ -117,8 +117,9 @@ export function AppProvider({ children }) {
       _setCaixaHistorico(caixaHistoricoData)
 
       // caixa_turno: sempre 1 linha com id fixo 'caixa-turno'
-      const { data: turnoRows } = await supabase
+      const { data: turnoRows, error: turnoErr } = await supabase
         .from('caixa_turno').select('id, data').eq('id', 'caixa-turno')
+      if (turnoErr) console.error('[caixa_turno] Erro ao carregar:', turnoErr)
       const turno = turnoRows?.[0] ? { id: 'caixa-turno', ...turnoRows[0].data } : null
       r.current.caixaTurno = turno
       _setCaixaTurno(turno)
@@ -158,10 +159,12 @@ export function AppProvider({ children }) {
     r.current.caixaTurno = next
     _setCaixaTurno(next)
     if (next === null) {
-      supabase.from('caixa_turno').delete().eq('id', 'caixa-turno').catch(console.error)
+      supabase.from('caixa_turno').delete().eq('id', 'caixa-turno')
+        .then(({ error }) => { if (error) console.error('[caixa_turno] Erro ao deletar:', error) })
     } else {
       const { id: _id, ...data } = next
-      supabase.from('caixa_turno').upsert({ id: 'caixa-turno', data }).catch(console.error)
+      supabase.from('caixa_turno').upsert({ id: 'caixa-turno', data })
+        .then(({ error }) => { if (error) console.error('[caixa_turno] Erro ao salvar:', error) })
     }
   }
 
