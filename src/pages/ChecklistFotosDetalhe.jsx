@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Camera, Trash2, CheckCircle2, AlertTriangle,
-  Save, User, Clock, Car, X, ZoomIn, ChevronLeft, ChevronRight
+  Save, User, Clock, Car, X, ZoomIn, ChevronLeft, ChevronRight, MessageCircle
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { uploadFoto } from '../supabase'
@@ -290,9 +290,9 @@ export default function ChecklistFotosDetalhe() {
       )}
 
       {/* ── Cabeçalho ── */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <button onClick={() => navigate('/checklist/fotos')}
-          className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">
+          className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors mt-0.5">
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1 min-w-0">
@@ -312,6 +312,22 @@ export default function ChecklistFotosDetalhe() {
             <span>{fotos.length} foto(s)</span>
           </div>
         </div>
+        <button
+          onClick={() => {
+            const url = `${window.location.origin}/vistoria/${ck.id}`
+            const tel = (ck.clienteTelefone || '').replace(/\D/g, '')
+            const texto = `Olá ${ck.clienteNome || ''}! Segue o link para visualizar as fotos e a vistoria do seu veículo ${ck.veiculoModelo || ''} (${ck.veiculoPlaca || ''}):\n\n${url}\n\n_Magayver Injecar_`
+            const href = tel
+              ? `https://wa.me/55${tel}?text=${encodeURIComponent(texto)}`
+              : `https://wa.me/?text=${encodeURIComponent(texto)}`
+            window.open(href, '_blank')
+          }}
+          className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0 whitespace-nowrap"
+        >
+          <MessageCircle size={15} />
+          <span className="hidden sm:inline">Enviar Link para Cliente</span>
+          <span className="sm:hidden">WhatsApp</span>
+        </button>
       </div>
 
       {/* Input de arquivo oculto — 1 por vez, igual ao original */}

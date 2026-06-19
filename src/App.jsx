@@ -33,6 +33,7 @@ import ChecklistDiagnosticoDetalhe from './pages/ChecklistDiagnosticoDetalhe'
 import ChecklistGerenciar from './pages/ChecklistGerenciar'
 import ChecklistDetalhe from './pages/ChecklistDetalhe'
 import ClienteAssinatura from './pages/ClienteAssinatura'
+import VistoriaCliente from './pages/VistoriaCliente'
 
 // Candidatas ordenadas por prioridade — primeira com permissão é o destino padrão
 const ROTAS_CANDIDATAS = [
@@ -77,6 +78,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<PinLogin />} />
         <Route path="/assinar/:id" element={<ClienteAssinatura />} />
+        <Route path="/vistoria/:id" element={<VistoriaCliente />} />
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<PrimeiraRota />} />
           <Route path="dashboard"           element={<Rota perm="dashboard"><Dashboard /></Rota>} />
