@@ -18,6 +18,7 @@ export default function Caixa() {
   const [modalMov, setModalMov] = useState(null) // 'sangria' | 'reforco'
   const [movValor, setMovValor] = useState('')
   const [movMotivo, setMovMotivo] = useState('')
+  const [editMov, setEditMov] = useState(null) // movimento sendo editado
   const [modalFechar, setModalFechar] = useState(false)
   const [contagem, setContagem] = useState({})
   const [justificativa, setJustificativa] = useState('')
@@ -123,6 +124,29 @@ export default function Caixa() {
     }
   }
 
+  function abrirEditMov(mov) {
+    setEditMov({ ...mov })
+  }
+
+  function salvarEditMov() {
+    if (!editMov?.valor) return
+    setCaixaTurno(prev => ({
+      ...prev,
+      movimentos: prev.movimentos.map(m =>
+        String(m.id) === String(editMov.id)
+          ? { ...m, valor: pNum(editMov.valor), motivo: editMov.motivo }
+          : m
+      ),
+    }))
+    setEditMov(null)
+  }
+
+  function excluirMov(id) {
+    if (confirm('Excluir este movimento?')) {
+      setCaixaTurno(prev => ({ ...prev, movimentos: prev.movimentos.filter(m => String(m.id) !== String(id)) }))
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Cabeçalho */}
@@ -224,11 +248,13 @@ export default function Caixa() {
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Motivo</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Hora</th>
+                  <th className="px-5 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {movimentosCompletos.map(m => {
                   const cor = m.tipo === 'sangria' ? 'bg-red-100 text-red-700' : m.tipo === 'reforco' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                  const editavel = m.tipo === 'sangria' || m.tipo === 'reforco'
                   return (
                     <tr key={m.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-3.5">
@@ -243,6 +269,20 @@ export default function Caixa() {
                       </td>
                       <td className="px-5 py-3.5 text-sm text-slate-500">{m.motivo}</td>
                       <td className="px-5 py-3.5 text-sm text-slate-500">{m.hora}</td>
+                      <td className="px-5 py-3.5">
+                        {editavel && (
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => abrirEditMov({ id: m.id.slice(1), valor: String(m.valor), motivo: m.motivo, tipo: m.tipo })}
+                              className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                              <Pencil size={13} />
+                            </button>
+                            <button onClick={() => excluirMov(m.id.slice(1))}
+                              className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   )
                 })}
@@ -264,6 +304,24 @@ export default function Caixa() {
           <div className="flex gap-3 justify-end mt-5">
             <button onClick={() => setModalMov(null)} className="border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
             <button onClick={confirmarMov} className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">Confirmar</button>
+          </div>
+        </ModalBase>
+      )}
+
+      {/* Modal Editar Sangria/Reforço */}
+      {editMov && (
+        <ModalBase title={editMov.tipo === 'sangria' ? 'Editar Sangria' : 'Editar Reforço'} onClose={() => setEditMov(null)}>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Valor</label>
+          <input type="number" value={editMov.valor} onChange={e => setEditMov(v => ({ ...v, valor: e.target.value }))}
+            placeholder="0,00" autoFocus
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-3" />
+          <label className="block text-sm font-medium text-slate-700 mb-1">Motivo</label>
+          <textarea value={editMov.motivo} onChange={e => setEditMov(v => ({ ...v, motivo: e.target.value }))} rows={2}
+            placeholder="Informe o motivo..."
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none" />
+          <div className="flex gap-3 justify-end mt-5">
+            <button onClick={() => setEditMov(null)} className="border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+            <button onClick={salvarEditMov} className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">Salvar</button>
           </div>
         </ModalBase>
       )}
