@@ -26,6 +26,7 @@ export default function Financeiro() {
     financeiro, setFinanceiro, adicionarLancamento,
     devedores, getCliente, pagarOrdem, resumoFinanceiro,
     compras, atualizarCompra,
+    caixaTurno, registrarSangria,
   } = useApp()
 
   const [modal, setModal] = useState(false)
@@ -71,16 +72,28 @@ export default function Financeiro() {
 
   function confirmarBaixa() {
     if (!modalBoleto) return
-    const { parcelaId, compraId, compraNumero, fornecedor, valor, parcela, totalParcelas } = modalBoleto
 
-    // Cria lançamento com a forma de pagamento escolhida
+    // Se caixa fechado, pede confirmação antes de prosseguir
+    if (!caixaTurno) {
+      if (!confirm('O caixa está fechado. O pagamento será registrado no financeiro, mas não será descontado do caixa. Deseja continuar?')) return
+    }
+
+    const { parcelaId, compraId, compraNumero, fornecedor, valor, parcela, totalParcelas } = modalBoleto
+    const descricao = `${fornecedor} ${compraNumero} — Parcela ${parcela}/${totalParcelas}`
+
+    // Cria lançamento no financeiro
     adicionarLancamento({
-      descricao: `${fornecedor} ${compraNumero} — Parcela ${parcela}/${totalParcelas}`,
+      descricao,
       tipo: 'despesa',
       valor: valor.toFixed(2).replace('.', ','),
       formaPagamento,
       compraId,
     })
+
+    // Se caixa aberto, registra saída (sangria) no caixa também
+    if (caixaTurno) {
+      registrarSangria(valor, `Pagto boleto: ${descricao} — ${formaPagamento}`)
+    }
 
     // Marca a parcela como paga na compra
     const compra = compras.find(c => c.id === compraId)
