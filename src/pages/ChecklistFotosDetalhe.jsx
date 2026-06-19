@@ -316,7 +316,7 @@ export default function ChecklistFotosDetalhe() {
           onClick={() => {
             const url = `${window.location.origin}/vistoria/${ck.id}`
             const tel = (ck.clienteTelefone || '').replace(/\D/g, '')
-            const texto = `Olá ${ck.clienteNome || ''}! Segue o link para visualizar as fotos e a vistoria do seu veículo ${ck.veiculoModelo || ''} (${ck.veiculoPlaca || ''}):\n\n${url}\n\n_Magayver Injecar_`
+            const texto = `*Magayver Injecar*\nOlá ${ck.clienteNome || ''}! Segue o link para visualizar as fotos e a vistoria do seu veículo ${ck.veiculoModelo || ''} (${ck.veiculoPlaca || ''}).\n\nPara acessar, informe o número cadastrado:\n${url}`
             const href = tel
               ? `https://wa.me/55${tel}?text=${encodeURIComponent(texto)}`
               : `https://wa.me/?text=${encodeURIComponent(texto)}`
