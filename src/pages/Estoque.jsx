@@ -3,7 +3,7 @@ import { Search, Plus, AlertTriangle, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import Modal from '../components/ui/Modal'
 
-const vazio = { codigo: '', nome: '', categoria: '', estoque: '', minimo: '', preco: '' }
+const vazio = { codigo: '', nome: '', categoria: '', estoque: '', minimo: '', precoCusto: '', preco: '' }
 
 export default function Estoque() {
   const { estoque, setEstoque } = useApp()
@@ -61,7 +61,8 @@ export default function Estoque() {
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Produto</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoria</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Preço</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Custo</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Venda</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
@@ -82,6 +83,7 @@ export default function Estoque() {
                       <span className="text-xs text-slate-400">mín: {item.minimo}</span>
                     </div>
                   </td>
+                  <td className="px-5 py-3.5 text-sm text-slate-700">{item.precoCusto ? `R$ ${item.precoCusto}` : '—'}</td>
                   <td className="px-5 py-3.5 text-sm text-slate-700">R$ {item.preco}</td>
                   <td className="px-5 py-3.5">
                     <button onClick={() => excluir(item.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
@@ -113,7 +115,7 @@ export default function Estoque() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Nome do Produto *</label>
               <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Filtro de Óleo" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Qtd. Inicial</label>
                 <input type="number" value={form.estoque} onChange={e => setForm(f => ({ ...f, estoque: e.target.value }))} placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
@@ -122,8 +124,14 @@ export default function Estoque() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Qtd. Mínima</label>
                 <input type="number" value={form.minimo} onChange={e => setForm(f => ({ ...f, minimo: e.target.value }))} placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Preço (R$)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Preço de Custo (R$)</label>
+                <input value={form.precoCusto} onChange={e => setForm(f => ({ ...f, precoCusto: e.target.value }))} placeholder="0,00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Preço de Venda (R$)</label>
                 <input value={form.preco} onChange={e => setForm(f => ({ ...f, preco: e.target.value }))} placeholder="0,00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
             </div>

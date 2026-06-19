@@ -526,7 +526,7 @@ export default function CompraDetalhe() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Valor de compra (R$)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Valor de compra / Custo (R$)</label>
                     <input
                       value={item.valorUnitario}
                       onChange={e => setItem(it => ({ ...it, valorUnitario: e.target.value }))}
