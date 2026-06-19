@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { Plus, FileText, Eye, Copy, MessageCircle, Printer, ArrowRight, Trash2, X, List, Search, ChevronDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { imprimirOrcamento } from '../utils/print'
 
 const statusColor = {
   Pendente: 'bg-yellow-100 text-yellow-700',
@@ -20,7 +21,7 @@ const fmt = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2,
 
 export default function Orcamentos() {
   const navigate = useNavigate()
-  const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, getCliente, novaOrdem } = useApp()
+  const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, getCliente, getVeiculo, novaOrdem } = useApp()
 
   const [aba, setAba] = useState('salvos')
   const [dados, setDados] = useState(VAZIO_CLIENTE)
@@ -248,7 +249,12 @@ export default function Orcamentos() {
                     <td className="px-5 py-3.5 text-sm text-slate-500">{o.data}</td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center justify-end gap-1 text-slate-400">
-                        <button title="Imprimir" onClick={() => window.print()} className="p-1.5 rounded hover:bg-slate-100 hover:text-slate-600 transition-colors"><Printer size={15} /></button>
+                        <button title="Imprimir" onClick={() => {
+                          const cli = o.clienteId ? getCliente(Number(o.clienteId)) : { nome: o.nome, telefone: o.telefone }
+                          const veicsOrc = o.clienteId ? veiculosPorCliente(Number(o.clienteId)) : []
+                          const veic = veicsOrc.find(v => v.placa === o.placa) || veicsOrc[0] || null
+                          imprimirOrcamento(o, cli, veic)
+                        }} className="p-1.5 rounded hover:bg-slate-100 hover:text-slate-600 transition-colors"><Printer size={15} /></button>
                         <button title="Converter em OS" onClick={() => converterEmOS(o)} className="p-1.5 rounded hover:bg-blue-50 hover:text-blue-500 transition-colors"><ArrowRight size={15} /></button>
                         <button title="Excluir" onClick={() => excluir(o.id)} className="p-1.5 rounded hover:bg-red-50 hover:text-red-400 transition-colors"><Trash2 size={15} /></button>
                       </div>
@@ -402,7 +408,12 @@ export default function Orcamentos() {
             <button onClick={enviarWhatsapp} className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">
               <MessageCircle size={15} />Enviar Orçamento via WhatsApp
             </button>
-            <button onClick={() => window.print()} className="flex items-center gap-2 border border-slate-200 text-slate-600 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
+            <button onClick={() => {
+              const cli = dados.clienteId ? getCliente(Number(dados.clienteId)) : { nome: dados.nome || buscaCliente, telefone: dados.telefone }
+              const veicsOrc = dados.clienteId ? veiculosPorCliente(Number(dados.clienteId)) : []
+              const veic = veicsOrc.find(v => v.placa === dados.placa) || veicsOrc[0] || null
+              imprimirOrcamento({ id: 'Prévia', itens, observacoes }, cli, veic)
+            }} className="flex items-center gap-2 border border-slate-200 text-slate-600 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
               <Printer size={15} />Imprimir
             </button>
           </div>

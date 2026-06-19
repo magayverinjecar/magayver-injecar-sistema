@@ -82,103 +82,210 @@ function gerarCupom(os, cliente, veiculo, mecanico, total, cfg, largura, fSize) 
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>OS ${os.id}</title><style>${css}</style></head><body>${body}</body></html>`
 }
 
-// ─── A4 DETALHADO ─────────────────────────────────────────────────────────────
+// ─── A4 DETALHADO (layout baseado no modelo da oficina) ───────────────────────
+
+function secHeader(titulo) {
+  return `<div style="background:#1e293b;color:#fff;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;padding:5px 8px;margin-bottom:0">${titulo}</div>`
+}
+
+function tabelaCliente(cliente, os) {
+  return `
+  <table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;margin-bottom:0">
+    <tr style="background:#f8fafc">
+      <th style="text-align:left;padding:4px 7px;font-size:9px;color:#64748b;font-weight:600;border-right:1px solid #cbd5e1;width:45%">NOME DO CLIENTE</th>
+      <th style="text-align:left;padding:4px 7px;font-size:9px;color:#64748b;font-weight:600;border-right:1px solid #cbd5e1;width:25%">TELEFONE</th>
+      <th style="text-align:left;padding:4px 7px;font-size:9px;color:#64748b;font-weight:600;border-right:1px solid #cbd5e1;width:15%">CPF/CNPJ</th>
+      <th style="text-align:left;padding:4px 7px;font-size:9px;color:#64748b;font-weight:600;width:15%">E-MAIL</th>
+    </tr>
+    <tr>
+      <td style="padding:5px 7px;border-right:1px solid #e2e8f0;font-weight:600">${cliente?.nome || '—'}</td>
+      <td style="padding:5px 7px;border-right:1px solid #e2e8f0">${cliente?.telefone || '—'}</td>
+      <td style="padding:5px 7px;border-right:1px solid #e2e8f0">${cliente?.cpf || '—'}</td>
+      <td style="padding:5px 7px">${cliente?.email || '—'}</td>
+    </tr>
+  </table>
+  ${cliente?.endereco ? `<table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;border-top:0;margin-bottom:0"><tr><td style="padding:4px 7px;font-size:10px"><span style="color:#64748b;font-size:9px;font-weight:600">ENDEREÇO: </span>${cliente.endereco}</td></tr></table>` : ''}
+  `
+}
+
+function tabelaVeiculo(veiculo, os, mecanico) {
+  if (!veiculo) return `<table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;margin-bottom:0"><tr><td style="padding:6px 8px;color:#94a3b8">Veículo não informado</td></tr></table>`
+  const cel = (label, valor) => `<td style="border-right:1px solid #e2e8f0;padding:0"><div style="background:#f8fafc;font-size:8px;color:#64748b;font-weight:600;padding:2px 6px;border-bottom:1px solid #e2e8f0">${label}</div><div style="padding:4px 6px;font-weight:600;font-size:10px">${valor || '—'}</div></td>`
+  return `
+  <table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;margin-bottom:0;table-layout:fixed">
+    <tr>
+      ${cel('PLACA', veiculo.placa)}
+      ${cel('FABRICANTE', veiculo.fabricante || veiculo.marca || '')}
+      ${cel('MODELO', veiculo.modelo)}
+      ${cel('ANO', veiculo.ano)}
+      ${cel('MOTOR', veiculo.motor || '')}
+      ${cel('CÂMBIO', veiculo.cambio || '')}
+      ${cel('COR', veiculo.cor || '')}
+    </tr>
+  </table>
+  <table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;border-top:0;margin-bottom:0;table-layout:fixed">
+    <tr>
+      ${cel('KM ENTRADA', os.kmEntrada)}
+      ${cel('COMBUSTÍVEL', veiculo.combustivel || '')}
+      ${cel('PORTAS', veiculo.portas || '')}
+      ${cel('MECÂNICO', mecanico?.nome || '')}
+      ${cel('DATA ENTRADA', os.dataEntrada || os.data)}
+      ${cel('DATA CONCLUSÃO', os.dataConclusao || '')}
+      <td style="border-right:0;padding:0"><div style="background:#f8fafc;font-size:8px;color:#64748b;font-weight:600;padding:2px 6px;border-bottom:1px solid #e2e8f0">STATUS</div><div style="padding:4px 6px;font-weight:700;font-size:10px;color:#f97316">${os.status}</div></td>
+    </tr>
+  </table>`
+}
 
 function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
+  const itens = os.itens || []
+  const servicos = itens.filter(i => i.tipo === 'servico')
+  const pecas    = itens.filter(i => i.tipo !== 'servico')
+  const totalSrv = servicos.reduce((s, i) => s + pNum(i.valorUnitario) * (Number(i.quantidade) || 1) - pNum(i.desconto), 0)
+  const totalPec = pecas.reduce((s, i) => s + pNum(i.valorUnitario) * (Number(i.quantidade) || 1) - pNum(i.desconto), 0)
+
+  const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
   const css = `
-    @page { size: A4; margin: 15mm; }
+    @page { size: A4; margin: 12mm 14mm; }
     * { box-sizing: border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #222; margin: 0; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 3px solid #f97316; margin-bottom: 14px; }
-    .empresa h1 { font-size: 22px; margin: 0 0 4px; color: #f97316; }
-    .empresa p { margin: 1px 0; font-size: 10px; color: #555; }
-    .os-box { text-align: right; }
-    .os-num { font-size: 26px; font-weight: 900; color: #f97316; }
-    .status-badge { display: inline-block; background: #fef3c7; color: #92400e; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; margin-top: 4px; }
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-    .box { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; }
-    .box-title { font-size: 9px; font-weight: bold; color: #9ca3af; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
-    .kv { display: flex; justify-content: space-between; margin-bottom: 3px; }
-    .kv .k { color: #6b7280; }
-    .kv .v { font-weight: 600; }
-    .problem-box { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-    th { background: #f9fafb; font-size: 9px; color: #6b7280; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid #e5e7eb; }
-    th:not(:first-child) { text-align: right; }
-    td { padding: 7px 8px; border-bottom: 1px solid #f3f4f6; font-size: 11px; }
-    td:not(:first-child) { text-align: right; }
-    .total-line { display: flex; justify-content: flex-end; align-items: center; gap: 16px; border-top: 2px solid #f97316; padding-top: 8px; margin-bottom: 20px; }
-    .total-label { font-size: 13px; color: #6b7280; }
-    .total-val { font-size: 20px; font-weight: 900; color: #f97316; }
-    .assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; margin-top: 30px; }
-    .assin { border-top: 1px solid #374151; padding-top: 6px; text-align: center; font-size: 10px; color: #6b7280; }
-    .footer { margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 8px; font-size: 9px; color: #9ca3af; text-align: center; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1e293b; margin: 0; }
+    table { border-collapse: collapse; }
+    .seccao { margin-bottom: 10px; }
   `
+
+  const rowServico = (it, idx) => {
+    const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
+    return `<tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:6px 8px;vertical-align:top">
+        <span style="font-weight:700;color:#f97316">${String.fromCharCode(65 + idx)}1</span> — ${it.descricao}
+        ${it.quantidade > 1 ? `<span style="font-size:9px;color:#64748b"> (${it.quantidade}x)</span>` : ''}
+      </td>
+      <td style="padding:6px 8px;text-align:right;white-space:nowrap;font-weight:700;vertical-align:top">${fmt(sub)}</td>
+    </tr>`
+  }
+
+  const rowPeca = (it, idx, srvIdx) => {
+    const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
+    const cod = srvIdx !== undefined ? `${String.fromCharCode(65 + srvIdx)}1.${idx + 1}` : `P${idx + 1}`
+    return `<tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:5px 8px"><span style="font-weight:700;color:#64748b">${cod}</span> — ${it.descricao}</td>
+      <td style="padding:5px 8px;text-align:center">${it.quantidade}</td>
+      <td style="padding:5px 8px;text-align:right">UN</td>
+      <td style="padding:5px 8px;text-align:right">${fmt(pNum(it.valorUnitario))}</td>
+      <td style="padding:5px 8px;text-align:right;font-weight:700">${fmt(sub)}</td>
+    </tr>`
+  }
+
   const body = `
-    <div class="header">
-      <div class="empresa">
-        <h1>${cfg.nome || 'Oficina'}</h1>
-        ${cfg.cnpj ? `<p>CNPJ: ${cfg.cnpj}</p>` : ''}
-        ${cfg.telefone ? `<p>Tel: ${cfg.telefone}</p>` : ''}
-        ${cfg.endereco ? `<p>${cfg.endereco}</p>` : ''}
-        ${cfg.email ? `<p>${cfg.email}</p>` : ''}
+    <!-- CABEÇALHO -->
+    <div style="padding-bottom:10px;border-bottom:3px solid #f97316;margin-bottom:10px">
+      <div style="font-size:20px;font-weight:900;color:#1e293b;letter-spacing:-0.5px">${cfg.nome || 'Oficina'}</div>
+      <div style="font-size:10px;color:#475569;margin-top:2px">
+        ${[cfg.telefone, cfg.email].filter(Boolean).join(' / ')}
       </div>
-      <div class="os-box">
-        <div class="os-num">OS ${os.id}</div>
-        <div style="font-size:10px;color:#6b7280;margin-top:2px">Entrada: ${os.dataEntrada || os.data}</div>
-        ${os.dataConclusao ? `<div style="font-size:10px;color:#6b7280">Conclusão: ${os.dataConclusao}</div>` : ''}
-        <div><span class="status-badge">${os.status}</span></div>
+      <div style="font-size:10px;color:#475569">
+        ${cfg.endereco || ''}${cfg.cnpj ? `${cfg.endereco ? ' — ' : ''}CNPJ: ${cfg.cnpj}` : ''}
       </div>
     </div>
 
-    <div class="grid2">
-      <div class="box">
-        <div class="box-title">Cliente</div>
-        <div class="kv"><span class="k">Nome</span><span class="v">${cliente?.nome || '—'}</span></div>
-        <div class="kv"><span class="k">Telefone</span><span class="v">${cliente?.telefone || '—'}</span></div>
-        <div class="kv"><span class="k">E-mail</span><span class="v">${cliente?.email || '—'}</span></div>
-      </div>
-      <div class="box">
-        <div class="box-title">Veículo</div>
-        <div class="kv"><span class="k">Modelo</span><span class="v">${veiculo ? `${veiculo.modelo} ${veiculo.ano || ''}` : '—'}</span></div>
-        <div class="kv"><span class="k">Placa</span><span class="v">${veiculo?.placa || '—'}</span></div>
-        <div class="kv"><span class="k">KM Entrada</span><span class="v">${os.kmEntrada || '—'}</span></div>
-        ${mecanico ? `<div class="kv"><span class="k">Mecânico</span><span class="v">${mecanico.nome}</span></div>` : ''}
-      </div>
+    <!-- BARRA OS -->
+    <div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;padding:6px 10px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:16px;font-weight:900;color:#f97316">OS: ${os.id}</span>
+      <span style="font-size:11px;font-weight:700;color:#1e293b;border:1px solid #cbd5e1;background:#fff;padding:2px 10px;border-radius:3px">VIA CLIENTE</span>
+      <span style="font-size:10px;color:#475569">Emissão: ${emissao}</span>
     </div>
 
+    <!-- CLIENTE -->
+    <div class="seccao">
+      ${tabelaCliente(cliente, os)}
+    </div>
+
+    <!-- VEÍCULO -->
+    <div class="seccao">
+      ${secHeader('Informações do Veículo')}
+      ${tabelaVeiculo(veiculo, os, mecanico)}
+    </div>
+
+    <!-- DIAGNÓSTICO -->
     ${(os.descricaoProblema || os.diagnostico) ? `
-    <div class="problem-box">
-      <div class="box-title">Descrição do Problema / Diagnóstico</div>
-      ${os.descricaoProblema ? `<p style="margin:0 0 4px">${os.descricaoProblema}</p>` : ''}
-      ${os.diagnostico ? `<p style="margin:0;color:#555"><strong>Diagnóstico:</strong> ${os.diagnostico}</p>` : ''}
+    <div class="seccao">
+      ${secHeader('Informações de Diagnósticos')}
+      <div style="border:1px solid #cbd5e1;border-top:0;padding:8px 10px;font-size:10px;line-height:1.6;color:#334155">
+        ${os.descricaoProblema ? os.descricaoProblema : ''}
+        ${os.diagnostico ? `<br><strong>Diagnóstico:</strong> ${os.diagnostico}` : ''}
+      </div>
     </div>` : ''}
 
-    <table>
-      <thead>
-        <tr>
-          <th style="text-align:left">Descrição</th>
-          <th>Qtd</th>
-          <th>Valor Unit.</th>
-          <th>Subtotal</th>
+    <!-- SERVIÇOS -->
+    ${servicos.length > 0 ? `
+    <div class="seccao">
+      ${secHeader('Informações de Serviços')}
+      <table style="width:100%;border:1px solid #cbd5e1;border-top:0">
+        <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">
+          <th style="text-align:left;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600">SERVIÇO(S)</th>
+          <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:100px">TOTAL</th>
         </tr>
-      </thead>
-      <tbody>${itensTableRows(os.itens)}</tbody>
-    </table>
+        ${servicos.map((it, idx) => rowServico(it, idx)).join('')}
+      </table>
+    </div>` : ''}
 
-    <div class="total-line">
-      <span class="total-label">TOTAL</span>
-      <span class="total-val">${fmt(total)}</span>
+    <!-- PEÇAS -->
+    ${pecas.length > 0 ? `
+    <div class="seccao">
+      ${secHeader('Informações de Peças')}
+      <table style="width:100%;border:1px solid #cbd5e1;border-top:0">
+        <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">
+          <th style="text-align:left;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600">PEÇA(S)</th>
+          <th style="text-align:center;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:50px">QTD</th>
+          <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:50px">UN</th>
+          <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:90px">VALOR UNIT.</th>
+          <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:90px">VALOR TOTAL</th>
+        </tr>
+        ${pecas.map((it, idx) => rowPeca(it, idx)).join('')}
+      </table>
+    </div>` : ''}
+
+    <!-- ITENS SEM TIPO (fallback) -->
+    ${servicos.length === 0 && pecas.length === 0 && itens.length > 0 ? `
+    <div class="seccao">
+      ${secHeader('Itens')}
+      <table style="width:100%;border:1px solid #cbd5e1;border-top:0">
+        <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">
+          <th style="text-align:left;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600">DESCRIÇÃO</th>
+          <th style="text-align:center;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:50px">QTD</th>
+          <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:90px">VALOR UNIT.</th>
+          <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:90px">SUBTOTAL</th>
+        </tr>
+        ${itens.map(it => {
+          const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
+          return `<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:5px 8px">${it.descricao}</td><td style="padding:5px 8px;text-align:center">${it.quantidade}</td><td style="padding:5px 8px;text-align:right">${fmt(pNum(it.valorUnitario))}</td><td style="padding:5px 8px;text-align:right;font-weight:700">${fmt(sub)}</td></tr>`
+        }).join('')}
+      </table>
+    </div>` : ''}
+
+    <!-- TOTAIS -->
+    <div style="border:1px solid #cbd5e1;border-radius:4px;padding:8px 12px;margin-bottom:14px;display:flex;justify-content:flex-end;gap:24px;align-items:center;background:#f8fafc">
+      ${servicos.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL SERVIÇOS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalSrv)}</div></div>` : ''}
+      ${pecas.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL PEÇAS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalPec)}</div></div>` : ''}
+      <div style="border-left:2px solid #e2e8f0;padding-left:24px"><div style="font-size:9px;color:#64748b;font-weight:600">VALOR TOTAL</div><div style="font-size:20px;font-weight:900;color:#f97316">${fmt(total)}</div></div>
     </div>
 
-    ${os.observacoes ? `<div style="font-size:10px;color:#6b7280;margin-bottom:16px"><strong>Observações:</strong> ${os.observacoes}</div>` : ''}
+    ${os.observacoes ? `<div style="font-size:10px;color:#475569;margin-bottom:12px;border-left:3px solid #f97316;padding-left:8px"><strong>Observações:</strong> ${os.observacoes}</div>` : ''}
 
-    <div class="assinaturas">
-      <div class="assin">Assinatura do Responsável pela Oficina</div>
-      <div class="assin">Assinatura do Cliente</div>
+    <!-- RODAPÉ -->
+    <div style="border-top:1px solid #e2e8f0;padding-top:10px;margin-top:4px">
+      <div style="text-align:center;font-size:11px;color:#475569;margin-bottom:18px">
+        Caro Cliente, obrigado por confiar em nossos serviços!
+      </div>
+      <div style="display:flex;gap:40px;margin-top:8px">
+        <div style="flex:1;border-top:1px solid #374151;padding-top:5px;text-align:center;font-size:9px;color:#64748b">
+          Assinatura do Responsável pela Oficina
+        </div>
+        <div style="flex:1;border-top:1px solid #374151;padding-top:5px;text-align:center;font-size:9px;color:#64748b">
+          Assinatura do Cliente na Retirada do Veículo
+        </div>
+      </div>
     </div>
-
-    <div class="footer">Documento emitido por ${cfg.nome || 'Oficina'} • ${new Date().toLocaleDateString('pt-BR')}</div>
   `
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>OS ${os.id}</title><style>${css}</style></head><body>${body}</body></html>`
 }
@@ -397,6 +504,138 @@ function gerarRecibo(venda, cfg) {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Recibo ${venda.numero}</title><style>${css}</style></head><body>${body}</body></html>`
 }
 
+// ─── ORÇAMENTO ────────────────────────────────────────────────────────────────
+
+function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
+  const itens = orc.itens || []
+  const servicos = itens.filter(i => i.tipo === 'Serviço' || i.tipo === 'servico')
+  const pecas    = itens.filter(i => i.tipo !== 'Serviço' && i.tipo !== 'servico')
+  const totalSrv = servicos.reduce((s, i) => s + pNum(i.valorUnitario) * (Number(i.quantidade) || 1) - pNum(i.desconto || 0), 0)
+  const totalPec = pecas.reduce((s, i) => s + pNum(i.valorUnitario) * (Number(i.quantidade) || 1) - pNum(i.desconto || 0), 0)
+  const total = totalSrv + totalPec
+
+  const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
+  const css = `
+    @page { size: A4; margin: 12mm 14mm; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1e293b; margin: 0; }
+    table { border-collapse: collapse; }
+    .seccao { margin-bottom: 10px; }
+  `
+
+  const rowServico = (it, idx) => {
+    const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto || 0)
+    return `<tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:6px 8px;vertical-align:top">
+        <span style="font-weight:700;color:#f97316">${String.fromCharCode(65 + idx)}1</span> — ${it.descricao}
+        ${Number(it.quantidade) > 1 ? `<span style="font-size:9px;color:#64748b"> (${it.quantidade}x)</span>` : ''}
+      </td>
+      <td style="padding:6px 8px;text-align:right;white-space:nowrap;font-weight:700;vertical-align:top">${fmt(sub)}</td>
+    </tr>`
+  }
+
+  const rowPeca = (it, idx) => {
+    const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto || 0)
+    return `<tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:5px 8px"><span style="font-weight:700;color:#64748b">P${idx + 1}</span> — ${it.descricao}</td>
+      <td style="padding:5px 8px;text-align:center">${it.quantidade}</td>
+      <td style="padding:5px 8px;text-align:right">UN</td>
+      <td style="padding:5px 8px;text-align:right">${fmt(pNum(it.valorUnitario))}</td>
+      <td style="padding:5px 8px;text-align:right;font-weight:700">${fmt(sub)}</td>
+    </tr>`
+  }
+
+  const body = `
+    <!-- CABEÇALHO -->
+    <div style="padding-bottom:10px;border-bottom:3px solid #f97316;margin-bottom:10px">
+      <div style="font-size:20px;font-weight:900;color:#1e293b;letter-spacing:-0.5px">${cfg.nome || 'Oficina'}</div>
+      <div style="font-size:10px;color:#475569;margin-top:2px">
+        ${[cfg.telefone, cfg.email].filter(Boolean).join(' / ')}
+      </div>
+      <div style="font-size:10px;color:#475569">
+        ${cfg.endereco || ''}${cfg.cnpj ? `${cfg.endereco ? ' — ' : ''}CNPJ: ${cfg.cnpj}` : ''}
+      </div>
+    </div>
+
+    <!-- BARRA ORÇAMENTO -->
+    <div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;padding:6px 10px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:16px;font-weight:900;color:#f97316">ORÇAMENTO: ${orc.id || orc.numero || ''}</span>
+      <span style="font-size:11px;font-weight:700;color:#1e293b;border:1px solid #cbd5e1;background:#fff;padding:2px 10px;border-radius:3px">VIA CLIENTE</span>
+      <span style="font-size:10px;color:#475569">Emissão: ${emissao}</span>
+    </div>
+
+    <!-- CLIENTE -->
+    <div class="seccao">
+      ${tabelaCliente(cliente, {})}
+    </div>
+
+    <!-- VEÍCULO -->
+    ${veiculo ? `
+    <div class="seccao">
+      ${secHeader('Informações do Veículo')}
+      ${tabelaVeiculo(veiculo, {}, null)}
+    </div>` : ''}
+
+    <!-- SERVIÇOS -->
+    ${servicos.length > 0 ? `
+    <div class="seccao">
+      ${secHeader('Informações de Serviços')}
+      <table style="width:100%;border:1px solid #cbd5e1;border-top:0">
+        <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">
+          <th style="text-align:left;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600">SERVIÇO(S)</th>
+          <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:100px">TOTAL</th>
+        </tr>
+        ${servicos.map((it, idx) => rowServico(it, idx)).join('')}
+      </table>
+    </div>` : ''}
+
+    <!-- PEÇAS -->
+    ${pecas.length > 0 ? `
+    <div class="seccao">
+      ${secHeader('Informações de Peças')}
+      <table style="width:100%;border:1px solid #cbd5e1;border-top:0">
+        <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">
+          <th style="text-align:left;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600">PEÇA(S)</th>
+          <th style="text-align:center;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:50px">QTD</th>
+          <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:50px">UN</th>
+          <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:90px">VALOR UNIT.</th>
+          <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:90px">VALOR TOTAL</th>
+        </tr>
+        ${pecas.map((it, idx) => rowPeca(it, idx)).join('')}
+      </table>
+    </div>` : ''}
+
+    <!-- TOTAIS -->
+    <div style="border:1px solid #cbd5e1;border-radius:4px;padding:8px 12px;margin-bottom:14px;display:flex;justify-content:flex-end;gap:24px;align-items:center;background:#f8fafc">
+      ${servicos.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL SERVIÇOS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalSrv)}</div></div>` : ''}
+      ${pecas.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL PEÇAS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalPec)}</div></div>` : ''}
+      <div style="border-left:2px solid #e2e8f0;padding-left:24px"><div style="font-size:9px;color:#64748b;font-weight:600">VALOR TOTAL</div><div style="font-size:20px;font-weight:900;color:#f97316">${fmt(total)}</div></div>
+    </div>
+
+    <!-- VALIDADE -->
+    <div style="font-size:10px;color:#475569;margin-bottom:16px;text-align:center">
+      Este orçamento tem validade de <strong>30 dias</strong> a partir da data de emissão.
+    </div>
+
+    <!-- RODAPÉ -->
+    <div style="border-top:1px solid #e2e8f0;padding-top:10px;margin-top:4px">
+      <div style="text-align:center;font-size:11px;color:#475569;margin-bottom:18px">
+        Caro Cliente, obrigado por confiar em nossos serviços!
+      </div>
+      <div style="display:flex;gap:40px;margin-top:8px">
+        <div style="flex:1;border-top:1px solid #374151;padding-top:5px;text-align:center;font-size:9px;color:#64748b">
+          Assinatura do Responsável pela Oficina
+        </div>
+        <div style="flex:1;border-top:1px solid #374151;padding-top:5px;text-align:center;font-size:9px;color:#64748b">
+          Assinatura do Cliente (Aprovação do Orçamento)
+        </div>
+      </div>
+    </div>
+  `
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Orçamento ${orc.id || ''}</title><style>${css}</style></head><body>${body}</body></html>`
+}
+
 // ─── EXPORTS ──────────────────────────────────────────────────────────────────
 
 export function imprimirOS(os, cliente, veiculo, mecanico, total, modelo) {
@@ -413,4 +652,9 @@ export function imprimirOS(os, cliente, veiculo, mecanico, total, modelo) {
 export function imprimirReciboCaixa(venda) {
   const cfg = getConfig()
   abrirJanela(gerarRecibo(venda, cfg), `Recibo ${venda.numero}`)
+}
+
+export function imprimirOrcamento(orc, cliente, veiculo) {
+  const cfg = getConfig()
+  abrirJanela(gerarOrcamentoPDF(orc, cliente, veiculo, cfg), `Orçamento ${orc.id || ''}`)
 }
