@@ -284,6 +284,18 @@ export function AppProvider({ children }) {
     setOrdens(prev => prev.map(o => o.id === osId ? { ...o, pago: true } : o))
   }
 
+  function reabrirOrdem(osId) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o) return
+    const historico = [{ id: Date.now(), texto: 'OS reaberta (estorno)', data: carimboData() }, ...(o.historico || [])]
+    // Desfaz pagamento e status
+    setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Em Andamento', pago: false, historico } : x))
+    // Remove receita do financeiro gerada ao concluir
+    setFinanceiro(fp => fp.filter(f => f.osId !== osId))
+    // Remove venda do caixa (estorno)
+    setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.osId !== osId) } : t)
+  }
+
   // --- FINANCEIRO ---
   function adicionarLancamento(lancamento) {
     const hoje = new Date().toLocaleDateString('pt-BR')
@@ -462,7 +474,7 @@ export function AppProvider({ children }) {
     <AppContext.Provider value={{
       clientes, setClientes,
       veiculos, setVeiculos,
-      ordens, setOrdens, novaOrdem, pagarOrdem,
+      ordens, setOrdens, novaOrdem, pagarOrdem, reabrirOrdem,
       atualizarOrdem, adicionarItemOrdem, removerItemOrdem, mudarStatusOrdem,
       adicionarFotoOrdem, removerFotoOrdem, excluirOrdem, totalOrdem,
       estoque, setEstoque,

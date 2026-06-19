@@ -25,7 +25,7 @@ export default function OrdemDetalhe() {
   const {
     ordens, checklists, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque,
     atualizarOrdem, adicionarItemOrdem, removerItemOrdem, mudarStatusOrdem,
-    excluirOrdem, totalOrdem, caixaTurno, registrarVendaCaixa, pagarOrdem,
+    excluirOrdem, totalOrdem, caixaTurno, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
   } = useApp()
 
   const os = ordens.find(o => o.id === osId)
@@ -36,6 +36,8 @@ export default function OrdemDetalhe() {
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
   const [modalFinalizar, setModalFinalizar] = useState(false)
   const [formaPagamento, setFormaPagamento] = useState('PIX')
+  const [parcelas, setParcelas] = useState('1')
+  const [modalReabrir, setModalReabrir] = useState(false)
 
   if (!os) {
     return (
@@ -113,21 +115,28 @@ export default function OrdemDetalhe() {
     { label: 'Boleto', icon: FileText },
   ]
 
-  function confirmarFinalizar(imprimir) {
+  function confirmarFinalizar(comImprimir) {
     mudarStatusOrdem(os.id, 'Concluída')
     pagarOrdem(os.id)
     if (caixaTurno) {
+      const pgto = { forma: formaPagamento, valor: String(total) }
+      if (formaPagamento === 'Cartão Crédito' && Number(parcelas) > 1) pgto.parcelas = Number(parcelas)
       registrarVendaCaixa({
         total,
-        pagamentos: [{ forma: formaPagamento, valor: String(total) }],
+        pagamentos: [pgto],
         clienteNome: cliente?.nome || 'Cliente',
         osId: os.id,
       })
     }
     setModalFinalizar(false)
-    if (imprimir) {
+    if (comImprimir) {
       setTimeout(() => imprimirOS(os, cliente, veiculo, mecanico, total, 'a4det'), 300)
     }
+  }
+
+  function confirmarReabrir() {
+    reabrirOrdem(os.id)
+    setModalReabrir(false)
   }
 
   return (
@@ -167,6 +176,11 @@ export default function OrdemDetalhe() {
           {os.status !== 'Concluída' && os.status !== 'Cancelada' && (
             <button onClick={() => setModalFinalizar(true)} className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
               <CheckCircle2 size={14} />Finalizar OS
+            </button>
+          )}
+          {os.status === 'Concluída' && (
+            <button onClick={() => setModalReabrir(true)} className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
+              <ArrowRightLeft size={14} />Reabrir OS
             </button>
           )}
           <button onClick={excluir} className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"><Trash2 size={14} />Excluir</button>
@@ -408,6 +422,25 @@ export default function OrdemDetalhe() {
                 </div>
               </div>
 
+              {formaPagamento === 'Cartão Crédito' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Parcelamento</label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {['1','2','3','4','5','6','7','8','9','10','11','12'].map(p => (
+                      <button key={p} type="button" onClick={() => setParcelas(p)}
+                        className={`py-2 rounded-lg border text-sm font-medium transition-colors ${parcelas === p ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                        {p}x
+                      </button>
+                    ))}
+                  </div>
+                  {Number(parcelas) > 1 && (
+                    <p className="text-xs text-slate-400 mt-1.5 text-center">
+                      {parcelas}x de {fmt(total / Number(parcelas))}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {!caixaTurno && (
                 <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg">
                   <AlertTriangle size={14} />
@@ -423,6 +456,38 @@ export default function OrdemDetalhe() {
                 <button type="button" onClick={() => confirmarFinalizar(true)}
                   className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5">
                   <Printer size={15} />Confirmar e Imprimir
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Reabrir OS */}
+      {modalReabrir && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setModalReabrir(false)} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-800">Reabrir OS {os.id}</h3>
+              <button onClick={() => setModalReabrir(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X size={18} /></button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
+                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-amber-500" />
+                <div>
+                  <p className="font-medium">Atenção: estorno será feito</p>
+                  <p className="text-xs mt-0.5 text-amber-700">O lançamento financeiro e a venda do caixa desta OS serão removidos. A OS voltará para <strong>Em Andamento</strong>.</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setModalReabrir(false)}
+                  className="flex-1 border border-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
+                  Cancelar
+                </button>
+                <button type="button" onClick={confirmarReabrir}
+                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
+                  Confirmar Reabertura
                 </button>
               </div>
             </div>
