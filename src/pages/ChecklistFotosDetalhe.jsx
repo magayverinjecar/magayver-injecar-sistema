@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Camera, Trash2, CheckCircle2, AlertTriangle,
-  Save, User, Clock, Car, X
+  Save, User, Clock, Car, X, ZoomIn, ChevronLeft, ChevronRight
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { uploadFoto } from '../supabase'
@@ -140,7 +140,24 @@ export default function ChecklistFotosDetalhe() {
   const [salvando, setSalvando] = useState(false)
   const [categoriaAtual, setCategoriaAtual] = useState('Outros')
   const [uploading, setUploading] = useState(null)
+  const [fotoAmpliada, setFotoAmpliada] = useState(null)
   const inputRef = useRef(null)
+
+  const todasFotos = fotos
+
+  function abrirFoto(foto) {
+    setFotoAmpliada(foto)
+  }
+
+  function fecharFoto() {
+    setFotoAmpliada(null)
+  }
+
+  function navegarFoto(direcao) {
+    const idx = todasFotos.findIndex(f => f.id === fotoAmpliada.id)
+    const novo = idx + direcao
+    if (novo >= 0 && novo < todasFotos.length) setFotoAmpliada(todasFotos[novo])
+  }
 
   if (!ck) {
     return (
@@ -207,6 +224,58 @@ export default function ChecklistFotosDetalhe() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
 
+      {/* ── Lightbox ── */}
+      {fotoAmpliada && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
+          onClick={fecharFoto}
+        >
+          {/* Fechar */}
+          <button
+            onClick={fecharFoto}
+            className="absolute top-4 right-4 z-10 p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"
+          >
+            <X size={24} />
+          </button>
+
+          {/* Anterior */}
+          {todasFotos.findIndex(f => f.id === fotoAmpliada.id) > 0 && (
+            <button
+              onClick={e => { e.stopPropagation(); navegarFoto(-1) }}
+              className="absolute left-4 p-3 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"
+            >
+              <ChevronLeft size={28} />
+            </button>
+          )}
+
+          {/* Imagem */}
+          <img
+            src={fotoAmpliada.url || fotoAmpliada.dataUrl}
+            alt="Foto ampliada"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
+
+          {/* Próxima */}
+          {todasFotos.findIndex(f => f.id === fotoAmpliada.id) < todasFotos.length - 1 && (
+            <button
+              onClick={e => { e.stopPropagation(); navegarFoto(1) }}
+              className="absolute right-4 p-3 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"
+            >
+              <ChevronRight size={28} />
+            </button>
+          )}
+
+          {/* Info */}
+          <div className="absolute bottom-4 flex items-center gap-3 text-white/70 text-sm bg-black/50 px-4 py-1.5 rounded-full">
+            <span className="font-medium">{fotoAmpliada.categoria}</span>
+            {fotoAmpliada.timestamp && <><span>·</span><span>{fotoAmpliada.timestamp}</span></>}
+            <span>·</span>
+            <span>{todasFotos.findIndex(f => f.id === fotoAmpliada.id) + 1} / {todasFotos.length}</span>
+          </div>
+        </div>
+      )}
+
       {/* ── Cabeçalho ── */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/checklist/fotos')}
@@ -267,16 +336,21 @@ export default function ChecklistFotosDetalhe() {
                   {/* Fotos existentes */}
                   {lista.map((foto, idx) => (
                     <div key={foto.id}
-                      className="relative group aspect-video bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                      className="relative group aspect-video bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm cursor-zoom-in"
+                      onClick={() => abrirFoto(foto)}>
                       <img src={foto.url || foto.dataUrl} alt={`${cat} ${idx + 1}`}
                         className="w-full h-full object-cover" />
                       {/* Badge de categoria */}
-                      <div className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded backdrop-blur-sm">
+                      <div className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded backdrop-blur-sm pointer-events-none">
                         {cat}
                       </div>
-                      {/* Botão excluir ao hover */}
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <button onClick={() => removerFoto(foto.id)}
+                      {/* Botões ao hover */}
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                        <button onClick={e => { e.stopPropagation(); abrirFoto(foto) }}
+                          className="p-2 bg-white/20 backdrop-blur-sm text-white rounded-full hover:bg-white/30 transition-colors shadow-lg">
+                          <ZoomIn size={16} />
+                        </button>
+                        <button onClick={e => { e.stopPropagation(); removerFoto(foto.id) }}
                           className="p-2 bg-red-600 text-white rounded-full hover:bg-red-500 transition-colors shadow-lg">
                           <Trash2 size={14} />
                         </button>
