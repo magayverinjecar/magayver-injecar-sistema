@@ -247,6 +247,22 @@ export function AppProvider({ children }) {
     }))
   }
 
+  function editarItemOrdem(osId, itemId, dados) {
+    setOrdens(prev => prev.map(o => {
+      if (o.id !== osId) return o
+      const antigo = (o.itens || []).find(i => i.id === itemId)
+      // Ajusta estoque se quantidade mudou em peça vinculada
+      if (antigo && antigo.tipo === 'peca' && antigo.produtoId) {
+        const diff = (Number(dados.quantidade) || 1) - (Number(antigo.quantidade) || 1)
+        if (diff !== 0) {
+          setEstoque(ep => ep.map(p => p.id === Number(antigo.produtoId)
+            ? { ...p, estoque: Math.max(0, Number(p.estoque) - diff) } : p))
+        }
+      }
+      return { ...o, itens: (o.itens || []).map(i => i.id === itemId ? { ...i, ...dados } : i) }
+    }))
+  }
+
   function mudarStatusOrdem(id, novoStatus) {
     const lista = r.current.ordens
     const o = lista.find(x => x.id === id)
@@ -475,7 +491,7 @@ export function AppProvider({ children }) {
       clientes, setClientes,
       veiculos, setVeiculos,
       ordens, setOrdens, novaOrdem, pagarOrdem, reabrirOrdem,
-      atualizarOrdem, adicionarItemOrdem, removerItemOrdem, mudarStatusOrdem,
+      atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
       adicionarFotoOrdem, removerFotoOrdem, excluirOrdem, totalOrdem,
       estoque, setEstoque,
       financeiro, setFinanceiro, adicionarLancamento,

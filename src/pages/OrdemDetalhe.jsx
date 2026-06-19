@@ -24,7 +24,7 @@ export default function OrdemDetalhe() {
   const navigate = useNavigate()
   const {
     ordens, checklists, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque,
-    atualizarOrdem, adicionarItemOrdem, removerItemOrdem, mudarStatusOrdem,
+    atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
     excluirOrdem, totalOrdem, caixaTurno, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
   } = useApp()
 
@@ -39,6 +39,7 @@ export default function OrdemDetalhe() {
   const [parcelas, setParcelas] = useState('1')
   const [recebimento, setRecebimento] = useState('na_hora')
   const [modalReabrir, setModalReabrir] = useState(false)
+  const [editandoItem, setEditandoItem] = useState(null)
 
   const isCartao = formaPagamento === 'Cartão Débito' || formaPagamento === 'Cartão Crédito'
 
@@ -268,7 +269,12 @@ export default function OrdemDetalhe() {
                     <td className="py-2.5 text-right text-sm text-slate-600">{fmt(pNum(it.valorUnitario))}</td>
                     <td className="py-2.5 text-right text-sm text-slate-500">{pNum(it.desconto) > 0 ? fmt(pNum(it.desconto)) : '—'}</td>
                     <td className="py-2.5 text-right text-sm font-semibold text-slate-700">{fmt(pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto))}</td>
-                    <td className="py-2.5 text-right"><button onClick={() => removerItemOrdem(os.id, it.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400"><Trash2 size={14} /></button></td>
+                    <td className="py-2.5 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setEditandoItem({ ...it, quantidade: String(it.quantidade), valorUnitario: String(it.valorUnitario), desconto: String(it.desconto || '0') })} className="p-1 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400"><Pencil size={14} /></button>
+                        <button onClick={() => removerItemOrdem(os.id, it.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400"><Trash2 size={14} /></button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -476,6 +482,53 @@ export default function OrdemDetalhe() {
                 <button type="button" onClick={() => confirmarFinalizar(true)}
                   className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5">
                   <Printer size={15} />Confirmar e Imprimir
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Item */}
+      {editandoItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setEditandoItem(null)} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-800">Editar Item</h3>
+              <button onClick={() => setEditandoItem(null)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X size={18} /></button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
+                <input value={editandoItem.descricao} onChange={e => setEditandoItem(i => ({ ...i, descricao: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Quantidade</label>
+                  <input type="number" value={editandoItem.quantidade} onChange={e => setEditandoItem(i => ({ ...i, quantidade: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Valor Unit.</label>
+                  <input value={editandoItem.valorUnitario} onChange={e => setEditandoItem(i => ({ ...i, valorUnitario: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Desconto</label>
+                  <input value={editandoItem.desconto} onChange={e => setEditandoItem(i => ({ ...i, desconto: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setEditandoItem(null)}
+                  className="flex-1 border border-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
+                  Cancelar
+                </button>
+                <button type="button" onClick={() => { editarItemOrdem(os.id, editandoItem.id, { descricao: editandoItem.descricao, quantidade: Number(editandoItem.quantidade) || 1, valorUnitario: editandoItem.valorUnitario, desconto: editandoItem.desconto }); setEditandoItem(null) }}
+                  className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
+                  Salvar
                 </button>
               </div>
             </div>
