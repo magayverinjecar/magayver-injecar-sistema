@@ -1,32 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, Lock } from 'lucide-react'
+import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, Lock, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { STATUS_OS, statusColor } from './OrdensServico'
 import { imprimirOS } from '../utils/print'
-import { uploadFoto } from '../supabase'
-
-function comprimirImagem(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.readAsDataURL(file)
-    reader.onload = ev => {
-      const img = new Image()
-      img.src = ev.target.result
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        const MAX = 1280
-        let w = img.width, h = img.height
-        if (w > h) { if (w > MAX) { h = h * MAX / w; w = MAX } }
-        else { if (h > MAX) { w = w * MAX / h; h = MAX } }
-        canvas.width = w; canvas.height = h
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
-        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Erro')), 'image/jpeg', 0.7)
-      }
-    }
-    reader.onerror = reject
-  })
-}
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 function pNum(v) { return parseFloat((v || '0').toString().replace(',', '.')) || 0 }
@@ -39,16 +16,16 @@ const MODELOS_IMPRESSAO = [
   { id: 'a5', nome: 'A5 Resumido (meia folha)', desc: 'Metade de A4 — economia de papel' },
 ]
 
-const ABAS = ['Dados', 'Orçamento', 'Checklist', 'Fotos', 'Histórico']
+const ABAS = ['Dados', 'Orçamento', 'Fotos e Vistoria', 'Histórico']
 
 export default function OrdemDetalhe() {
   const { id } = useParams()
   const osId = decodeURIComponent(id)
   const navigate = useNavigate()
   const {
-    ordens, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque,
+    ordens, checklists, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque,
     atualizarOrdem, adicionarItemOrdem, removerItemOrdem, mudarStatusOrdem,
-    adicionarFotoOrdem, removerFotoOrdem, excluirOrdem, totalOrdem,
+    excluirOrdem, totalOrdem,
   } = useApp()
 
   const os = ordens.find(o => o.id === osId)
@@ -56,7 +33,7 @@ export default function OrdemDetalhe() {
   const [modalEditar, setModalEditar] = useState(false)
   const [modalItem, setModalItem] = useState(false)
   const [menuImpressao, setMenuImpressao] = useState(false)
-  const fileRef = useRef(null)
+  const [fotoAmpliada, setFotoAmpliada] = useState(null)
 
   if (!os) {
     return (
@@ -101,6 +78,21 @@ export default function OrdemDetalhe() {
         alert('Erro ao enviar imagem.')
       }
     }
+  }
+
+  // Checklist vinculado pela placa do veículo (mais recente primeiro)
+  const placaVeiculo = (veiculo?.placa || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  const checklistsVeiculo = (checklists || [])
+    .filter(c => placaVeiculo && (c.veiculoPlaca || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === placaVeiculo)
+    .sort((a, b) => Number(b.id) - Number(a.id))
+  const ckVistoria = checklistsVeiculo[0] || null
+  const fotosChecklist = ckVistoria?.fotos || []
+  const vistoriaItens = ckVistoria?.inspecaoVisual || []
+
+  function navegarFoto(direcao) {
+    const idx = fotosChecklist.findIndex(f => f.id === fotoAmpliada.id)
+    const novo = idx + direcao
+    if (novo >= 0 && novo < fotosChecklist.length) setFotoAmpliada(fotosChecklist[novo])
   }
 
   function excluir() {
@@ -240,36 +232,92 @@ export default function OrdemDetalhe() {
         </div>
       )}
 
-      {/* ===== CHECKLIST (em breve) ===== */}
-      {aba === 'Checklist' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-10 text-center">
-          <Lock size={32} className="text-slate-300 mx-auto mb-3" />
-          <p className="font-medium text-slate-600">Checklist em breve</p>
-          <p className="text-sm text-slate-400 mt-1">Será integrado ao AutoCheck Pro.</p>
-        </div>
-      )}
-
-      {/* ===== FOTOS ===== */}
-      {aba === 'Fotos' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-slate-800 flex items-center gap-2"><Camera size={16} className="text-slate-400" />Fotos ({(os.fotos || []).length})</h3>
-            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"><Plus size={15} />Adicionar</button>
-            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={onUploadFoto} />
-          </div>
-          {(!os.fotos || os.fotos.length === 0) ? (
-            <p className="text-center text-sm text-slate-400 py-10">Nenhuma foto adicionada</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {os.fotos.map(f => (
-                <div key={f.id} className="relative group rounded-lg overflow-hidden border border-slate-100">
-                  <img src={f.url} alt="" className="w-full h-32 object-cover" />
-                  <button onClick={() => removerFotoOrdem(os.id, f.id)} className="absolute top-1 right-1 bg-black/50 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={13} /></button>
-                </div>
-              ))}
+      {/* ===== FOTOS E VISTORIA (read-only do checklist) ===== */}
+      {aba === 'Fotos e Vistoria' && (
+        <>
+          {/* Lightbox */}
+          {fotoAmpliada && (
+            <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center" onClick={() => setFotoAmpliada(null)}>
+              <button onClick={() => setFotoAmpliada(null)} className="absolute top-4 right-4 z-10 p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"><X size={24} /></button>
+              {fotosChecklist.findIndex(f => f.id === fotoAmpliada.id) > 0 && (
+                <button onClick={e => { e.stopPropagation(); navegarFoto(-1) }} className="absolute left-4 p-3 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"><ChevronLeft size={28} /></button>
+              )}
+              <img src={fotoAmpliada.url || fotoAmpliada.dataUrl} alt="Foto ampliada" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
+              {fotosChecklist.findIndex(f => f.id === fotoAmpliada.id) < fotosChecklist.length - 1 && (
+                <button onClick={e => { e.stopPropagation(); navegarFoto(1) }} className="absolute right-4 p-3 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"><ChevronRight size={28} /></button>
+              )}
+              <div className="absolute bottom-4 text-white/70 text-sm bg-black/50 px-4 py-1.5 rounded-full flex items-center gap-2">
+                <span className="font-medium">{fotoAmpliada.categoria}</span>
+                <span>·</span>
+                <span>{fotosChecklist.findIndex(f => f.id === fotoAmpliada.id) + 1} / {fotosChecklist.length}</span>
+              </div>
             </div>
           )}
-        </div>
+
+          {!ckVistoria ? (
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-10 text-center">
+              <Camera size={32} className="text-slate-300 mx-auto mb-3" />
+              <p className="font-medium text-slate-600">Nenhum checklist vinculado</p>
+              <p className="text-sm text-slate-400 mt-1">Crie um checklist para este veículo em <strong>Fotos e Vistoria</strong>.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Fotos */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Camera size={15} className="text-cyan-500" />
+                  <h3 className="font-semibold text-slate-800">Fotos do Veículo</h3>
+                  <span className="ml-auto text-xs text-slate-400">{fotosChecklist.length} foto(s)</span>
+                  <span className="text-xs text-slate-300 flex items-center gap-1"><Lock size={11} />Somente leitura</span>
+                </div>
+                {fotosChecklist.length === 0 ? (
+                  <p className="text-center text-sm text-slate-400 py-8">Nenhuma foto registrada no checklist</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {fotosChecklist.map(f => (
+                      <div key={f.id}
+                        className="relative group aspect-video bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm cursor-zoom-in"
+                        onClick={() => setFotoAmpliada(f)}>
+                        <img src={f.url || f.dataUrl} alt={f.categoria} className="w-full h-full object-cover" />
+                        <div className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded pointer-events-none">{f.categoria}</div>
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <ZoomIn size={22} className="text-white" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Vistoria */}
+              {vistoriaItens.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <CheckCircle2 size={15} className="text-green-500" />
+                    <h3 className="font-semibold text-slate-800">Vistoria do Veículo</h3>
+                    <span className="ml-auto text-xs text-slate-400">
+                      {vistoriaItens.filter(i => i.status).length}/{vistoriaItens.length} itens
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {vistoriaItens.map(item => (
+                      <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span className="text-sm text-slate-700">{item.label}</span>
+                        <div className="flex items-center gap-2">
+                          {item.nota && <span className="text-xs text-slate-400 italic max-w-[120px] truncate">{item.nota}</span>}
+                          {item.status === 'ok' && <span className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-lg"><CheckCircle2 size={13} />OK</span>}
+                          {item.status === 'warning' && <span className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-lg"><AlertTriangle size={13} />Atenção</span>}
+                          {item.status === 'issue' && <span className="flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded-lg"><X size={13} />Problema</span>}
+                          {!item.status && <span className="text-xs text-slate-300">—</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* ===== HISTÓRICO ===== */}
