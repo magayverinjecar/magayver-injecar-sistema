@@ -10,15 +10,23 @@ export default function Clientes() {
   const [busca, setBusca] = useState('')
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(vazio)
+  const [erroNome, setErroNome] = useState(false)
   const [detalhe, setDetalhe] = useState(null)
 
   const filtrados = clientes.filter(c => c.nome.toLowerCase().includes(busca.toLowerCase()))
 
   function salvar() {
-    if (!form.nome.trim()) return
+    if (!form.nome.trim()) { setErroNome(true); return }
+    setErroNome(false)
     setClientes(prev => [...prev, { ...form, id: Date.now() }])
     setForm(vazio)
     setModal(false)
+  }
+
+  function fecharModal() {
+    setModal(false)
+    setForm(vazio)
+    setErroNome(false)
   }
 
   function excluir(id) {
@@ -192,11 +200,18 @@ export default function Clientes() {
       )}
 
       {modal && (
-        <Modal title="Novo Cliente" onClose={() => setModal(false)}>
+        <Modal title="Novo Cliente" onClose={fecharModal}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nome *</label>
-              <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Nome completo" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              <input
+                value={form.nome}
+                onChange={e => { setForm(f => ({ ...f, nome: e.target.value })); setErroNome(false) }}
+                placeholder="Nome completo"
+                autoFocus
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${erroNome ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
+              />
+              {erroNome && <p className="text-xs text-red-500 mt-1">Informe o nome do cliente.</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Telefone</label>
@@ -207,7 +222,7 @@ export default function Clientes() {
               <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email@exemplo.com" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setModal(false)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+              <button onClick={fecharModal} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
               <button onClick={salvar} className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">Salvar</button>
             </div>
           </div>
