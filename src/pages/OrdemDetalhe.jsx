@@ -37,7 +37,10 @@ export default function OrdemDetalhe() {
   const [modalFinalizar, setModalFinalizar] = useState(false)
   const [formaPagamento, setFormaPagamento] = useState('PIX')
   const [parcelas, setParcelas] = useState('1')
+  const [recebimento, setRecebimento] = useState('na_hora')
   const [modalReabrir, setModalReabrir] = useState(false)
+
+  const isCartao = formaPagamento === 'Cartão Débito' || formaPagamento === 'Cartão Crédito'
 
   if (!os) {
     return (
@@ -120,6 +123,7 @@ export default function OrdemDetalhe() {
     pagarOrdem(os.id)
     if (caixaTurno) {
       const pgto = { forma: formaPagamento, valor: String(total) }
+      if (isCartao) pgto.recebimento = recebimento
       if (formaPagamento === 'Cartão Crédito' && Number(parcelas) > 1) pgto.parcelas = Number(parcelas)
       registrarVendaCaixa({
         total,
@@ -413,7 +417,7 @@ export default function OrdemDetalhe() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">Forma de Pagamento</label>
                 <div className="grid grid-cols-2 gap-2">
                   {FORMAS_PGTO.map(({ label, icon: Icon }) => (
-                    <button key={label} type="button" onClick={() => setFormaPagamento(label)}
+                    <button key={label} type="button" onClick={() => { setFormaPagamento(label); setRecebimento('na_hora'); setParcelas('1') }}
                       className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${formaPagamento === label ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                       <Icon size={15} />
                       {label}
@@ -438,6 +442,22 @@ export default function OrdemDetalhe() {
                       {parcelas}x de {fmt(total / Number(parcelas))}
                     </p>
                   )}
+                </div>
+              )}
+
+              {isCartao && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Quando cai na conta?</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setRecebimento('na_hora')}
+                      className={`py-2.5 rounded-lg border text-sm font-medium transition-colors ${recebimento === 'na_hora' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      Na hora
+                    </button>
+                    <button type="button" onClick={() => setRecebimento('1_dia_util')}
+                      className={`py-2.5 rounded-lg border text-sm font-medium transition-colors ${recebimento === '1_dia_util' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      1 dia útil
+                    </button>
+                  </div>
                 </div>
               )}
 
