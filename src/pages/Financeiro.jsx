@@ -1,9 +1,18 @@
 import { useState } from 'react'
-import { TrendingUp, TrendingDown, DollarSign, AlertCircle, Plus, Trash2, CalendarDays, CheckCircle2, Package } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, CalendarDays, Plus, Trash2, CheckCircle2, Package, X, Banknote, CreditCard, Smartphone, ArrowRightLeft } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import Modal from '../components/ui/Modal'
 
 const vazio = { descricao: '', tipo: 'receita', valor: '' }
+
+const FORMAS = [
+  { label: 'PIX',            icon: Smartphone },
+  { label: 'Dinheiro',       icon: Banknote },
+  { label: 'Cartão Débito',  icon: CreditCard },
+  { label: 'Cartão Crédito', icon: CreditCard },
+  { label: 'Transferência',  icon: ArrowRightLeft },
+  { label: 'Boleto',         icon: CalendarDays },
+]
 
 function diasVencimento(dataStr) {
   if (!dataStr) return null
@@ -13,27 +22,39 @@ function diasVencimento(dataStr) {
 }
 
 export default function Financeiro() {
-  const { financeiro, setFinanceiro, adicionarLancamento, devedores, getCliente, pagarOrdem, resumoFinanceiro, compras, receberCompra } = useApp()
+  const {
+    financeiro, setFinanceiro, adicionarLancamento,
+    devedores, getCliente, pagarOrdem, resumoFinanceiro,
+    compras, atualizarCompra,
+  } = useApp()
+
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(vazio)
   const [aba, setAba] = useState('lancamentos')
 
-  const fmt = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  // Estado do modal de dar baixa no boleto
+  const [modalBoleto, setModalBoleto] = useState(null) // { parcela, compraId, compraNumero, fornecedor, valor, parcelaIdx, totalParcelas, parcelaId }
+  const [formaPagamento, setFormaPagamento] = useState('PIX')
+
+  const fmt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   const lucro = resumoFinanceiro.receitas - resumoFinanceiro.despesas
 
-  // Contas a pagar: compras com parcelas ainda não recebidas
+  // Parcelas pendentes (não pagas)
   const contasAPagar = compras
-    .filter(c => !c.recebida && (c.parcelas?.length > 0))
+    .filter(c => c.parcelas?.length > 0)
     .flatMap(c =>
-      (c.parcelas || []).map((p, idx) => ({
-        compraId: c.id,
-        compraNumero: c.numero,
-        fornecedor: c.fornecedorNome || 'Fornecedor',
-        parcela: idx + 1,
-        totalParcelas: c.parcelas.length,
-        valor: parseFloat((p.valor || '0').toString().replace(',', '.')) || 0,
-        vencimento: p.vencimento || '',
-      }))
+      (c.parcelas || [])
+        .filter(p => !p.pago)
+        .map((p, idx, arr) => ({
+          parcelaId: p.id,
+          compraId: c.id,
+          compraNumero: c.numero,
+          fornecedor: c.fornecedorNome || 'Fornecedor',
+          parcela: (c.parcelas || []).indexOf(p) + 1,
+          totalParcelas: c.parcelas.length,
+          valor: parseFloat((p.valor || '0').toString().replace(',', '.')) || 0,
+          vencimento: p.vencimento || '',
+        }))
     )
     .sort((a, b) => {
       if (!a.vencimento) return 1
@@ -42,6 +63,36 @@ export default function Financeiro() {
     })
 
   const totalAPagar = contasAPagar.reduce((s, p) => s + p.valor, 0)
+
+  function abrirModalBoleto(p) {
+    setFormaPagamento('PIX')
+    setModalBoleto(p)
+  }
+
+  function confirmarBaixa() {
+    if (!modalBoleto) return
+    const { parcelaId, compraId, compraNumero, fornecedor, valor, parcela, totalParcelas } = modalBoleto
+
+    // Cria lançamento com a forma de pagamento escolhida
+    adicionarLancamento({
+      descricao: `${fornecedor} ${compraNumero} — Parcela ${parcela}/${totalParcelas}`,
+      tipo: 'despesa',
+      valor: valor.toFixed(2).replace('.', ','),
+      formaPagamento,
+      compraId,
+    })
+
+    // Marca a parcela como paga na compra
+    const compra = compras.find(c => c.id === compraId)
+    if (compra) {
+      const novasParcelas = (compra.parcelas || []).map(p =>
+        p.id === parcelaId ? { ...p, pago: true, formaPagamento } : p
+      )
+      atualizarCompra(compraId, { parcelas: novasParcelas })
+    }
+
+    setModalBoleto(null)
+  }
 
   function salvar() {
     if (!form.descricao.trim() || !form.valor) return
@@ -59,10 +110,10 @@ export default function Financeiro() {
       {/* Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Receitas', valor: fmt(resumoFinanceiro.receitas), icon: TrendingUp, cor: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'Despesas', valor: fmt(resumoFinanceiro.despesas), icon: TrendingDown, cor: 'text-red-500', bg: 'bg-red-50' },
-          { label: 'Lucro Líquido', valor: fmt(lucro), icon: DollarSign, cor: lucro >= 0 ? 'text-primary-600' : 'text-red-600', bg: 'bg-primary-50' },
-          { label: 'A Pagar (Boletos)', valor: fmt(totalAPagar), icon: CalendarDays, cor: 'text-orange-500', bg: 'bg-orange-50', badge: contasAPagar.length },
+          { label: 'Receitas',        valor: fmt(resumoFinanceiro.receitas), icon: TrendingUp,    cor: 'text-green-600',  bg: 'bg-green-50' },
+          { label: 'Despesas',        valor: fmt(resumoFinanceiro.despesas), icon: TrendingDown,   cor: 'text-red-500',    bg: 'bg-red-50' },
+          { label: 'Lucro Líquido',   valor: fmt(lucro),                     icon: DollarSign,     cor: lucro >= 0 ? 'text-primary-600' : 'text-red-600', bg: 'bg-primary-50' },
+          { label: 'A Pagar (Boletos)', valor: fmt(totalAPagar),             icon: CalendarDays,   cor: 'text-orange-500', bg: 'bg-orange-50', badge: contasAPagar.length },
         ].map(({ label, valor, icon: Icon, cor, bg, badge }) => (
           <div key={label} className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-3">
@@ -81,8 +132,8 @@ export default function Financeiro() {
       <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit flex-wrap">
         {[
           { key: 'lancamentos', label: 'Lançamentos' },
-          { key: 'apagar', label: `A Pagar${contasAPagar.length ? ` (${contasAPagar.length})` : ''}` },
-          { key: 'devedores', label: `A Receber${devedores.length ? ` (${devedores.length})` : ''}` },
+          { key: 'apagar',      label: `A Pagar${contasAPagar.length ? ` (${contasAPagar.length})` : ''}` },
+          { key: 'devedores',   label: `A Receber${devedores.length ? ` (${devedores.length})` : ''}` },
         ].map(({ key, label }) => (
           <button key={key} onClick={() => setAba(key)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -91,6 +142,7 @@ export default function Financeiro() {
         ))}
       </div>
 
+      {/* Lançamentos */}
       {aba === 'lancamentos' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -107,7 +159,10 @@ export default function Financeiro() {
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${l.tipo === 'receita' ? 'bg-green-500' : 'bg-red-400'}`} />
                   <div>
                     <p className="text-sm text-slate-700">{l.descricao}</p>
-                    <p className="text-xs text-slate-400">{l.data}</p>
+                    <p className="text-xs text-slate-400">
+                      {l.data}
+                      {l.formaPagamento && <span className="ml-2 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-medium">{l.formaPagamento}</span>}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -124,11 +179,12 @@ export default function Financeiro() {
         </div>
       )}
 
+      {/* A Pagar */}
       {aba === 'apagar' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100">
             <h2 className="font-semibold text-slate-800">Boletos / Contas a Pagar</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Compras com parcelas pendentes de recebimento</p>
+            <p className="text-xs text-slate-400 mt-0.5">Parcelas pendentes de compras cadastradas</p>
           </div>
           {contasAPagar.length === 0 ? (
             <p className="text-center text-sm text-slate-400 py-10">Nenhum boleto pendente.</p>
@@ -139,9 +195,9 @@ export default function Financeiro() {
                 let alertaCls = 'text-slate-400'
                 let alertaLabel = p.vencimento ? new Date(p.vencimento + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem data'
                 if (dias !== null) {
-                  if (dias < 0) { alertaCls = 'text-red-500 font-semibold'; alertaLabel = `Vencido há ${Math.abs(dias)}d` }
+                  if (dias < 0)   { alertaCls = 'text-red-500 font-semibold'; alertaLabel = `Vencido há ${Math.abs(dias)}d` }
                   else if (dias === 0) { alertaCls = 'text-amber-500 font-semibold'; alertaLabel = 'Vence hoje!' }
-                  else if (dias <= 3) { alertaCls = 'text-amber-500'; alertaLabel = `${new Date(p.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')} (${dias}d)` }
+                  else if (dias <= 3)  { alertaCls = 'text-amber-500'; alertaLabel = `${new Date(p.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')} (${dias}d)` }
                 }
                 return (
                   <div key={idx} className="px-5 py-4 flex items-center justify-between gap-3 hover:bg-slate-50">
@@ -154,29 +210,23 @@ export default function Financeiro() {
                           {p.fornecedor}
                           <span className="ml-1.5 text-xs text-slate-400 font-normal">{p.compraNumero}</span>
                         </p>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-400 flex items-center gap-1.5 flex-wrap">
                           Parcela {p.parcela}/{p.totalParcelas}
                           {p.vencimento && (
-                            <span className={`ml-2 flex-shrink-0 ${alertaCls}`}>
-                              <CalendarDays size={10} className="inline mr-0.5" />{alertaLabel}
+                            <span className={alertaCls}>
+                              · <CalendarDays size={10} className="inline" /> {alertaLabel}
                             </span>
                           )}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className="text-sm font-bold text-orange-600">
-                        {p.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </span>
+                      <span className="text-sm font-bold text-orange-600">{fmt(p.valor)}</span>
                       <button
-                        onClick={() => {
-                          if (confirm(`Confirmar recebimento da compra ${p.compraNumero}?\n\nIsso dará entrada no estoque e marcará todas as parcelas como pagas.`)) {
-                            receberCompra(p.compraId)
-                          }
-                        }}
-                        className="flex items-center gap-1 text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
+                        onClick={() => abrirModalBoleto(p)}
+                        className="flex items-center gap-1.5 text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
                       >
-                        <CheckCircle2 size={12} />Receber
+                        <CheckCircle2 size={12} />Dar Baixa
                       </button>
                     </div>
                   </div>
@@ -187,6 +237,7 @@ export default function Financeiro() {
         </div>
       )}
 
+      {/* A Receber */}
       {aba === 'devedores' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100">
@@ -203,7 +254,7 @@ export default function Financeiro() {
                       <span className="text-xs font-mono text-slate-400">{o.id}</span>
                     </div>
                     <p className="text-sm font-medium text-slate-800">{cliente?.nome || '—'}</p>
-                    <p className="text-xs text-slate-400">{o.servico} • {o.data}</p>
+                    <p className="text-xs text-slate-400">{o.servico} · {o.data}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <p className="text-sm font-bold text-orange-600">R$ {o.valor}</p>
@@ -219,6 +270,58 @@ export default function Financeiro() {
         </div>
       )}
 
+      {/* Modal Dar Baixa no Boleto */}
+      {modalBoleto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setModalBoleto(null)} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-800">Dar Baixa no Boleto</h3>
+              <button onClick={() => setModalBoleto(null)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"><X size={18} /></button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              {/* Resumo do boleto */}
+              <div className="bg-slate-50 rounded-lg px-4 py-3 space-y-1">
+                <p className="text-xs text-slate-400">Fornecedor</p>
+                <p className="text-sm font-semibold text-slate-800">{modalBoleto.fornecedor} <span className="font-normal text-slate-400">{modalBoleto.compraNumero}</span></p>
+                <div className="flex items-center justify-between pt-1">
+                  <p className="text-xs text-slate-400">Parcela {modalBoleto.parcela}/{modalBoleto.totalParcelas}</p>
+                  <p className="text-base font-bold text-orange-600">{fmt(modalBoleto.valor)}</p>
+                </div>
+              </div>
+
+              {/* Forma de pagamento */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Como foi pago?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {FORMAS.map(({ label, icon: Icon }) => (
+                    <button
+                      key={label}
+                      onClick={() => setFormaPagamento(label)}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                        formaPagamento === label
+                          ? 'bg-primary-500 border-primary-500 text-white'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Icon size={15} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
+              <button onClick={() => setModalBoleto(null)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+              <button onClick={confirmarBaixa} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                <CheckCircle2 size={15} />Confirmar Pagamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Novo Lançamento */}
       {modal && (
         <Modal title="Novo Lançamento" onClose={() => setModal(false)}>
           <div className="space-y-4">
@@ -235,11 +338,13 @@ export default function Financeiro() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Descrição *</label>
-              <input value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Descrição do lançamento" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              <input value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Descrição do lançamento"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Valor (R$) *</label>
-              <input value={form.valor} onChange={e => setForm(f => ({ ...f, valor: e.target.value }))} placeholder="0,00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              <input value={form.valor} onChange={e => setForm(f => ({ ...f, valor: e.target.value }))} placeholder="0,00"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
             <div className="flex gap-3 pt-2">
               <button onClick={() => setModal(false)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
