@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Camera, Trash2, CheckCircle2, AlertTriangle,
-  Save, User, Clock, Car, X, ZoomIn, ChevronLeft, ChevronRight, MessageCircle
+  Save, User, Clock, Car, X, ZoomIn, ChevronLeft, ChevronRight, MessageCircle, Copy, Check
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { uploadFoto } from '../supabase'
@@ -138,6 +138,7 @@ export default function ChecklistFotosDetalhe() {
       : INSPECAO_ITENS.map(i => ({ ...i, status: undefined, nota: '' }))
   )
   const [salvando, setSalvando] = useState(false)
+  const [linkCopiado, setLinkCopiado] = useState(false)
   const [categoriaAtual, setCategoriaAtual] = useState('Outros')
   const [uploading, setUploading] = useState(null)
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
@@ -312,22 +313,44 @@ export default function ChecklistFotosDetalhe() {
             <span>{fotos.length} foto(s)</span>
           </div>
         </div>
-        <button
-          onClick={() => {
-            const url = `${window.location.origin}/vistoria/${ck.id}`
-            const tel = (ck.clienteTelefone || '').replace(/\D/g, '')
-            const texto = `*Magayver Injecar*\nOlá ${ck.clienteNome || ''}! Segue o link para visualizar as fotos e a vistoria do seu veículo ${ck.veiculoModelo || ''} (${ck.veiculoPlaca || ''}).\n\nPara acessar, informe o número cadastrado:\n${url}`
-            const href = tel
-              ? `https://wa.me/55${tel}?text=${encodeURIComponent(texto)}`
-              : `https://wa.me/?text=${encodeURIComponent(texto)}`
-            window.open(href, '_blank')
-          }}
-          className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0 whitespace-nowrap"
-        >
-          <MessageCircle size={15} />
-          <span className="hidden sm:inline">Enviar Link para Cliente</span>
-          <span className="sm:hidden">WhatsApp</span>
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Copiar link */}
+          <button
+            onClick={() => {
+              const url = `${window.location.origin}/vistoria/${ck.id}`
+              navigator.clipboard.writeText(url).then(() => {
+                setLinkCopiado(true)
+                setTimeout(() => setLinkCopiado(false), 2000)
+              })
+            }}
+            title="Copiar link da vistoria"
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${
+              linkCopiado
+                ? 'bg-slate-100 border-slate-300 text-slate-600'
+                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {linkCopiado ? <Check size={15} className="text-green-500" /> : <Copy size={15} />}
+            <span className="hidden sm:inline">{linkCopiado ? 'Copiado!' : 'Copiar Link'}</span>
+          </button>
+
+          {/* WhatsApp */}
+          <button
+            onClick={() => {
+              const url = `${window.location.origin}/vistoria/${ck.id}`
+              const tel = (ck.clienteTelefone || '').replace(/\D/g, '')
+              const texto = `*Magayver Injecar*\nOlá ${ck.clienteNome || ''}! Segue o link para visualizar as fotos e a vistoria do seu veículo ${ck.veiculoModelo || ''} (${ck.veiculoPlaca || ''}).\n\nPara acessar, informe o número cadastrado:\n${url}`
+              const href = tel
+                ? `https://wa.me/55${tel}?text=${encodeURIComponent(texto)}`
+                : `https://wa.me/?text=${encodeURIComponent(texto)}`
+              window.open(href, '_blank')
+            }}
+            className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+          >
+            <MessageCircle size={15} />
+            <span className="hidden sm:inline">Enviar Link</span>
+          </button>
+        </div>
       </div>
 
       {/* Input de arquivo oculto — 1 por vez, igual ao original */}
