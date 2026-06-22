@@ -483,7 +483,7 @@ export default function Orcamentos() {
               const cli = dados.clienteId ? getCliente(Number(dados.clienteId)) : { nome: dados.nome || buscaCliente, telefone: dados.telefone }
               const veicsOrc = dados.clienteId ? veiculosPorCliente(Number(dados.clienteId)) : []
               const veic = veicsOrc.find(v => v.placa === dados.placa) || veicsOrc[0] || null
-              imprimirOrcamento({ id: 'Prévia', itens, observacoes }, cli, veic)
+              imprimirOrcamento({ id: 'Prévia', itens, observacoes, validade }, cli, veic)
             }} className="flex items-center gap-2 border border-slate-200 text-slate-600 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
               <Printer size={15} />Imprimir
             </button>
