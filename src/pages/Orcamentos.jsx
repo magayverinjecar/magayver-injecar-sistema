@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react'
-import { Plus, FileText, Eye, Copy, MessageCircle, Printer, ArrowRight, Trash2, X, List, Search, ChevronDown } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
+import { Plus, FileText, Eye, Copy, MessageCircle, Printer, ArrowRight, Trash2, X, List, Search, ChevronDown, Pencil } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { imprimirOrcamento } from '../utils/print'
 
@@ -21,9 +21,11 @@ const fmt = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2,
 
 export default function Orcamentos() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, getCliente, getVeiculo, novaOrdem } = useApp()
 
   const [aba, setAba] = useState('salvos')
+  const [orcamentoEditandoId, setOrcamentoEditandoId] = useState(null)
   const [dados, setDados] = useState(VAZIO_CLIENTE)
   const [buscaCliente, setBuscaCliente] = useState('')
   const [dropdownAberto, setDropdownAberto] = useState(false)
@@ -35,6 +37,52 @@ export default function Orcamentos() {
   const [modoOrc, setModoOrc] = useState('cadastrado') // 'cadastrado' | 'avulso'
   const [criarNovo, setCriarNovo] = useState(false)
   const [novoForm, setNovoForm] = useState({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
+
+  // Pré-preenche o formulário quando vem de uma OS via location.state.fromOS
+  useEffect(() => {
+    const fromOS = location.state?.fromOS
+    if (!fromOS) return
+    const { clienteId, veiculoId, itens: itensOS } = fromOS
+    const cli = clienteId ? clientes.find(c => c.id === Number(clienteId)) : null
+    const veic = veiculoId ? veiculos.find(v => v.id === Number(veiculoId)) : null
+    if (cli) {
+      setDados({
+        clienteId: String(cli.id),
+        nome: cli.nome || '',
+        telefone: cli.telefone || '',
+        veiculo: veic ? `${veic.modelo} ${veic.ano || ''}`.trim() : '',
+        placa: veic?.placa || '',
+        km: veic?.km || '',
+      })
+      setBuscaCliente(cli.nome || '')
+    }
+    if (itensOS && itensOS.length > 0) {
+      setItens(itensOS.map(i => ({
+        ...i,
+        tipo: i.tipo === 'servico' ? 'Serviço' : 'Peça',
+        valorUnitario: String(i.valorUnitario ?? ''),
+        quantidade: String(i.quantidade ?? '1'),
+      })))
+    }
+    setAba('novo')
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function editarOrcamento(orc) {
+    setDados({
+      clienteId: orc.clienteId ? String(orc.clienteId) : '',
+      nome: orc.nome || '',
+      telefone: orc.telefone || '',
+      veiculo: orc.veiculo || '',
+      placa: orc.placa || '',
+      km: orc.km || '',
+    })
+    setBuscaCliente(orc.nome || '')
+    setItens(orc.itens || [])
+    setObservacoes(orc.observacoes || '')
+    setValidade(orc.validade || '7 dias')
+    setOrcamentoEditandoId(orc.id)
+    setAba('novo')
+  }
 
   const totalGeral = itens.reduce((s, it) => s + (parseNum(it.valorUnitario) * parseNum(it.quantidade) - parseNum(it.desconto)), 0)
 
@@ -109,6 +157,7 @@ export default function Orcamentos() {
     setItens([])
     setObservacoes('')
     setValidade('7 dias')
+    setOrcamentoEditandoId(null)
     setAba('novo')
   }
 
@@ -116,24 +165,45 @@ export default function Orcamentos() {
     // aceita nome digitado na busca mesmo sem selecionar do dropdown
     const nomeCliente = dados.nome.trim() || buscaCliente.trim()
     if (!nomeCliente) { alert('Informe o nome do cliente.'); return }
-    const numero = '#' + Math.floor(1000 + Math.random() * 9000)
-    const novo = {
-      id: Date.now(),
-      numero,
-      clienteId: dados.clienteId ? Number(dados.clienteId) : null,
-      nome: nomeCliente,
-      telefone: dados.telefone,
-      veiculo: dados.veiculo,
-      placa: dados.placa,
-      km: dados.km,
-      itens,
-      observacoes,
-      validade,
-      total: totalGeral,
-      status: 'Pendente',
-      data: new Date().toLocaleDateString('pt-BR'),
+
+    if (orcamentoEditandoId !== null) {
+      // Atualiza orçamento existente
+      setOrcamentos(prev => prev.map(o => o.id === orcamentoEditandoId ? {
+        ...o,
+        clienteId: dados.clienteId ? Number(dados.clienteId) : null,
+        nome: nomeCliente,
+        telefone: dados.telefone,
+        veiculo: dados.veiculo,
+        placa: dados.placa,
+        km: dados.km,
+        itens,
+        observacoes,
+        validade,
+        total: totalGeral,
+      } : o))
+      setOrcamentoEditandoId(null)
+    } else {
+      // Cria novo orçamento
+      const numero = '#' + Math.floor(1000 + Math.random() * 9000)
+      const novo = {
+        id: Date.now(),
+        numero,
+        clienteId: dados.clienteId ? Number(dados.clienteId) : null,
+        nome: nomeCliente,
+        telefone: dados.telefone,
+        veiculo: dados.veiculo,
+        placa: dados.placa,
+        km: dados.km,
+        itens,
+        observacoes,
+        validade,
+        total: totalGeral,
+        status: 'Pendente',
+        data: new Date().toLocaleDateString('pt-BR'),
+      }
+      setOrcamentos(prev => [novo, ...prev])
     }
-    setOrcamentos(prev => [novo, ...prev])
+
     setDados(VAZIO_CLIENTE)
     setBuscaCliente('')
     setItens([])
@@ -249,6 +319,7 @@ export default function Orcamentos() {
                     <td className="px-5 py-3.5 text-sm text-slate-500">{o.data}</td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center justify-end gap-1 text-slate-400">
+                        <button title="Editar" onClick={() => editarOrcamento(o)} className="p-1.5 rounded hover:bg-yellow-50 hover:text-yellow-500 transition-colors"><Pencil size={15} /></button>
                         <button title="Imprimir" onClick={() => {
                           const cli = o.clienteId ? getCliente(Number(o.clienteId)) : { nome: o.nome, telefone: o.telefone }
                           const veicsOrc = o.clienteId ? veiculosPorCliente(Number(o.clienteId)) : []
@@ -403,7 +474,7 @@ export default function Orcamentos() {
           {/* Botões de ação */}
           <div className="flex items-center gap-3 flex-wrap">
             <button onClick={salvar} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">
-              <FileText size={15} />Salvar Orçamento
+              <FileText size={15} />{orcamentoEditandoId !== null ? 'Salvar Alterações' : 'Salvar Orçamento'}
             </button>
             <button onClick={enviarWhatsapp} className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">
               <MessageCircle size={15} />Enviar Orçamento via WhatsApp

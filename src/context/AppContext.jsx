@@ -128,6 +128,47 @@ export function AppProvider({ children }) {
     init().catch(e => { console.error(e); setCarregando(false) })
   }, [])
 
+  // Sincronização em tempo real via Supabase Realtime
+  useEffect(() => {
+    const apply = {
+      clientes:        (d) => { r.current.clientes       = d; _setClientes(d) },
+      veiculos:        (d) => { r.current.veiculos        = d; _setVeiculos(d) },
+      ordens:          (d) => { r.current.ordens          = d; _setOrdens(d) },
+      estoque:         (d) => { r.current.estoque         = d; _setEstoque(d) },
+      financeiro:      (d) => { r.current.financeiro      = d; _setFinanceiro(d) },
+      agenda:          (d) => { r.current.agenda          = d; _setAgenda(d) },
+      funcionarios:    (d) => { r.current.funcionarios    = d; _setFuncionarios(d) },
+      servicos:        (d) => { r.current.servicos        = d; _setServicos(d) },
+      checklists:      (d) => { r.current.checklists      = d; _setChecklists(d) },
+      orcamentos:      (d) => { r.current.orcamentos      = d; _setOrcamentos(d) },
+      compras:         (d) => { r.current.compras         = d; _setCompras(d) },
+      fornecedores:    (d) => { r.current.fornecedores    = d; _setFornecedores(d) },
+      caixa_historico: (d) => { r.current.caixaHistorico  = d; _setCaixaHistorico(d) },
+    }
+
+    const ch = supabase.channel('app-realtime')
+
+    for (const table of Object.keys(apply)) {
+      ch.on('postgres_changes', { event: '*', schema: 'public', table }, async () => {
+        const data = await loadTable(table)
+        apply[table](data)
+      })
+    }
+
+    // caixa_turno: query especial (linha única com id fixo)
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'caixa_turno' }, async () => {
+      const { data: turnoRows } = await supabase
+        .from('caixa_turno').select('id, data').eq('id', 'caixa-turno')
+      const turno = turnoRows?.[0] ? { id: 'caixa-turno', ...turnoRows[0].data } : null
+      r.current.caixaTurno = turno
+      _setCaixaTurno(turno)
+    })
+
+    ch.subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
   // Factory de setter com atualização otimista + persistência Supabase
   function makeSet(tableName, refKey, setter) {
     return (valOrFn) => {
