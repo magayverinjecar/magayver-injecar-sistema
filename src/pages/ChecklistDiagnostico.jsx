@@ -25,7 +25,7 @@ export default function ChecklistDiagnostico() {
     )
   }
 
-  const pendentesFiltrados = filtrar(pendentes).sort((a, b) => a.id - b.id) // mais antigo primeiro = mais urgente
+  const pendentesFiltrados = filtrar(pendentes).sort((a, b) => b.id - a.id) // mais recente primeiro
   const concluidosFiltrados = filtrar(concluidos).sort((a, b) => b.id - a.id)
 
   function Card({ ck }) {
