@@ -613,9 +613,16 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
       <div style="border-left:2px solid #e2e8f0;padding-left:24px"><div style="font-size:9px;color:#64748b;font-weight:600">VALOR TOTAL</div><div style="font-size:20px;font-weight:900;color:#f97316">${fmt(total)}</div></div>
     </div>
 
+    <!-- OBSERVAÇÕES -->
+    ${orc.observacoes ? `
+    <div style="border:1px solid #e2e8f0;border-radius:4px;padding:10px 12px;margin-bottom:14px;background:#fffbeb">
+      <div style="font-size:9px;color:#92400e;font-weight:700;margin-bottom:4px">OBSERVAÇÕES</div>
+      <div style="font-size:10px;color:#475569;line-height:1.5">${orc.observacoes}</div>
+    </div>` : ''}
+
     <!-- VALIDADE -->
     <div style="font-size:10px;color:#475569;margin-bottom:16px;text-align:center">
-      Este orçamento tem validade de <strong>30 dias</strong> a partir da data de emissão.
+      Este orçamento tem validade de <strong>${orc.validade || '30 dias'}</strong> a partir da data de emissão.
     </div>
 
     <!-- RODAPÉ -->
