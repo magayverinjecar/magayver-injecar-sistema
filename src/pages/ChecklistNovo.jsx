@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   ArrowLeft, ArrowRight, Check, User, Car, AlertTriangle,
@@ -175,6 +175,9 @@ export default function ChecklistNovo() {
   const [erros, setErros] = useState({})
   const [buscandoCep, setBuscandoCep] = useState(false)
   const [linkCopiado, setLinkCopiado] = useState(false)
+  const [saveStatus, setSaveStatus] = useState('') // '' | 'salvando' | 'salvo'
+  const saveTimerRef = useRef(null)
+  const draftSavedRef = useRef(false)
 
   // ── PASSO 1 — Cliente (igual step 0 do original) ─────────────
   const [buscaCliente, setBuscaCliente] = useState(ckEditar?.clienteNome || '')
@@ -231,6 +234,53 @@ export default function ChecklistNovo() {
 
   // ── PASSO 4 — Assinatura (igual step 3 do original) ──────────
   const [assinatura, setAssinatura] = useState(ckEditar?.assinatura || null)
+
+  // ── Auto-save ────────────────────────────────────────────────
+  const getDadosAtuais = useCallback(() => ({
+    clienteId,
+    clienteNome: cliente.nome,
+    clienteTelefone: cliente.telefone,
+    clienteTelefone2: cliente.telefone2,
+    clienteCpfCnpj: cliente.cpfCnpj,
+    clienteEmail: cliente.email,
+    clienteEndereco: [cliente.endereco, cliente.numero, cliente.bairro, cliente.cidadeEstado].filter(Boolean).join(', '),
+    veiculoId,
+    veiculoModelo: veiculo.modelo,
+    veiculoPlaca: veiculo.placa,
+    veiculoCor: veiculo.cor,
+    veiculoAno: veiculo.ano,
+    veiculoMotor: veiculo.motor,
+    kmEntrada: veiculo.kmEntrada,
+    ultimaRevisao: veiculo.ultimaRevisao,
+    numCondutores: veiculo.numCondutores,
+    combustivel: veiculo.combustivel,
+    luzesPainel,
+    relatoCliente,
+    assinatura,
+  }), [cliente, veiculo, clienteId, veiculoId, luzesPainel, relatoCliente, assinatura])
+
+  useEffect(() => {
+    if (!cliente.nome.trim() && !veiculo.placa.trim()) return
+    clearTimeout(saveTimerRef.current)
+    setSaveStatus('salvando')
+    saveTimerRef.current = setTimeout(() => {
+      const dados = getDadosAtuais()
+      if (ckEditar) {
+        setChecklists(prev => prev.map(c => c.id === ckEditar.id ? { ...c, ...dados } : c))
+      } else {
+        setChecklists(prev => {
+          const jaExiste = prev.find(c => c.id === ckIdNovo)
+          if (jaExiste) return prev.map(c => c.id === ckIdNovo ? { ...c, ...dados } : c)
+          draftSavedRef.current = true
+          return [{ id: ckIdNovo, numero: gerarNumeroChecklist(), status: 'Rascunho', criadoEm: new Date().toLocaleString('pt-BR'), ...dados, fotos: [], inspecaoVisual: [], diagnostico: [], observacoesTecnicas: '', tecnicoId: null, tecnicoNome: '', diagnosticadoEm: null, osId: null, atendente: currentUser?.nome || '' }, ...prev]
+        })
+        draftSavedRef.current = true
+      }
+      setSaveStatus('salvo')
+      setTimeout(() => setSaveStatus(''), 2500)
+    }, 800)
+    return () => clearTimeout(saveTimerRef.current)
+  }, [cliente, veiculo, clienteId, veiculoId, luzesPainel, relatoCliente, assinatura])
 
   // ── Busca de cliente ─────────────────────────────────────────
   const clientesFiltrados = clientes.filter(c =>
@@ -440,8 +490,10 @@ export default function ChecklistNovo() {
     }
 
     if (ckEditar) {
-      setChecklists(prev => prev.map(c => c.id === ckEditar.id ? { ...c, ...dadosEntrada } : c))
-      navigate('/checklist/gerenciar')
+      setChecklists(prev => prev.map(c => c.id === ckEditar.id ? { ...c, ...dadosEntrada, status: 'Aguardando diagnóstico' } : c))
+    } else if (draftSavedRef.current) {
+      // rascunho já existe pelo auto-save, só atualiza
+      setChecklists(prev => prev.map(c => c.id === ckIdNovo ? { ...c, ...dadosEntrada, status: 'Aguardando diagnóstico' } : c))
     } else {
       setChecklists(prev => [{
         id: ckIdNovo,
@@ -454,8 +506,8 @@ export default function ChecklistNovo() {
         tecnicoId: null, tecnicoNome: '',
         diagnosticadoEm: null, osId: null,
       }, ...prev])
-      navigate('/checklist/gerenciar')
     }
+    navigate('/checklist/gerenciar')
   }
 
   const veiculosCliente = clienteId ? veiculosPorCliente(clienteId) : []
@@ -472,10 +524,12 @@ export default function ChecklistNovo() {
           <h2 className="text-xl font-bold text-slate-800">
             {ckEditar ? 'Editar Entrada' : 'Nova Entrada'}
           </h2>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-500 flex items-center gap-2">
             {ckEditar
               ? `Editando ${ckEditar.numero} — ${ckEditar.veiculoPlaca || ''}`
               : `Atendente: ${currentUser?.nome || '—'}`}
+            {saveStatus === 'salvando' && <span className="text-xs text-amber-500 animate-pulse">● Salvando...</span>}
+            {saveStatus === 'salvo' && <span className="text-xs text-green-500">✓ Salvo</span>}
           </p>
         </div>
       </div>
