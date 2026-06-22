@@ -68,7 +68,11 @@ export default function OrdensServico() {
     const matchStatus = filtroStatus === 'Todos' || o.status === filtroStatus
     const matchMec = filtroMec === 'Todos' || String(o.mecanicoId) === filtroMec
     return matchBusca && matchStatus && matchMec
-  }).sort((a, b) => Number(b.id) - Number(a.id))
+  }).sort((a, b) => {
+    const tA = a.historico?.at(-1)?.id || 0
+    const tB = b.historico?.at(-1)?.id || 0
+    return tB - tA
+  })
 
   function salvar() {
     if (!form.clienteId || !form.veiculoId) return
