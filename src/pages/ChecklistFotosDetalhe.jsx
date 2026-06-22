@@ -142,6 +142,7 @@ export default function ChecklistFotosDetalhe() {
   const [categoriaAtual, setCategoriaAtual] = useState('Outros')
   const [uploading, setUploading] = useState(null)
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
+  const [confirmarExcluir, setConfirmarExcluir] = useState(null) // id da foto aguardando confirmação
   const inputRef = useRef(null)
 
   const todasFotos = fotos
@@ -402,10 +403,23 @@ export default function ChecklistFotosDetalhe() {
                           className="p-2 bg-white/20 backdrop-blur-sm text-white rounded-full hover:bg-white/30 transition-colors shadow-lg">
                           <ZoomIn size={16} />
                         </button>
-                        <button onClick={e => { e.stopPropagation(); removerFoto(foto.id) }}
-                          className="p-2 bg-red-600 text-white rounded-full hover:bg-red-500 transition-colors shadow-lg">
-                          <Trash2 size={14} />
-                        </button>
+                        {confirmarExcluir === foto.id ? (
+                          <>
+                            <button onClick={e => { e.stopPropagation(); removerFoto(foto.id); setConfirmarExcluir(null) }}
+                              className="px-2.5 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-500 transition-colors shadow-lg">
+                              Apagar
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); setConfirmarExcluir(null) }}
+                              className="px-2.5 py-1.5 bg-white/20 backdrop-blur-sm text-white rounded-lg text-xs font-bold hover:bg-white/30 transition-colors shadow-lg">
+                              Cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <button onClick={e => { e.stopPropagation(); setConfirmarExcluir(foto.id) }}
+                            className="p-2 bg-red-600 text-white rounded-full hover:bg-red-500 transition-colors shadow-lg">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
