@@ -77,11 +77,9 @@ function PainelAssinatura({ onSave, onClear }) {
           onMouseUp={parar} onMouseLeave={parar}
           onTouchStart={iniciar} onTouchMove={desenhar} onTouchEnd={parar}
         />
-        {!temAssinatura && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-slate-300 text-base select-none">Assine aqui</p>
-          </div>
-        )}
+        <div className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity ${temAssinatura ? 'opacity-0' : 'opacity-100'}`} translate="no">
+          <p className="text-slate-300 text-base select-none">Assine aqui</p>
+        </div>
         <button type="button" onClick={limpar}
           className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-400 rounded-lg hover:bg-red-100 transition-colors">
           <Eraser size={16} />
