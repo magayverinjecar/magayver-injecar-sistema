@@ -12,6 +12,7 @@ function parseDateBR(str) {
 }
 
 const PERIODOS = [
+  { value: 'todos',       label: 'Todos' },
   { value: 'semana',      label: 'Esta semana' },
   { value: 'mes_atual',   label: 'Este mês' },
   { value: 'mes_passado', label: 'Mês passado' },
@@ -24,6 +25,7 @@ function getRange(periodo, dataInicio, dataFim) {
   const y = hoje.getFullYear()
   const m = hoje.getMonth()
 
+  if (periodo === 'todos')       return { inicio: null, fim: null }
   if (periodo === 'semana') {
     const ini = new Date(hoje); ini.setDate(hoje.getDate() - hoje.getDay()); ini.setHours(0,0,0,0)
     const fim = new Date(ini); fim.setDate(ini.getDate() + 6); fim.setHours(23,59,59,999)
@@ -40,26 +42,33 @@ function getRange(periodo, dataInicio, dataFim) {
 
 export default function Produtividade() {
   const { funcionarios, ordens, getCliente, totalOrdem } = useApp()
-  const [periodo, setPeriodo]       = useState('mes_atual')
+  const [periodo, setPeriodo]       = useState('todos')
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim]       = useState('')
   const [expandido, setExpandido]   = useState(null)
 
   const { inicio, fim } = getRange(periodo, dataInicio, dataFim)
 
-  const osFiltradas = ordens.filter(o => {
-    if (o.status !== 'Concluída' && o.status !== 'Entregue') return false
-    if (!o.mecanicoId) return false
+  function dentroDoPeriodo(o) {
+    if (!inicio && !fim) return true
     const data = parseDateBR(o.dataConclusao) || parseDateBR(o.dataEntrada || o.data)
-    if (!data) return false
+    if (!data) return true
     if (inicio && data < inicio) return false
     if (fim    && data > fim)    return false
     return true
-  })
+  }
+
+  // todas OS concluídas no período (para cards)
+  const osFiltradas = ordens.filter(o =>
+    (o.status === 'Concluída' || o.status === 'Entregue') && dentroDoPeriodo(o)
+  )
+
+  // só as que têm mecânico (para ranking)
+  const osComMecanico = osFiltradas.filter(o => o.mecanicoId)
 
   const statsPorMecanico = funcionarios
     .map(mec => {
-      const osDoMec = osFiltradas
+      const osDoMec = osComMecanico
         .filter(o => o.mecanicoId === mec.id)
         .sort((a, b) => {
           const da = parseDateBR(a.dataConclusao || a.dataEntrada || a.data)
@@ -126,8 +135,12 @@ export default function Produtividade() {
       {statsPorMecanico.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-12 text-center">
           <Users size={36} className="text-slate-200 mx-auto mb-3" />
-          <p className="text-slate-500 font-medium">Nenhuma OS concluída no período</p>
-          <p className="text-slate-300 text-sm mt-1">Selecione outro período ou conclua algumas OS</p>
+          {osFiltradas.length > 0
+            ? <><p className="text-slate-500 font-medium">{osFiltradas.length} OS concluída(s) sem mecânico atribuído</p>
+                <p className="text-slate-300 text-sm mt-1">Atribua um mecânico nas OS para ver o ranking</p></>
+            : <><p className="text-slate-500 font-medium">Nenhuma OS concluída no período</p>
+                <p className="text-slate-300 text-sm mt-1">Selecione "Todos" ou conclua algumas OS</p></>
+          }
         </div>
       ) : (
         <div className="space-y-3">
