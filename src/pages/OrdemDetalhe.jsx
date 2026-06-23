@@ -282,6 +282,9 @@ export default function OrdemDetalhe() {
                     <td className="py-2.5">
                       <span className="text-sm text-slate-700">{it.descricao} </span>
                       <span className={`text-xs px-1.5 py-0.5 rounded ${it.tipo === 'servico' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>{it.tipo === 'servico' ? 'serviço' : 'peça'}</span>
+                      {it.tipo === 'servico' && it.mecanicoId && (
+                        <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">{getFuncionario(it.mecanicoId)?.nome || ''}</span>
+                      )}
                     </td>
                     <td className="py-2.5 text-center text-sm text-slate-600">{it.quantidade}</td>
                     <td className="py-2.5 text-right text-sm text-slate-600">{fmt(pNum(it.valorUnitario))}</td>
@@ -289,7 +292,7 @@ export default function OrdemDetalhe() {
                     <td className="py-2.5 text-right text-sm font-semibold text-slate-700">{fmt(pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto))}</td>
                     <td className="py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setEditandoItem({ ...it, quantidade: String(it.quantidade), valorUnitario: String(it.valorUnitario), desconto: String(it.desconto || '0') })} className="p-1 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400"><Pencil size={14} /></button>
+                        <button onClick={() => setEditandoItem({ ...it, quantidade: String(it.quantidade), valorUnitario: String(it.valorUnitario), desconto: String(it.desconto || '0'), mecanicoId: it.mecanicoId || '' })} className="p-1 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400"><Pencil size={14} /></button>
                         <button onClick={() => removerItemOrdem(os.id, it.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400"><Trash2 size={14} /></button>
                       </div>
                     </td>
@@ -420,7 +423,7 @@ export default function OrdemDetalhe() {
       )}
 
       {modalEditar && <ModalEditar os={os} funcionarios={funcionarios} onClose={() => setModalEditar(false)} onSalvar={d => { atualizarOrdem(os.id, d); setModalEditar(false) }} />}
-      {modalItem && <ModalAdicionarItem servicos={servicos} estoque={estoque} onClose={() => setModalItem(false)} onAdd={item => { adicionarItemOrdem(os.id, item); setModalItem(false) }} />}
+      {modalItem && <ModalAdicionarItem servicos={servicos} estoque={estoque} funcionarios={funcionarios} onClose={() => setModalItem(false)} onAdd={item => { adicionarItemOrdem(os.id, item); setModalItem(false) }} />}
 
       {/* Modal Finalizar OS */}
       {modalFinalizar && (() => {
@@ -572,12 +575,22 @@ export default function OrdemDetalhe() {
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 </div>
               </div>
+              {editandoItem.tipo === 'servico' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Reparador</label>
+                  <select value={editandoItem.mecanicoId || ''} onChange={e => setEditandoItem(i => ({ ...i, mecanicoId: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    <option value="">Sem reparador</option>
+                    {funcionarios.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={() => setEditandoItem(null)}
                   className="flex-1 border border-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
                   Cancelar
                 </button>
-                <button type="button" onClick={() => { editarItemOrdem(os.id, editandoItem.id, { descricao: editandoItem.descricao, quantidade: Number(editandoItem.quantidade) || 1, valorUnitario: editandoItem.valorUnitario, desconto: editandoItem.desconto }); setEditandoItem(null) }}
+                <button type="button" onClick={() => { editarItemOrdem(os.id, editandoItem.id, { descricao: editandoItem.descricao, quantidade: Number(editandoItem.quantidade) || 1, valorUnitario: editandoItem.valorUnitario, desconto: editandoItem.desconto, mecanicoId: editandoItem.tipo === 'servico' ? (editandoItem.mecanicoId || null) : null }); setEditandoItem(null) }}
                   className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
                   Salvar
                 </button>
@@ -694,7 +707,7 @@ function Campo({ label, children }) {
   return <div><label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>{children}</div>
 }
 
-function ModalAdicionarItem({ servicos, estoque, onClose, onAdd }) {
+function ModalAdicionarItem({ servicos, estoque, funcionarios, onClose, onAdd }) {
   const [modo, setModo] = useState('cadastrado') // 'cadastrado' | 'avulso'
   const [tipo, setTipo] = useState('servico')
   const [busca, setBusca] = useState('')
@@ -703,6 +716,7 @@ function ModalAdicionarItem({ servicos, estoque, onClose, onAdd }) {
   const [quantidade, setQuantidade] = useState('1')
   const [valorUnitario, setValorUnitario] = useState('')
   const [desconto, setDesconto] = useState('0')
+  const [mecanicoId, setMecanicoId] = useState('')
 
   const lista = tipo === 'servico'
     ? servicos.filter(s => s.nome.toLowerCase().includes(busca.toLowerCase()))
@@ -732,6 +746,7 @@ function ModalAdicionarItem({ servicos, estoque, onClose, onAdd }) {
       quantidade: Number(quantidade) || 1,
       valorUnitario,
       desconto,
+      mecanicoId: tipo === 'servico' && mecanicoId ? Number(mecanicoId) : null,
     })
   }
 
@@ -752,7 +767,7 @@ function ModalAdicionarItem({ servicos, estoque, onClose, onAdd }) {
         </div>
 
         <Campo label="Tipo">
-          <select value={tipo} onChange={e => { setTipo(e.target.value); setSelId(''); setBusca(''); setDescricao(''); setValorUnitario('') }} className="inp">
+          <select value={tipo} onChange={e => { setTipo(e.target.value); setSelId(''); setBusca(''); setDescricao(''); setValorUnitario(''); setMecanicoId('') }} className="inp">
             <option value="servico">Serviço</option>
             <option value="peca">Peça</option>
           </select>
@@ -775,6 +790,14 @@ function ModalAdicionarItem({ servicos, estoque, onClose, onAdd }) {
         )}
 
         <Campo label="Descrição *"><input value={descricao} onChange={e => setDescricao(e.target.value)} placeholder={modo === 'avulso' ? 'Descreva o serviço ou peça...' : ''} className="inp" /></Campo>
+        {tipo === 'servico' && (
+          <Campo label="Reparador">
+            <select value={mecanicoId} onChange={e => setMecanicoId(e.target.value)} className="inp">
+              <option value="">Sem reparador</option>
+              {(funcionarios || []).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+            </select>
+          </Campo>
+        )}
         <div className="grid grid-cols-3 gap-3">
           <Campo label="Quantidade"><input type="number" value={quantidade} onChange={e => setQuantidade(e.target.value)} className="inp" /></Campo>
           <Campo label="Valor Unitário"><input value={valorUnitario} onChange={e => setValorUnitario(e.target.value)} placeholder="0,00" className="inp" /></Campo>

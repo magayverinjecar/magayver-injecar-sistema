@@ -65,21 +65,28 @@ export default function Produtividade() {
     return true
   }
 
+  // resolve o mecânico de um item: usa item.mecanicoId se existir, senão cai no os.mecanicoId (retrocompatibilidade)
+  function mecDoItem(item, os) {
+    return item.mecanicoId || os.mecanicoId || null
+  }
+
   const osConcluidas = ordens.filter(o =>
     (o.status === 'Concluída' || o.status === 'Entregue') &&
-    o.mecanicoId &&
-    dentroDoPeriodo(o)
+    dentroDoPeriodo(o) &&
+    (o.itens || []).some(i => i.tipo === 'servico' && mecDoItem(i, o))
   )
 
-  // mecânicos que têm OS no período
+  // mecânicos que têm pelo menos 1 serviço no período
   const mecanicosAtivos = funcionarios.filter(f =>
-    osConcluidas.some(o => o.mecanicoId === f.id)
+    osConcluidas.some(o =>
+      (o.itens || []).some(i => i.tipo === 'servico' && mecDoItem(i, o) === f.id)
+    )
   )
 
-  // OS do mecânico selecionado
+  // OS que contêm pelo menos 1 serviço do mecânico selecionado
   const osMecanico = mecSelecionado
     ? osConcluidas
-        .filter(o => o.mecanicoId === mecSelecionado)
+        .filter(o => (o.itens || []).some(i => i.tipo === 'servico' && mecDoItem(i, o) === mecSelecionado))
         .sort((a, b) => {
           const da = parseDateBR(a.dataConclusao || a.dataEntrada || a.data)
           const db = parseDateBR(b.dataConclusao || b.dataEntrada || b.data)
@@ -87,9 +94,15 @@ export default function Produtividade() {
         })
     : []
 
-  const totalOSMec     = osMecanico.length
-  const totalServicosMec = osMecanico.reduce((s, o) => s + totalServicos(o), 0)
-  const mecAtual       = funcionarios.find(f => f.id === mecSelecionado)
+  function totalServicosMec_OS(o) {
+    return (o.itens || [])
+      .filter(i => i.tipo === 'servico' && mecDoItem(i, o) === mecSelecionado)
+      .reduce((s, i) => s + pNum(i.valorUnitario) * (Number(i.quantidade) || 1) - pNum(i.desconto || 0), 0)
+  }
+
+  const totalOSMec       = osMecanico.length
+  const totalServicosMec = osMecanico.reduce((s, o) => s + totalServicosMec_OS(o), 0)
+  const mecAtual         = funcionarios.find(f => f.id === mecSelecionado)
 
   return (
     <div className="space-y-5">
@@ -132,7 +145,9 @@ export default function Produtividade() {
         ) : (
           <div className="flex flex-wrap gap-2">
             {mecanicosAtivos.map(mec => {
-              const qtd = osConcluidas.filter(o => o.mecanicoId === mec.id).length
+              const qtd = osConcluidas.filter(o =>
+                (o.itens || []).some(i => i.tipo === 'servico' && mecDoItem(i, o) === mec.id)
+              ).length
               const selecionado = mecSelecionado === mec.id
               return (
                 <button key={mec.id}
@@ -186,8 +201,8 @@ export default function Produtividade() {
               {osMecanico.map(o => {
                 const cliente  = getCliente(o.clienteId)
                 const veiculo  = getVeiculo(o.veiculoId)
-                const servicos = (o.itens || []).filter(i => i.tipo === 'servico')
-                const totalSrv = totalServicos(o)
+                const servicos = (o.itens || []).filter(i => i.tipo === 'servico' && mecDoItem(i, o) === mecSelecionado)
+                const totalSrv = totalServicosMec_OS(o)
                 const aberto   = osExpandida === o.id
 
                 return (
