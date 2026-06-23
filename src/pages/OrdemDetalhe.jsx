@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, Lock, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Banknote, Smartphone, CreditCard, ArrowRightLeft } from 'lucide-react'
 import { useApp } from '../context/AppContext'
@@ -35,13 +35,9 @@ export default function OrdemDetalhe() {
   const [menuImpressao, setMenuImpressao] = useState(false)
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
   const [modalFinalizar, setModalFinalizar] = useState(false)
-  const [formaPagamento, setFormaPagamento] = useState('PIX')
-  const [parcelas, setParcelas] = useState('1')
-  const [recebimento, setRecebimento] = useState('na_hora')
+  const [pgtos, setPgtos] = useState([])
   const [modalReabrir, setModalReabrir] = useState(false)
   const [editandoItem, setEditandoItem] = useState(null)
-
-  const isCartao = formaPagamento === 'Cartão Débito' || formaPagamento === 'Cartão Crédito'
 
   if (!os) {
     return (
@@ -119,16 +115,44 @@ export default function OrdemDetalhe() {
     { label: 'Boleto', icon: FileText },
   ]
 
+  useEffect(() => {
+    if (modalFinalizar) {
+      setPgtos([{ id: 1, forma: 'PIX', valor: total.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }])
+    }
+  }, [modalFinalizar])
+
+  function addPgto() {
+    const soma = pgtos.reduce((s, p) => s + pNum(p.valor), 0)
+    const restante = Math.max(0, total - soma)
+    setPgtos(ps => [...ps, { id: Date.now(), forma: 'PIX', valor: restante.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }])
+  }
+
+  function removePgto(id) {
+    setPgtos(ps => ps.filter(p => p.id !== id))
+  }
+
+  function updatePgto(id, field, value) {
+    setPgtos(ps => ps.map(p => p.id === id ? { ...p, [field]: value } : p))
+  }
+
   function confirmarFinalizar(comImprimir) {
+    const somaPgtos = pgtos.reduce((s, p) => s + pNum(p.valor), 0)
+    if (Math.abs(somaPgtos - total) > 0.01) {
+      alert(`A soma dos pagamentos (${fmt(somaPgtos)}) deve ser igual ao total da OS (${fmt(total)}).`)
+      return
+    }
     mudarStatusOrdem(os.id, 'Concluída')
     pagarOrdem(os.id)
     if (caixaTurno) {
-      const pgto = { forma: formaPagamento, valor: String(total) }
-      if (isCartao) pgto.recebimento = recebimento
-      if (formaPagamento === 'Cartão Crédito' && Number(parcelas) > 1) pgto.parcelas = Number(parcelas)
       registrarVendaCaixa({
         total,
-        pagamentos: [pgto],
+        pagamentos: pgtos.map(p => {
+          const isC = p.forma === 'Cartão Débito' || p.forma === 'Cartão Crédito'
+          const pg = { forma: p.forma, valor: String(pNum(p.valor)) }
+          if (isC) pg.recebimento = p.recebimento
+          if (p.forma === 'Cartão Crédito' && Number(p.parcelas) > 1) pg.parcelas = Number(p.parcelas)
+          return pg
+        }),
         clienteNome: cliente?.nome || 'Cliente',
         osId: os.id,
       })
@@ -405,89 +429,122 @@ export default function OrdemDetalhe() {
       {modalItem && <ModalAdicionarItem servicos={servicos} estoque={estoque} onClose={() => setModalItem(false)} onAdd={item => { adicionarItemOrdem(os.id, item); setModalItem(false) }} />}
 
       {/* Modal Finalizar OS */}
-      {modalFinalizar && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setModalFinalizar(false)} />
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h3 className="font-semibold text-slate-800">Finalizar OS {os.id}</h3>
-              <button onClick={() => setModalFinalizar(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X size={18} /></button>
-            </div>
-            <div className="px-5 py-4 space-y-4">
-              <div className="bg-slate-50 rounded-lg px-4 py-3 flex items-center justify-between">
-                <span className="text-sm text-slate-500">Total da OS</span>
-                <span className="text-xl font-bold text-primary-600">{fmt(total)}</span>
+      {modalFinalizar && (() => {
+        const somaPgtos = pgtos.reduce((s, p) => s + pNum(p.valor), 0)
+        const restante = total - somaPgtos
+        const valido = Math.abs(restante) < 0.01
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setModalFinalizar(false)} />
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 sticky top-0 bg-white z-10">
+                <h3 className="font-semibold text-slate-800">Finalizar OS {os.id}</h3>
+                <button onClick={() => setModalFinalizar(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X size={18} /></button>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Forma de Pagamento</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {FORMAS_PGTO.map(({ label, icon: Icon }) => (
-                    <button key={label} type="button" onClick={() => { setFormaPagamento(label); setRecebimento('na_hora'); setParcelas('1') }}
-                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${formaPagamento === label ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                      <Icon size={15} />
-                      {label}
-                    </button>
-                  ))}
+              <div className="px-5 py-4 space-y-4">
+                <div className="bg-slate-50 rounded-lg px-4 py-3 flex items-center justify-between">
+                  <span className="text-sm text-slate-500">Total da OS</span>
+                  <span className="text-xl font-bold text-primary-600">{fmt(total)}</span>
                 </div>
-              </div>
 
-              {formaPagamento === 'Cartão Crédito' && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Parcelamento</label>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {['1','2','3','4','5','6','7','8','9','10','11','12'].map(p => (
-                      <button key={p} type="button" onClick={() => setParcelas(p)}
-                        className={`py-2 rounded-lg border text-sm font-medium transition-colors ${parcelas === p ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                        {p}x
-                      </button>
-                    ))}
-                  </div>
-                  {Number(parcelas) > 1 && (
-                    <p className="text-xs text-slate-400 mt-1.5 text-center">
-                      {parcelas}x de {fmt(total / Number(parcelas))}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {isCartao && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Quando cai na conta?</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button type="button" onClick={() => setRecebimento('na_hora')}
-                      className={`py-2.5 rounded-lg border text-sm font-medium transition-colors ${recebimento === 'na_hora' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                      Na hora
-                    </button>
-                    <button type="button" onClick={() => setRecebimento('1_dia_util')}
-                      className={`py-2.5 rounded-lg border text-sm font-medium transition-colors ${recebimento === '1_dia_util' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                      1 dia útil
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-slate-700">Formas de Pagamento</label>
+                    <button type="button" onClick={addPgto} className="flex items-center gap-1 text-xs text-primary-600 font-medium hover:text-primary-700">
+                      <Plus size={13} />Adicionar
                     </button>
                   </div>
-                </div>
-              )}
 
-              {!caixaTurno && (
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg">
-                  <AlertTriangle size={14} />
-                  Caixa fechado — o valor será lançado no financeiro mas não no caixa.
-                </div>
-              )}
+                  {pgtos.map(pg => {
+                    const isC = pg.forma === 'Cartão Débito' || pg.forma === 'Cartão Crédito'
+                    return (
+                      <div key={pg.id} className="border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50">
+                        <div className="flex items-center gap-2">
+                          <select value={pg.forma} onChange={e => updatePgto(pg.id, 'forma', e.target.value)}
+                            className="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            {FORMAS_PGTO.map(f => <option key={f.label} value={f.label}>{f.label}</option>)}
+                          </select>
+                          <div className="flex items-center border border-slate-200 rounded-lg bg-white px-2">
+                            <span className="text-xs text-slate-400">R$</span>
+                            <input
+                              type="text"
+                              value={pg.valor}
+                              onChange={e => updatePgto(pg.id, 'valor', e.target.value)}
+                              className="w-24 py-2 text-sm font-medium text-right focus:outline-none bg-transparent"
+                              placeholder="0,00"
+                            />
+                          </div>
+                          {pgtos.length > 1 && (
+                            <button type="button" onClick={() => removePgto(pg.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition-colors">
+                              <X size={15} />
+                            </button>
+                          )}
+                        </div>
 
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => confirmarFinalizar(false)}
-                  className="flex-1 border border-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
-                  Confirmar
-                </button>
-                <button type="button" onClick={() => confirmarFinalizar(true)}
-                  className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5">
-                  <Printer size={15} />Confirmar e Imprimir
-                </button>
+                        {isC && (
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => updatePgto(pg.id, 'recebimento', 'na_hora')}
+                              className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors ${pg.recebimento === 'na_hora' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                              Na hora
+                            </button>
+                            <button type="button" onClick={() => updatePgto(pg.id, 'recebimento', '1_dia_util')}
+                              className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors ${pg.recebimento === '1_dia_util' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                              1 dia útil
+                            </button>
+                          </div>
+                        )}
+
+                        {pg.forma === 'Cartão Crédito' && (
+                          <div className="space-y-1">
+                            <div className="grid grid-cols-6 gap-1">
+                              {['1','2','3','4','5','6','7','8','9','10','11','12'].map(p => (
+                                <button key={p} type="button" onClick={() => updatePgto(pg.id, 'parcelas', p)}
+                                  className={`py-1 rounded border text-xs font-medium transition-colors ${pg.parcelas === p ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                                  {p}x
+                                </button>
+                              ))}
+                            </div>
+                            {Number(pg.parcelas) > 1 && (
+                              <p className="text-xs text-slate-400 text-center">
+                                {pg.parcelas}x de {fmt(pNum(pg.valor) / Number(pg.parcelas))}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {pgtos.length > 1 && (
+                  <div className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium ${valido ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                    <span>{valido ? '✓ Valores conferem' : 'Restante a distribuir'}</span>
+                    {!valido && <span>{fmt(Math.abs(restante))}</span>}
+                  </div>
+                )}
+
+                {!caixaTurno && (
+                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg">
+                    <AlertTriangle size={14} />
+                    Caixa fechado — o valor será lançado no financeiro mas não no caixa.
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <button type="button" onClick={() => confirmarFinalizar(false)} disabled={!valido}
+                    className="flex-1 border border-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Confirmar
+                  </button>
+                  <button type="button" onClick={() => confirmarFinalizar(true)} disabled={!valido}
+                    className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5">
+                    <Printer size={15} />Confirmar e Imprimir
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Modal Editar Item */}
       {editandoItem && (
