@@ -139,6 +139,36 @@ function tabelaVeiculo(veiculo, os, mecanico) {
   </table>`
 }
 
+// versão para orçamento: só dados do cadastro do veículo, sem campos de OS
+function tabelaVeiculoOrcamento(veiculo) {
+  if (!veiculo) return ''
+  const cel = (label, valor) => valor
+    ? `<td style="border-right:1px solid #e2e8f0;padding:0"><div style="background:#f8fafc;font-size:8px;color:#64748b;font-weight:600;padding:2px 6px;border-bottom:1px solid #e2e8f0">${label}</div><div style="padding:4px 6px;font-weight:600;font-size:10px">${valor}</div></td>`
+    : ''
+
+  const linha1 = [
+    cel('PLACA', veiculo.placa),
+    cel('FABRICANTE', veiculo.fabricante || veiculo.marca || ''),
+    cel('MODELO', veiculo.modelo),
+    cel('ANO', veiculo.ano),
+    cel('MOTOR', veiculo.motor || ''),
+    cel('COR', veiculo.cor || ''),
+  ].filter(Boolean).join('')
+
+  const linha2 = [
+    cel('COMBUSTÍVEL', veiculo.combustivel || ''),
+    cel('CÂMBIO', veiculo.cambio || ''),
+    cel('PORTAS', veiculo.portas || ''),
+  ].filter(Boolean).join('')
+
+  return `
+  <table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;margin-bottom:0;table-layout:fixed">
+    <tr>${linha1}</tr>
+  </table>
+  ${linha2 ? `<table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;border-top:0;margin-bottom:0;table-layout:fixed"><tr>${linha2}</tr></table>` : ''}
+  `
+}
+
 function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
   const itens = os.itens || []
   const servicos = itens.filter(i => i.tipo === 'servico')
@@ -596,7 +626,7 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
     ${veiculo ? `
     <div class="seccao">
       ${secHeader('Informações do Veículo')}
-      ${tabelaVeiculo(veiculo, {}, null)}
+      ${tabelaVeiculoOrcamento(veiculo)}
     </div>` : ''}
 
     <!-- SERVIÇOS -->
