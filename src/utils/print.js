@@ -121,15 +121,12 @@ function tabelaVeiculo(veiculo, os, mecanico) {
       ${cel('MODELO', veiculo.modelo)}
       ${cel('ANO', veiculo.ano)}
       ${cel('MOTOR', veiculo.motor || '')}
-      ${cel('CÂMBIO', veiculo.cambio || '')}
       ${cel('COR', veiculo.cor || '')}
     </tr>
   </table>
   <table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;border-top:0;margin-bottom:0;table-layout:fixed">
     <tr>
-      ${cel('KM ENTRADA', os.kmEntrada)}
       ${cel('COMBUSTÍVEL', veiculo.combustivel || '')}
-      ${cel('PORTAS', veiculo.portas || '')}
       ${cel('MECÂNICO', mecanico?.nome || '')}
       ${cel('DATA ENTRADA', os.dataEntrada || os.data)}
       ${cel('DATA CONCLUSÃO', os.dataConclusao || '')}
@@ -155,8 +152,6 @@ function tabelaVeiculoOrcamento(veiculo) {
 
   const linha2 = [
     cel('COMBUSTÍVEL', veiculo.combustivel || ''),
-    cel('CÂMBIO', veiculo.cambio || ''),
-    cel('PORTAS', veiculo.portas || ''),
   ].filter(Boolean).join('')
 
   return `
