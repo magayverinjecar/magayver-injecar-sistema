@@ -75,6 +75,9 @@ function gerarCupom(os, cliente, veiculo, mecanico, total, cfg, largura, fSize) 
     <hr class="hr">
     <div class="total"><span>TOTAL:</span><span>${fmt(total)}</span></div>
     <hr class="hr">
+    <div class="c" style="margin-top:6px;font-size:${fSize === '12px' ? '10px' : '9px'};font-weight:bold">GARANTIA: 90 DIAS</div>
+    <div class="c" style="font-size:${fSize === '12px' ? '9px' : '8px'}">nos serviços realizados (CDC art. 26)</div>
+    <hr class="hr">
     <div class="c" style="margin-top:8px">Obrigado pela preferência!</div>
     <div class="c" style="font-size:9px;margin-top:2px">${cfg.nome || ''}</div>
     <br><br>
@@ -272,6 +275,12 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
 
     ${os.observacoes ? `<div style="font-size:10px;color:#475569;margin-bottom:12px;border-left:3px solid #f97316;padding-left:8px"><strong>Observações:</strong> ${os.observacoes}</div>` : ''}
 
+    <!-- GARANTIA -->
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:8px 12px;margin-bottom:12px;text-align:center">
+      <span style="font-size:11px;font-weight:700;color:#15803d">✓ GARANTIA DE 90 DIAS</span>
+      <span style="font-size:10px;color:#166534"> nos serviços realizados, conforme CDC art. 26.</span>
+    </div>
+
     <!-- RODAPÉ -->
     <div style="border-top:1px solid #e2e8f0;padding-top:10px;margin-top:4px">
       <div style="text-align:center;font-size:11px;color:#475569;margin-bottom:18px">
@@ -367,6 +376,10 @@ function gerarA4Comp(os, cliente, veiculo, mecanico, total, cfg) {
       <span class="total-val">${fmt(total)}</span>
     </div>
 
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:6px 10px;margin-top:8px;margin-bottom:6px;text-align:center">
+      <span style="font-size:10px;font-weight:700;color:#15803d">✓ Garantia de 90 dias</span>
+      <span style="font-size:9px;color:#166534"> nos serviços realizados (CDC art. 26)</span>
+    </div>
     <div class="footer">${cfg.nome || 'Oficina'} • ${new Date().toLocaleDateString('pt-BR')}</div>
   `
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>OS ${os.id}</title><style>${css}</style></head><body>${body}</body></html>`
@@ -451,6 +464,10 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
       <span class="total-val">${fmt(total)}</span>
     </div>
 
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:5px 8px;margin-top:6px;margin-bottom:5px;text-align:center">
+      <span style="font-size:9px;font-weight:700;color:#15803d">✓ Garantia de 90 dias</span>
+      <span style="font-size:8px;color:#166534"> nos serviços realizados (CDC art. 26)</span>
+    </div>
     <div class="footer">${cfg.nome || 'Oficina'} • ${new Date().toLocaleDateString('pt-BR')}</div>
   `
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>OS ${os.id}</title><style>${css}</style></head><body>${body}</body></html>`
