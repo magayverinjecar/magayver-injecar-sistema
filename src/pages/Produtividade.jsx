@@ -1,14 +1,21 @@
 import { useState } from 'react'
-import { TrendingUp, Users, FileText, DollarSign, Calendar, ChevronDown, ChevronUp } from 'lucide-react'
+import { TrendingUp, Users, FileText, Calendar, ChevronDown, ChevronUp, Wrench, Car } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+function pNum(v) { return parseFloat((v || '0').toString().replace(',', '.')) || 0 }
 
 function parseDateBR(str) {
   if (!str) return null
   const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/)
   if (!match) return null
   return new Date(+match[3], +match[2] - 1, +match[1])
+}
+
+function totalServicos(o) {
+  return (o.itens || [])
+    .filter(i => i.tipo === 'servico')
+    .reduce((s, i) => s + pNum(i.valorUnitario) * (Number(i.quantidade) || 1) - pNum(i.desconto || 0), 0)
 }
 
 const PERIODOS = [
@@ -24,16 +31,15 @@ function getRange(periodo, dataInicio, dataFim) {
   const hoje = new Date()
   const y = hoje.getFullYear()
   const m = hoje.getMonth()
-
   if (periodo === 'todos')       return { inicio: null, fim: null }
   if (periodo === 'semana') {
     const ini = new Date(hoje); ini.setDate(hoje.getDate() - hoje.getDay()); ini.setHours(0,0,0,0)
     const fim = new Date(ini); fim.setDate(ini.getDate() + 6); fim.setHours(23,59,59,999)
     return { inicio: ini, fim }
   }
-  if (periodo === 'mes_atual')   return { inicio: new Date(y, m, 1),   fim: new Date(y, m+1, 0, 23, 59) }
-  if (periodo === 'mes_passado') return { inicio: new Date(y, m-1, 1), fim: new Date(y, m, 0, 23, 59) }
-  if (periodo === 'ano')         return { inicio: new Date(y, 0, 1),   fim: new Date(y, 11, 31, 23, 59) }
+  if (periodo === 'mes_atual')   return { inicio: new Date(y, m, 1),     fim: new Date(y, m+1, 0, 23, 59) }
+  if (periodo === 'mes_passado') return { inicio: new Date(y, m-1, 1),   fim: new Date(y, m, 0, 23, 59) }
+  if (periodo === 'ano')         return { inicio: new Date(y, 0, 1),     fim: new Date(y, 11, 31, 23, 59) }
   return {
     inicio: dataInicio ? new Date(dataInicio) : null,
     fim:    dataFim    ? new Date(dataFim + 'T23:59:59') : null,
@@ -41,11 +47,12 @@ function getRange(periodo, dataInicio, dataFim) {
 }
 
 export default function Produtividade() {
-  const { funcionarios, ordens, getCliente, totalOrdem } = useApp()
-  const [periodo, setPeriodo]       = useState('todos')
-  const [dataInicio, setDataInicio] = useState('')
-  const [dataFim, setDataFim]       = useState('')
-  const [expandido, setExpandido]   = useState(null)
+  const { funcionarios, ordens, getCliente, getVeiculo } = useApp()
+  const [periodo, setPeriodo]         = useState('todos')
+  const [dataInicio, setDataInicio]   = useState('')
+  const [dataFim, setDataFim]         = useState('')
+  const [mecSelecionado, setMecSelecionado] = useState(null)
+  const [osExpandida, setOsExpandida] = useState(null)
 
   const { inicio, fim } = getRange(periodo, dataInicio, dataFim)
 
@@ -58,46 +65,38 @@ export default function Produtividade() {
     return true
   }
 
-  // todas OS concluídas no período (para cards)
-  const osFiltradas = ordens.filter(o =>
-    (o.status === 'Concluída' || o.status === 'Entregue') && dentroDoPeriodo(o)
+  const osConcluidas = ordens.filter(o =>
+    (o.status === 'Concluída' || o.status === 'Entregue') &&
+    o.mecanicoId &&
+    dentroDoPeriodo(o)
   )
 
-  // só as que têm mecânico (para ranking)
-  const osComMecanico = osFiltradas.filter(o => o.mecanicoId)
+  // mecânicos que têm OS no período
+  const mecanicosAtivos = funcionarios.filter(f =>
+    osConcluidas.some(o => o.mecanicoId === f.id)
+  )
 
-  const statsPorMecanico = funcionarios
-    .map(mec => {
-      const osDoMec = osComMecanico
-        .filter(o => o.mecanicoId === mec.id)
+  // OS do mecânico selecionado
+  const osMecanico = mecSelecionado
+    ? osConcluidas
+        .filter(o => o.mecanicoId === mecSelecionado)
         .sort((a, b) => {
           const da = parseDateBR(a.dataConclusao || a.dataEntrada || a.data)
           const db = parseDateBR(b.dataConclusao || b.dataEntrada || b.data)
           return (db?.getTime() || 0) - (da?.getTime() || 0)
         })
-      const receita = osDoMec.reduce((s, o) => s + totalOrdem(o), 0)
-      return {
-        mec,
-        osCount: osDoMec.length,
-        receita,
-        ticketMedio: osDoMec.length > 0 ? receita / osDoMec.length : 0,
-        os: osDoMec,
-      }
-    })
-    .filter(s => s.osCount > 0)
-    .sort((a, b) => b.osCount - a.osCount)
+    : []
 
-  const totalOS      = osFiltradas.length
-  const totalReceita = osFiltradas.reduce((s, o) => s + totalOrdem(o), 0)
-  const ticketMedio  = totalOS > 0 ? totalReceita / totalOS : 0
-  const maxOS        = statsPorMecanico[0]?.osCount || 1
+  const totalOSMec     = osMecanico.length
+  const totalServicosMec = osMecanico.reduce((s, o) => s + totalServicos(o), 0)
+  const mecAtual       = funcionarios.find(f => f.id === mecSelecionado)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Cabeçalho */}
       <div>
         <h2 className="text-xl font-bold text-slate-800">Produtividade</h2>
-        <p className="text-sm text-slate-400 mt-0.5">Desempenho dos mecânicos por período</p>
+        <p className="text-sm text-slate-400 mt-0.5">Serviços executados por mecânico</p>
       </div>
 
       {/* Filtro de período */}
@@ -123,128 +122,161 @@ export default function Produtividade() {
         )}
       </div>
 
-      {/* Cards resumo */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <CardStat label="OS Concluídas"   value={totalOS}          icon={FileText}   bg="bg-blue-50"    text="text-blue-600" />
-        <CardStat label="Receita Gerada"  value={fmt(totalReceita)} icon={DollarSign}  bg="bg-green-50"   text="text-green-600" />
-        <CardStat label="Mecânicos Ativos" value={statsPorMecanico.length} icon={Users} bg="bg-primary-50" text="text-primary-600" />
-        <CardStat label="Ticket Médio"    value={fmt(ticketMedio)} icon={TrendingUp}  bg="bg-purple-50"  text="text-purple-600" />
+      {/* Seletor de mecânico */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
+        <p className="text-sm font-medium text-slate-600 mb-3 flex items-center gap-2">
+          <Users size={15} className="text-slate-400" /> Selecione o Mecânico
+        </p>
+        {mecanicosAtivos.length === 0 ? (
+          <p className="text-sm text-slate-400 italic">Nenhum mecânico com OS concluídas no período</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {mecanicosAtivos.map(mec => {
+              const qtd = osConcluidas.filter(o => o.mecanicoId === mec.id).length
+              const selecionado = mecSelecionado === mec.id
+              return (
+                <button key={mec.id}
+                  onClick={() => { setMecSelecionado(selecionado ? null : mec.id); setOsExpandida(null) }}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${selecionado ? 'bg-primary-500 border-primary-500 text-white shadow-md' : 'border-slate-200 text-slate-700 hover:border-primary-300 hover:bg-primary-50'}`}>
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${selecionado ? 'bg-white/20 text-white' : 'bg-primary-100 text-primary-700'}`}>
+                    {mec.nome[0]}
+                  </div>
+                  <span>{mec.nome}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${selecionado ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    {qtd} OS
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Por mecânico */}
-      {statsPorMecanico.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-12 text-center">
-          <Users size={36} className="text-slate-200 mx-auto mb-3" />
-          {osFiltradas.length > 0
-            ? <><p className="text-slate-500 font-medium">{osFiltradas.length} OS concluída(s) sem mecânico atribuído</p>
-                <p className="text-slate-300 text-sm mt-1">Atribua um mecânico nas OS para ver o ranking</p></>
-            : <><p className="text-slate-500 font-medium">Nenhuma OS concluída no período</p>
-                <p className="text-slate-300 text-sm mt-1">Selecione "Todos" ou conclua algumas OS</p></>
-          }
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ranking de Mecânicos</h3>
-          {statsPorMecanico.map((s, idx) => {
-            const aberto = expandido === s.mec.id
-            const barPct = Math.round((s.osCount / maxOS) * 100)
-            const medalha = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
+      {/* Conteúdo do mecânico selecionado */}
+      {mecSelecionado && (
+        <>
+          {/* Cards resumo do mecânico */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                <FileText size={20} className="text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 font-medium">Carros Atendidos</p>
+                <p className="text-2xl font-bold text-slate-800">{totalOSMec}</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+                <TrendingUp size={20} className="text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 font-medium">Total em Serviços</p>
+                <p className="text-2xl font-bold text-green-600">{fmt(totalServicosMec)}</p>
+              </div>
+            </div>
+          </div>
 
-            return (
-              <div key={s.mec.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                <button className="w-full text-left px-5 py-4 hover:bg-slate-50 transition-colors"
-                  onClick={() => setExpandido(aberto ? null : s.mec.id)}>
-                  <div className="flex items-center gap-3">
-                    {/* Posição */}
-                    <div className="w-7 text-center flex-shrink-0">
-                      {medalha
-                        ? <span className="text-lg">{medalha}</span>
-                        : <span className="text-sm font-bold text-slate-400">{idx + 1}</span>
-                      }
-                    </div>
-                    {/* Avatar */}
-                    <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-sm flex-shrink-0">
-                      {s.mec.nome[0]}
-                    </div>
-                    {/* Dados */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-                        <span className="font-semibold text-slate-800">{s.mec.nome}</span>
-                        <div className="flex items-center gap-4 text-sm flex-wrap">
-                          <span className="text-slate-500">
-                            <span className="font-bold text-slate-700">{s.osCount}</span> OS
-                          </span>
-                          <span className="font-bold text-green-600">{fmt(s.receita)}</span>
-                          <span className="text-slate-400 text-xs hidden sm:inline">
-                            ticket médio {fmt(s.ticketMedio)}
-                          </span>
+          {/* Lista de carros */}
+          <div>
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Veículos atendidos por {mecAtual?.nome}
+            </h3>
+            <div className="space-y-2">
+              {osMecanico.map(o => {
+                const cliente  = getCliente(o.clienteId)
+                const veiculo  = getVeiculo(o.veiculoId)
+                const servicos = (o.itens || []).filter(i => i.tipo === 'servico')
+                const totalSrv = totalServicos(o)
+                const aberto   = osExpandida === o.id
+
+                return (
+                  <div key={o.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                    {/* Linha do carro */}
+                    <button className="w-full text-left px-5 py-4 hover:bg-slate-50 transition-colors"
+                      onClick={() => setOsExpandida(aberto ? null : o.id)}>
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0">
+                          <Car size={18} className="text-orange-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {veiculo?.placa && (
+                              <span className="font-mono text-sm font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                                {veiculo.placa}
+                              </span>
+                            )}
+                            <span className="text-sm font-medium text-slate-700">
+                              {veiculo?.modelo || '—'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-400">
+                            <span>{cliente?.nome || '—'}</span>
+                            <span>·</span>
+                            <span>{o.dataConclusao || o.dataEntrada || o.data || '—'}</span>
+                            <span>·</span>
+                            <span className="text-blue-500 font-medium">{servicos.length} serviço(s)</span>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-sm font-bold text-green-600">{fmt(totalSrv)}</p>
+                          <p className="text-xs text-slate-400">serviços</p>
+                        </div>
+                        <div className="ml-1 flex-shrink-0">
+                          {aberto
+                            ? <ChevronUp size={16} className="text-slate-400" />
+                            : <ChevronDown size={16} className="text-slate-400" />
+                          }
                         </div>
                       </div>
-                      {/* Barra */}
-                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-primary-400 rounded-full transition-all duration-500"
-                          style={{ width: `${barPct}%` }} />
-                      </div>
-                    </div>
-                    {aberto
-                      ? <ChevronUp size={16} className="text-slate-400 flex-shrink-0" />
-                      : <ChevronDown size={16} className="text-slate-400 flex-shrink-0" />
-                    }
-                  </div>
-                </button>
+                    </button>
 
-                {/* OS do mecânico */}
-                {aberto && (
-                  <div className="border-t border-slate-100 overflow-x-auto">
-                    <table className="w-full min-w-[480px]">
-                      <thead>
-                        <tr className="bg-slate-50 text-xs text-slate-500 uppercase">
-                          <th className="text-left px-5 py-2 font-semibold">OS</th>
-                          <th className="text-left px-5 py-2 font-semibold">Cliente</th>
-                          <th className="text-left px-5 py-2 font-semibold">Conclusão</th>
-                          <th className="text-right px-5 py-2 font-semibold">Valor</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {s.os.map(o => (
-                          <tr key={o.id} className="hover:bg-slate-50">
-                            <td className="px-5 py-2.5 text-sm font-mono text-slate-500">{o.id}</td>
-                            <td className="px-5 py-2.5 text-sm text-slate-700">{getCliente(o.clienteId)?.nome || '—'}</td>
-                            <td className="px-5 py-2.5 text-sm text-slate-500">{o.dataConclusao || o.dataEntrada || o.data || '—'}</td>
-                            <td className="px-5 py-2.5 text-right text-sm font-semibold text-slate-700">{fmt(totalOrdem(o))}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t border-slate-200 bg-slate-50">
-                          <td colSpan={3} className="px-5 py-2 text-xs font-semibold text-slate-500 text-right">Total</td>
-                          <td className="px-5 py-2 text-right text-sm font-bold text-green-600">{fmt(s.receita)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
+                    {/* Serviços do carro */}
+                    {aberto && (
+                      <div className="border-t border-slate-100 bg-slate-50">
+                        {servicos.length === 0 ? (
+                          <p className="px-5 py-4 text-sm text-slate-400 italic">Nenhum serviço registrado nesta OS</p>
+                        ) : (
+                          <div className="divide-y divide-slate-100">
+                            {servicos.map((srv, idx) => {
+                              const sub = pNum(srv.valorUnitario) * (Number(srv.quantidade) || 1) - pNum(srv.desconto || 0)
+                              return (
+                                <div key={idx} className="flex items-center justify-between px-5 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <Wrench size={13} className="text-slate-400 flex-shrink-0" />
+                                    <span className="text-sm text-slate-700">{srv.descricao}</span>
+                                    {Number(srv.quantidade) > 1 && (
+                                      <span className="text-xs text-slate-400">x{srv.quantidade}</span>
+                                    )}
+                                  </div>
+                                  <span className="text-sm font-semibold text-slate-700 ml-4 flex-shrink-0">{fmt(sub)}</span>
+                                </div>
+                              )
+                            })}
+                            <div className="flex items-center justify-between px-5 py-2.5 bg-white">
+                              <span className="text-xs font-semibold text-slate-500 uppercase">Total serviços</span>
+                              <span className="text-sm font-bold text-green-600">{fmt(totalSrv)}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Estado inicial - nenhum mecânico selecionado */}
+      {!mecSelecionado && mecanicosAtivos.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-10 text-center">
+          <Users size={32} className="text-slate-200 mx-auto mb-3" />
+          <p className="text-slate-400 font-medium">Selecione um mecânico acima</p>
+          <p className="text-slate-300 text-sm mt-1">para ver os veículos e serviços executados</p>
         </div>
       )}
-    </div>
-  )
-}
-
-function CardStat({ label, value, icon: Icon, bg, text }) {
-  return (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-lg ${bg} flex items-center justify-center flex-shrink-0`}>
-          <Icon size={20} className={text} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs text-slate-500 font-medium truncate">{label}</p>
-          <p className="text-lg font-bold text-slate-800 truncate">{value}</p>
-        </div>
-      </div>
     </div>
   )
 }
