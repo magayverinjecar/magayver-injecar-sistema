@@ -130,7 +130,7 @@ function tabelaVeiculo(veiculo, os, mecanico) {
       ${cel('MECÂNICO', mecanico?.nome || '')}
       ${cel('DATA ENTRADA', os.dataEntrada || os.data)}
       ${cel('DATA CONCLUSÃO', os.dataConclusao || '')}
-      <td style="border-right:0;padding:0"><div style="background:#f8fafc;font-size:8px;color:#64748b;font-weight:600;padding:2px 6px;border-bottom:1px solid #e2e8f0">STATUS</div><div style="padding:4px 6px;font-weight:700;font-size:10px;color:#f97316">${os.status}</div></td>
+      <td style="border-right:0;padding:0"><div style="background:#f8fafc;font-size:8px;color:#64748b;font-weight:600;padding:2px 6px;border-bottom:1px solid #e2e8f0">STATUS</div><div style="padding:4px 6px;font-weight:700;font-size:10px;color:#1e293b">${os.status}</div></td>
     </tr>
   </table>`
 }
@@ -183,7 +183,7 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
     const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
     return `<tr style="border-bottom:1px solid #f1f5f9">
       <td style="padding:6px 8px;vertical-align:top">
-        <span style="font-weight:700;color:#f97316">${String.fromCharCode(65 + idx)}1</span> — ${it.descricao}
+        <span style="font-weight:700;color:#1e293b">${String.fromCharCode(65 + idx)}1</span> — ${it.descricao}
         ${it.quantidade > 1 ? `<span style="font-size:9px;color:#64748b"> (${it.quantidade}x)</span>` : ''}
       </td>
       <td style="padding:6px 8px;text-align:right;white-space:nowrap;font-weight:700;vertical-align:top">${fmt(sub)}</td>
@@ -204,7 +204,7 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
 
   const body = `
     <!-- CABEÇALHO -->
-    <div style="padding-bottom:10px;border-bottom:3px solid #f97316;margin-bottom:10px">
+    <div style="padding-bottom:10px;border-bottom:3px solid #1e293b;margin-bottom:10px">
       <div style="font-size:20px;font-weight:900;color:#1e293b;letter-spacing:-0.5px">${cfg.nome || 'Oficina'}</div>
       <div style="font-size:10px;color:#475569;margin-top:2px">
         ${[cfg.telefone, cfg.email].filter(Boolean).join(' / ')}
@@ -216,7 +216,7 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
 
     <!-- BARRA OS -->
     <div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;padding:6px 10px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:16px;font-weight:900;color:#f97316">OS: ${os.id}</span>
+      <span style="font-size:16px;font-weight:900;color:#1e293b">OS: ${os.id}</span>
       <span style="font-size:11px;font-weight:700;color:#1e293b;border:1px solid #cbd5e1;background:#fff;padding:2px 10px;border-radius:3px">VIA CLIENTE</span>
       <span style="font-size:10px;color:#475569">Emissão: ${emissao}</span>
     </div>
@@ -293,10 +293,10 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
     <div style="border:1px solid #cbd5e1;border-radius:4px;padding:8px 12px;margin-bottom:14px;display:flex;justify-content:flex-end;gap:24px;align-items:center;background:#f8fafc">
       ${servicos.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL SERVIÇOS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalSrv)}</div></div>` : ''}
       ${pecas.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL PEÇAS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalPec)}</div></div>` : ''}
-      <div style="border-left:2px solid #e2e8f0;padding-left:24px"><div style="font-size:9px;color:#64748b;font-weight:600">VALOR TOTAL</div><div style="font-size:20px;font-weight:900;color:#f97316">${fmt(total)}</div></div>
+      <div style="border-left:2px solid #e2e8f0;padding-left:24px"><div style="font-size:9px;color:#64748b;font-weight:600">VALOR TOTAL</div><div style="font-size:20px;font-weight:900;color:#1e293b">${fmt(total)}</div></div>
     </div>
 
-    ${os.observacoes ? `<div style="font-size:10px;color:#475569;margin-bottom:12px;border-left:3px solid #f97316;padding-left:8px"><strong>Observações:</strong> ${os.observacoes}</div>` : ''}
+    ${os.observacoes ? `<div style="font-size:10px;color:#475569;margin-bottom:12px;border-left:3px solid #1e293b;padding-left:8px"><strong>Observações:</strong> ${os.observacoes}</div>` : ''}
 
     <!-- GARANTIA -->
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:8px 12px;margin-bottom:12px;text-align:center">
@@ -329,11 +329,11 @@ function gerarA4Comp(os, cliente, veiculo, mecanico, total, cfg) {
     @page { size: A4; margin: 12mm; }
     * { box-sizing: border-box; }
     body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #222; margin: 0; }
-    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #f97316; padding-bottom: 8px; margin-bottom: 10px; }
-    .empresa h1 { font-size: 18px; margin: 0; color: #f97316; }
+    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1e293b; padding-bottom: 8px; margin-bottom: 10px; }
+    .empresa h1 { font-size: 18px; margin: 0; color: #1e293b; }
     .empresa p { margin: 1px 0; font-size: 9px; color: #555; }
     .os-box { text-align: right; }
-    .os-num { font-size: 22px; font-weight: 900; color: #f97316; }
+    .os-num { font-size: 22px; font-weight: 900; color: #1e293b; }
     .status-badge { display: inline-block; background: #fef3c7; color: #92400e; padding: 1px 8px; border-radius: 20px; font-size: 10px; font-weight: bold; }
     .info-row { display: flex; gap: 8px; margin-bottom: 8px; }
     .info-row .col { flex: 1; border: 1px solid #e5e7eb; border-radius: 6px; padding: 7px 10px; }
@@ -346,9 +346,9 @@ function gerarA4Comp(os, cliente, veiculo, mecanico, total, cfg) {
     th:not(:first-child) { text-align: right; }
     td { padding: 5px 6px; border-bottom: 1px solid #f3f4f6; font-size: 10px; }
     td:not(:first-child) { text-align: right; }
-    .total-line { display: flex; justify-content: flex-end; gap: 12px; border-top: 2px solid #f97316; padding-top: 6px; }
+    .total-line { display: flex; justify-content: flex-end; gap: 12px; border-top: 2px solid #1e293b; padding-top: 6px; }
     .total-label { font-size: 12px; color: #6b7280; }
-    .total-val { font-size: 16px; font-weight: 900; color: #f97316; }
+    .total-val { font-size: 16px; font-weight: 900; color: #1e293b; }
     .footer { margin-top: 10px; border-top: 1px solid #e5e7eb; padding-top: 6px; font-size: 8px; color: #9ca3af; text-align: center; }
   `
   const body = `
@@ -415,10 +415,10 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
     @page { size: A5; margin: 10mm; }
     * { box-sizing: border-box; }
     body { font-family: Arial, Helvetica, sans-serif; font-size: 9px; color: #222; margin: 0; }
-    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #f97316; padding-bottom: 7px; margin-bottom: 9px; }
-    .empresa h1 { font-size: 15px; margin: 0; color: #f97316; }
+    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1e293b; padding-bottom: 7px; margin-bottom: 9px; }
+    .empresa h1 { font-size: 15px; margin: 0; color: #1e293b; }
     .empresa p { margin: 1px 0; font-size: 8px; color: #555; }
-    .os-num { font-size: 18px; font-weight: 900; color: #f97316; text-align: right; }
+    .os-num { font-size: 18px; font-weight: 900; color: #1e293b; text-align: right; }
     .os-sub { font-size: 8px; color: #6b7280; text-align: right; }
     .status-badge { display: inline-block; background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 20px; font-size: 9px; font-weight: bold; }
     .info { display: flex; gap: 6px; margin-bottom: 7px; }
@@ -432,8 +432,8 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
     th:not(:first-child) { text-align: right; }
     td { padding: 4px 5px; border-bottom: 1px solid #f3f4f6; }
     td:not(:first-child) { text-align: right; }
-    .total-line { display: flex; justify-content: flex-end; gap: 10px; border-top: 2px solid #f97316; padding-top: 5px; }
-    .total-val { font-size: 14px; font-weight: 900; color: #f97316; }
+    .total-line { display: flex; justify-content: flex-end; gap: 10px; border-top: 2px solid #1e293b; padding-top: 5px; }
+    .total-val { font-size: 14px; font-weight: 900; color: #1e293b; }
     .footer { margin-top: 8px; font-size: 7px; color: #9ca3af; text-align: center; border-top: 1px solid #e5e7eb; padding-top: 5px; }
   `
   const body = `
@@ -568,7 +568,7 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
     const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto || 0)
     return `<tr style="border-bottom:1px solid #f1f5f9">
       <td style="padding:6px 8px;vertical-align:top">
-        <span style="font-weight:700;color:#f97316">${String.fromCharCode(65 + idx)}1</span> — ${it.descricao}
+        <span style="font-weight:700;color:#1e293b">${String.fromCharCode(65 + idx)}1</span> — ${it.descricao}
         ${Number(it.quantidade) > 1 ? `<span style="font-size:9px;color:#64748b"> (${it.quantidade}x)</span>` : ''}
       </td>
       <td style="padding:6px 8px;text-align:right;white-space:nowrap;font-weight:700;vertical-align:top">${fmt(sub)}</td>
@@ -593,7 +593,7 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
 
   const body = `
     <!-- CABEÇALHO -->
-    <div style="padding-bottom:10px;border-bottom:3px solid #f97316;margin-bottom:10px">
+    <div style="padding-bottom:10px;border-bottom:3px solid #1e293b;margin-bottom:10px">
       <div style="font-size:20px;font-weight:900;color:#1e293b;letter-spacing:-0.5px">${cfg.nome || 'Oficina'}</div>
       <div style="font-size:10px;color:#475569;margin-top:2px">
         ${[cfg.telefone, cfg.email].filter(Boolean).join(' / ')}
@@ -605,7 +605,7 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
 
     <!-- BARRA ORÇAMENTO -->
     <div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;padding:6px 10px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:16px;font-weight:900;color:#f97316">ORÇAMENTO: ${orc.id || orc.numero || ''}</span>
+      <span style="font-size:16px;font-weight:900;color:#1e293b">ORÇAMENTO: ${orc.id || orc.numero || ''}</span>
       <span style="font-size:11px;font-weight:700;color:#1e293b;border:1px solid #cbd5e1;background:#fff;padding:2px 10px;border-radius:3px">VIA CLIENTE</span>
       <span style="font-size:10px;color:#475569">Emissão: ${emissao}</span>
     </div>
@@ -655,7 +655,7 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
     <div style="border:1px solid #cbd5e1;border-radius:4px;padding:8px 12px;margin-bottom:14px;display:flex;justify-content:flex-end;gap:24px;align-items:center;background:#f8fafc">
       ${servicos.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL SERVIÇOS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalSrv)}</div></div>` : ''}
       ${pecas.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL PEÇAS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalPec)}</div></div>` : ''}
-      <div style="border-left:2px solid #e2e8f0;padding-left:24px"><div style="font-size:9px;color:#64748b;font-weight:600">VALOR TOTAL</div><div style="font-size:20px;font-weight:900;color:#f97316">${fmt(total)}</div></div>
+      <div style="border-left:2px solid #e2e8f0;padding-left:24px"><div style="font-size:9px;color:#64748b;font-weight:600">VALOR TOTAL</div><div style="font-size:20px;font-weight:900;color:#1e293b">${fmt(total)}</div></div>
     </div>
 
     <!-- OBSERVAÇÕES E VALIDADE -->
