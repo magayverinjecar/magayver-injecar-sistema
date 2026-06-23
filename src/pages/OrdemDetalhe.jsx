@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, Lock, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Banknote, Smartphone, CreditCard, ArrowRightLeft } from 'lucide-react'
 import { useApp } from '../context/AppContext'
@@ -115,12 +115,6 @@ export default function OrdemDetalhe() {
     { label: 'Boleto', icon: FileText },
   ]
 
-  useEffect(() => {
-    if (modalFinalizar) {
-      setPgtos([{ id: 1, forma: 'PIX', valor: total.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }])
-    }
-  }, [modalFinalizar])
-
   function addPgto() {
     const soma = pgtos.reduce((s, p) => s + pNum(p.valor), 0)
     const restante = Math.max(0, total - soma)
@@ -203,7 +197,7 @@ export default function OrdemDetalhe() {
           <button onClick={whatsapp} className="flex items-center gap-1.5 border border-green-200 text-green-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-green-50 transition-colors whitespace-nowrap flex-shrink-0"><MessageCircle size={14} />WhatsApp</button>
           <button onClick={gerarOrcamento} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><FileText size={14} />Gerar Orçamento</button>
           {os.status !== 'Concluída' && os.status !== 'Cancelada' && (
-            <button onClick={() => setModalFinalizar(true)} className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
+            <button onClick={() => { setPgtos([{ id: 1, forma: 'PIX', valor: total.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }]); setModalFinalizar(true) }} className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
               <CheckCircle2 size={14} />Finalizar OS
             </button>
           )}
