@@ -118,7 +118,6 @@ function tabelaVeiculo(veiculo, os, mecanico) {
   <table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;margin-bottom:0;table-layout:fixed">
     <tr>
       ${cel('PLACA', veiculo.placa)}
-      ${cel('FABRICANTE', veiculo.fabricante || veiculo.marca || '')}
       ${cel('MODELO', veiculo.modelo)}
       ${cel('ANO', veiculo.ano)}
       ${cel('MOTOR', veiculo.motor || '')}
@@ -148,7 +147,6 @@ function tabelaVeiculoOrcamento(veiculo) {
 
   const linha1 = [
     cel('PLACA', veiculo.placa),
-    cel('FABRICANTE', veiculo.fabricante || veiculo.marca || ''),
     cel('MODELO', veiculo.modelo),
     cel('ANO', veiculo.ano),
     cel('MOTOR', veiculo.motor || ''),
