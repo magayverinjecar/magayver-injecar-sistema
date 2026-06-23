@@ -34,6 +34,7 @@ export default function Orcamentos() {
   const [validade, setValidade] = useState('7 dias')
   const [modalItem, setModalItem] = useState(false)
   const [item, setItem] = useState(VAZIO_ITEM)
+  const [itemEditandoId, setItemEditandoId] = useState(null)
   const [modoOrc, setModoOrc] = useState('cadastrado') // 'cadastrado' | 'avulso'
   const [criarNovo, setCriarNovo] = useState(false)
   const [novoForm, setNovoForm] = useState({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
@@ -125,9 +126,27 @@ export default function Orcamentos() {
     if (p) setItem(it => ({ ...it, refId: id, descricao: p.nome, valorUnitario: p.preco }))
   }
 
+  function abrirModalItem(it = null) {
+    if (it) {
+      setItem({ ...it })
+      setItemEditandoId(it.id)
+    } else {
+      setItem(VAZIO_ITEM)
+      setItemEditandoId(null)
+    }
+    setModoOrc('avulso')
+    setCriarNovo(false)
+    setModalItem(true)
+  }
+
   function adicionarItem() {
     if (!item.descricao.trim()) return
-    setItens(prev => [...prev, { ...item, id: Date.now() }])
+    if (itemEditandoId !== null) {
+      setItens(prev => prev.map(i => i.id === itemEditandoId ? { ...item, id: itemEditandoId } : i))
+      setItemEditandoId(null)
+    } else {
+      setItens(prev => [...prev, { ...item, id: Date.now() }])
+    }
     setItem(VAZIO_ITEM)
     setModalItem(false)
   }
@@ -414,7 +433,7 @@ export default function Orcamentos() {
                 <h3 className="font-semibold text-slate-800">Itens do Orçamento</h3>
                 <p className="text-xs text-slate-400">Serviços e peças</p>
               </div>
-              <button onClick={() => { setItem(VAZIO_ITEM); setModalItem(true) }} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">
+              <button onClick={() => abrirModalItem()} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">
                 <Plus size={15} />Adicionar Item
               </button>
             </div>
@@ -437,8 +456,9 @@ export default function Orcamentos() {
                           <p className="text-xs text-slate-400">{it.quantidade}x {fmt(parseNum(it.valorUnitario))}{parseNum(it.desconto) > 0 && ` · desc. ${fmt(parseNum(it.desconto))}`}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-slate-700">{fmt(subtotal)}</span>
+                        <button onClick={() => abrirModalItem(it)} className="p-1 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400 transition-colors"><Pencil size={14} /></button>
                         <button onClick={() => removerItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
                       </div>
                     </div>
@@ -494,11 +514,11 @@ export default function Orcamentos() {
       {/* === MODAL ADICIONAR ITEM === */}
       {modalItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => { setModalItem(false); setCriarNovo(false); setModoOrc('cadastrado') }} />
+          <div className="absolute inset-0 bg-black/40" onClick={() => { setModalItem(false); setCriarNovo(false); setModoOrc('cadastrado'); setItemEditandoId(null) }} />
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h3 className="font-semibold text-slate-800">Adicionar Item</h3>
-              <button onClick={() => { setModalItem(false); setCriarNovo(false); setModoOrc('cadastrado') }} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"><X size={18} /></button>
+              <h3 className="font-semibold text-slate-800">{itemEditandoId !== null ? 'Editar Item' : 'Adicionar Item'}</h3>
+              <button onClick={() => { setModalItem(false); setCriarNovo(false); setModoOrc('cadastrado'); setItemEditandoId(null) }} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"><X size={18} /></button>
             </div>
 
             <div className="px-5 py-4 space-y-3">
@@ -623,7 +643,7 @@ export default function Orcamentos() {
 
             <div className="px-5 py-4">
               <button onClick={adicionarItem} className="w-full bg-primary-500 hover:bg-primary-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
-                Adicionar
+                {itemEditandoId !== null ? 'Salvar Alterações' : 'Adicionar'}
               </button>
             </div>
           </div>
