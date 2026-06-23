@@ -38,6 +38,7 @@ export default function Orcamentos() {
   const [modoOrc, setModoOrc] = useState('cadastrado') // 'cadastrado' | 'avulso'
   const [criarNovo, setCriarNovo] = useState(false)
   const [novoForm, setNovoForm] = useState({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
+  const [taxaPct, setTaxaPct] = useState('10')
 
   // Pré-preenche o formulário quando vem de uma OS via location.state.fromOS
   useEffect(() => {
@@ -152,6 +153,23 @@ export default function Orcamentos() {
   }
   function removerItem(id) {
     setItens(prev => prev.filter(i => i.id !== id))
+  }
+
+  function aplicarTaxaItemOrc(id) {
+    const pct = parseFloat(taxaPct) || 0
+    if (!pct) return
+    setItens(prev => prev.map(it => it.id === id
+      ? { ...it, valorUnitario: (parseNum(it.valorUnitario) * (1 + pct / 100)).toFixed(2) }
+      : it))
+  }
+
+  function aplicarTaxaTodosOrc() {
+    const pct = parseFloat(taxaPct) || 0
+    if (!pct) return
+    setItens(prev => prev.map(it => ({
+      ...it,
+      valorUnitario: (parseNum(it.valorUnitario) * (1 + pct / 100)).toFixed(2),
+    })))
   }
 
   function salvarNovo() {
@@ -428,14 +446,26 @@ export default function Orcamentos() {
 
           {/* Itens do Orçamento */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-            <div className="flex items-start justify-between mb-4">
+            <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
               <div>
                 <h3 className="font-semibold text-slate-800">Itens do Orçamento</h3>
                 <p className="text-xs text-slate-400">Serviços e peças</p>
               </div>
-              <button onClick={() => abrirModalItem()} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">
-                <Plus size={15} />Adicionar Item
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                  <span className="text-xs font-medium text-amber-700 whitespace-nowrap">Acréscimo:</span>
+                  <input type="number" value={taxaPct} onChange={e => setTaxaPct(e.target.value)} min="0" max="100" step="0.5"
+                    className="w-12 text-sm text-right focus:outline-none bg-transparent font-semibold text-amber-800" />
+                  <span className="text-sm font-semibold text-amber-700">%</span>
+                  <button onClick={aplicarTaxaTodosOrc}
+                    className="text-xs px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white rounded font-medium transition-colors whitespace-nowrap">
+                    Todos
+                  </button>
+                </div>
+                <button onClick={() => abrirModalItem()} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">
+                  <Plus size={15} />Adicionar Item
+                </button>
+              </div>
             </div>
 
             {itens.length === 0 ? (
@@ -458,6 +488,7 @@ export default function Orcamentos() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-slate-700">{fmt(subtotal)}</span>
+                        <button onClick={() => aplicarTaxaItemOrc(it.id)} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-300 hover:text-amber-500 text-xs font-bold transition-colors">%</button>
                         <button onClick={() => abrirModalItem(it)} className="p-1 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400 transition-colors"><Pencil size={14} /></button>
                         <button onClick={() => removerItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
                       </div>

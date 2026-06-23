@@ -38,6 +38,7 @@ export default function OrdemDetalhe() {
   const [pgtos, setPgtos] = useState([])
   const [modalReabrir, setModalReabrir] = useState(false)
   const [editandoItem, setEditandoItem] = useState(null)
+  const [taxaPct, setTaxaPct] = useState('10')
 
   if (!os) {
     return (
@@ -162,6 +163,20 @@ export default function OrdemDetalhe() {
     setModalReabrir(false)
   }
 
+  function aplicarTaxaItem(item) {
+    const pct = parseFloat(taxaPct) || 0
+    if (!pct) return
+    editarItemOrdem(os.id, item.id, { valorUnitario: (pNum(item.valorUnitario) * (1 + pct / 100)).toFixed(2).replace('.', ',') })
+  }
+
+  function aplicarTaxaTodos() {
+    const pct = parseFloat(taxaPct) || 0
+    if (!pct || !os.itens?.length) return
+    os.itens.forEach(item => {
+      editarItemOrdem(os.id, item.id, { valorUnitario: (pNum(item.valorUnitario) * (1 + pct / 100)).toFixed(2).replace('.', ',') })
+    })
+  }
+
   return (
     <div className="space-y-4">
       {/* Cabeçalho */}
@@ -254,12 +269,24 @@ export default function OrdemDetalhe() {
       {/* ===== ORÇAMENTO ===== */}
       {aba === 'Orçamento' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <div>
               <h3 className="font-semibold text-slate-800">Itens / Orçamento</h3>
               <p className="text-sm text-slate-500">Total: {fmt(total)}</p>
             </div>
-            <button onClick={() => setModalItem(true)} className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"><Plus size={15} />Adicionar</button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                <span className="text-xs font-medium text-amber-700 whitespace-nowrap">Acréscimo:</span>
+                <input type="number" value={taxaPct} onChange={e => setTaxaPct(e.target.value)} min="0" max="100" step="0.5"
+                  className="w-12 text-sm text-right focus:outline-none bg-transparent font-semibold text-amber-800" />
+                <span className="text-sm font-semibold text-amber-700">%</span>
+                <button onClick={aplicarTaxaTodos}
+                  className="text-xs px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white rounded font-medium transition-colors whitespace-nowrap">
+                  Todos
+                </button>
+              </div>
+              <button onClick={() => setModalItem(true)} className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"><Plus size={15} />Adicionar</button>
+            </div>
           </div>
           {(!os.itens || os.itens.length === 0) ? (
             <p className="text-center text-sm text-slate-400 py-10">Nenhum item adicionado</p>
@@ -292,6 +319,7 @@ export default function OrdemDetalhe() {
                     <td className="py-2.5 text-right text-sm font-semibold text-slate-700">{fmt(pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto))}</td>
                     <td className="py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => aplicarTaxaItem(it)} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-300 hover:text-amber-500 text-xs font-bold transition-colors">%</button>
                         <button onClick={() => setEditandoItem({ ...it, quantidade: String(it.quantidade), valorUnitario: String(it.valorUnitario), desconto: String(it.desconto || '0'), mecanicoId: it.mecanicoId || '' })} className="p-1 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400"><Pencil size={14} /></button>
                         <button onClick={() => removerItemOrdem(os.id, it.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400"><Trash2 size={14} /></button>
                       </div>
