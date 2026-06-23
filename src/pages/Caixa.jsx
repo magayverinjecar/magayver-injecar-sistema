@@ -18,6 +18,7 @@ export default function Caixa() {
   const [modalMov, setModalMov] = useState(null) // 'sangria' | 'reforco'
   const [movValor, setMovValor] = useState('')
   const [movMotivo, setMovMotivo] = useState('')
+  const [movForma, setMovForma] = useState('Dinheiro')
   const [editMov, setEditMov] = useState(null) // movimento sendo editado
   const [modalFechar, setModalFechar] = useState(false)
   const [contagem, setContagem] = useState({})
@@ -86,7 +87,7 @@ export default function Caixa() {
     ...t.movimentos.map(m => ({
       id: 'm' + m.id,
       tipo: m.tipo,
-      forma: 'Dinheiro',
+      forma: m.forma || 'Dinheiro',
       valor: m.valor,
       taxa: 0,
       motivo: m.motivo || '—',
@@ -101,11 +102,11 @@ export default function Caixa() {
     { label: 'Saldo Esperado', value: fmt(saldoEsperado), cor: 'text-slate-800', sub: '' },
   ]
 
-  function abrirMov(tipo) { setModalMov(tipo); setMovValor(''); setMovMotivo('') }
+  function abrirMov(tipo) { setModalMov(tipo); setMovValor(''); setMovMotivo(''); setMovForma('Dinheiro') }
   function confirmarMov() {
     if (!movValor) return
-    if (modalMov === 'sangria') registrarSangria(movValor, movMotivo)
-    else registrarReforco(movValor, movMotivo)
+    if (modalMov === 'sangria') registrarSangria(movValor, movMotivo, movForma)
+    else registrarReforco(movValor, movMotivo, movForma)
     setModalMov(null)
   }
 
@@ -295,6 +296,15 @@ export default function Caixa() {
       {/* Modais Sangria/Reforço */}
       {modalMov && (
         <ModalBase title={modalMov === 'sangria' ? 'Registrar Sangria' : 'Registrar Reforço'} onClose={() => setModalMov(null)}>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Forma</label>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {['Dinheiro', 'PIX', 'Transferência', 'Cartão Débito', 'Cartão Crédito', 'Boleto'].map(f => (
+              <button key={f} type="button" onClick={() => setMovForma(f)}
+                className={`py-2 px-2 rounded-lg border text-xs font-medium transition-colors ${movForma === f ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                {f}
+              </button>
+            ))}
+          </div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Valor</label>
           <input type="number" value={movValor} onChange={e => setMovValor(e.target.value)} placeholder="0,00"
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-3" autoFocus />

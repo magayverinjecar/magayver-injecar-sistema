@@ -479,12 +479,12 @@ export function AppProvider({ children }) {
     return numero
   }
 
-  function registrarSangria(valor, motivo) {
-    setCaixaTurno(t => t ? { ...t, movimentos: [{ id: Date.now(), tipo: 'sangria', valor: pNum(valor), motivo, hora: horaAgora() }, ...t.movimentos] } : t)
+  function registrarSangria(valor, motivo, forma = 'Dinheiro') {
+    setCaixaTurno(t => t ? { ...t, movimentos: [{ id: Date.now(), tipo: 'sangria', valor: pNum(valor), motivo, forma, hora: horaAgora() }, ...t.movimentos] } : t)
   }
 
-  function registrarReforco(valor, motivo) {
-    setCaixaTurno(t => t ? { ...t, movimentos: [{ id: Date.now(), tipo: 'reforco', valor: pNum(valor), motivo, hora: horaAgora() }, ...t.movimentos] } : t)
+  function registrarReforco(valor, motivo, forma = 'Dinheiro') {
+    setCaixaTurno(t => t ? { ...t, movimentos: [{ id: Date.now(), tipo: 'reforco', valor: pNum(valor), motivo, forma, hora: horaAgora() }, ...t.movimentos] } : t)
   }
 
   function fecharCaixa(contagem, justificativa, saldoEsperado, totalContado) {
