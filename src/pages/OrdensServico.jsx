@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, Plus, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
@@ -24,6 +24,7 @@ export const statusColor = {
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const vazio = { clienteId: '', veiculoId: '', kmEntrada: '', mecanicoId: '', descricaoProblema: '' }
+const RASCUNHO_KEY = 'nova-os-rascunho'
 
 export default function OrdensServico() {
   const { ordens, novaOrdem, getCliente, getVeiculo, clientes, veiculosPorCliente, funcionarios, totalOrdem, checklists } = useApp()
@@ -35,7 +36,16 @@ export default function OrdensServico() {
   const [form, setForm] = useState(vazio)
   const [buscaCliente, setBuscaCliente] = useState('')
   const [dropdownAberto, setDropdownAberto] = useState(false)
+  const [temRascunho, setTemRascunho] = useState(false)
   const buscaRef = useRef(null)
+
+  // auto-save: grava rascunho no localStorage a cada mudança enquanto o modal está aberto
+  useEffect(() => {
+    if (!modal) return
+    try {
+      localStorage.setItem(RASCUNHO_KEY, JSON.stringify({ form, buscaCliente }))
+    } catch {}
+  }, [form, buscaCliente, modal])
 
   const veiculosDoCliente = form.clienteId ? veiculosPorCliente(Number(form.clienteId)) : []
 
@@ -52,10 +62,29 @@ export default function OrdensServico() {
   }
 
   function abrirModal() {
-    setForm(vazio)
-    setBuscaCliente('')
+    let restorou = false
+    try {
+      const salvo = localStorage.getItem(RASCUNHO_KEY)
+      if (salvo) {
+        const draft = JSON.parse(salvo)
+        if (draft.form?.clienteId || draft.buscaCliente) {
+          setForm(draft.form || vazio)
+          setBuscaCliente(draft.buscaCliente || '')
+          restorou = true
+        }
+      }
+    } catch {}
+    if (!restorou) { setForm(vazio); setBuscaCliente('') }
+    setTemRascunho(restorou)
     setDropdownAberto(false)
     setModal(true)
+  }
+
+  function limparRascunho() {
+    localStorage.removeItem(RASCUNHO_KEY)
+    setForm(vazio)
+    setBuscaCliente('')
+    setTemRascunho(false)
   }
 
   const filtradas = ordens.filter(o => {
@@ -83,6 +112,7 @@ export default function OrdensServico() {
       mecanicoId: form.mecanicoId ? Number(form.mecanicoId) : null,
       descricaoProblema: form.descricaoProblema,
     })
+    localStorage.removeItem(RASCUNHO_KEY)
     setForm(vazio)
     setModal(false)
     navigate(`/ordens-servico/${encodeURIComponent(id)}`)
@@ -181,6 +211,12 @@ export default function OrdensServico() {
       {modal && (
         <Modal title="Nova Ordem de Serviço" onClose={() => { setModal(false); setForm(vazio) }}>
           <div className="space-y-4">
+            {temRascunho && (
+              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg">
+                <span>Rascunho restaurado automaticamente</span>
+                <button onClick={limparRascunho} className="font-semibold underline hover:text-amber-900 ml-2">Limpar</button>
+              </div>
+            )}
             <div className="relative">
               <label className="block text-sm font-medium text-slate-700 mb-1">Cliente *</label>
               <div className="relative">
