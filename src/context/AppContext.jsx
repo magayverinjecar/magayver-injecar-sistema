@@ -65,12 +65,13 @@ export function AppProvider({ children }) {
   const [fornecedores, _setFornecedores] = useState([])
   const [caixaTurno, _setCaixaTurno] = useState(null)
   const [caixaHistorico, _setCaixaHistorico] = useState([])
+  const [config, _setConfig] = useState({})
 
   // Refs mantêm o valor atual para uso síncrono dentro dos setters
   const r = useRef({
     clientes: [], veiculos: [], ordens: [], estoque: [], financeiro: [],
     agenda: [], funcionarios: [], servicos: [], checklists: [], orcamentos: [],
-    compras: [], fornecedores: [], caixaHistorico: [], caixaTurno: null,
+    compras: [], fornecedores: [], caixaHistorico: [], caixaTurno: null, config: {},
   })
 
   // Carrega todos os dados ao montar
@@ -123,6 +124,15 @@ export function AppProvider({ children }) {
       const turno = turnoRows?.[0] ? { id: 'caixa-turno', ...turnoRows[0].data } : null
       r.current.caixaTurno = turno
       _setCaixaTurno(turno)
+
+      const { data: configRows, error: configErr } = await supabase
+        .from('configuracoes').select('id, data').eq('id', 'config-oficina')
+      if (configErr) console.error('[configuracoes] Erro ao carregar:', configErr)
+      const configData = configRows?.[0]?.data || {}
+      r.current.config = configData
+      _setConfig(configData)
+      try { localStorage.setItem('config-oficina', JSON.stringify(configData)) } catch {}
+
       setCarregando(false)
     }
     init().catch(e => { console.error(e); setCarregando(false) })
@@ -162,6 +172,16 @@ export function AppProvider({ children }) {
       const turno = turnoRows?.[0] ? { id: 'caixa-turno', ...turnoRows[0].data } : null
       r.current.caixaTurno = turno
       _setCaixaTurno(turno)
+    })
+
+    // configuracoes: query especial (linha única com id fixo)
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes' }, async () => {
+      const { data: configRows } = await supabase
+        .from('configuracoes').select('id, data').eq('id', 'config-oficina')
+      const configData = configRows?.[0]?.data || {}
+      r.current.config = configData
+      _setConfig(configData)
+      try { localStorage.setItem('config-oficina', JSON.stringify(configData)) } catch {}
     })
 
     ch.subscribe()
@@ -207,6 +227,16 @@ export function AppProvider({ children }) {
       supabase.from('caixa_turno').upsert({ id: 'caixa-turno', data })
         .then(({ error }) => { if (error) console.error('[caixa_turno] Erro ao salvar:', error) })
     }
+  }
+
+  function setConfig(valOrFn) {
+    const prev = r.current.config
+    const next = valOrFn instanceof Function ? valOrFn(prev) : valOrFn
+    r.current.config = next
+    _setConfig(next)
+    try { localStorage.setItem('config-oficina', JSON.stringify(next)) } catch {}
+    supabase.from('configuracoes').upsert({ id: 'config-oficina', data: next })
+      .then(({ error }) => { if (error) console.error('[configuracoes] Erro ao salvar:', error) })
   }
 
   // --- HELPERS ---
@@ -548,6 +578,7 @@ export function AppProvider({ children }) {
       getCliente, getVeiculo, getFuncionario,
       checklists, setChecklists, gerarNumeroChecklist,
       veiculosPorCliente, ordensPorCliente, ordensPorVeiculo,
+      config, setConfig,
       carregando,
     }}>
       {children}
