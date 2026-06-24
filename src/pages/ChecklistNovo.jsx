@@ -402,30 +402,28 @@ export default function ChecklistNovo() {
   function proximo() { if (validar()) { setPasso(p => p + 1); setErros({}) } }
   function anterior() { setPasso(p => p - 1); setErros({}) }
 
-  // Salva o que foi alterado até agora sem exigir todos os passos (modo edição)
+  // Salva o que foi preenchido até agora sem sair do formulário
   function salvarRapido() {
-    if (!ckEditar) return
-    setChecklists(prev => prev.map(c => c.id === ckEditar.id ? {
-      ...c,
-      clienteNome: cliente.nome,
-      clienteTelefone: cliente.telefone,
-      clienteTelefone2: cliente.telefone2,
-      clienteCpfCnpj: cliente.cpfCnpj,
-      clienteEmail: cliente.email,
-      clienteEndereco: [cliente.endereco, cliente.numero, cliente.bairro, cliente.cidadeEstado].filter(Boolean).join(', '),
-      veiculoModelo: veiculo.modelo,
-      veiculoPlaca: veiculo.placa,
-      veiculoCor: veiculo.cor,
-      veiculoAno: veiculo.ano,
-      veiculoMotor: veiculo.motor,
-      kmEntrada: veiculo.kmEntrada,
-      ultimaRevisao: veiculo.ultimaRevisao,
-      numCondutores: veiculo.numCondutores,
-      combustivel: veiculo.combustivel,
-      luzesPainel,
-      relatoCliente,
-    } : c))
-    navigate('/checklist/gerenciar')
+    const dados = getDadosAtuais()
+    if (ckEditar) {
+      setChecklists(prev => prev.map(c => c.id === ckEditar.id ? { ...c, ...dados } : c))
+    } else {
+      setChecklists(prev => {
+        const jaExiste = prev.find(c => c.id === ckIdNovo)
+        if (jaExiste) return prev.map(c => c.id === ckIdNovo ? { ...c, ...dados } : c)
+        draftSavedRef.current = true
+        return [{
+          id: ckIdNovo, numero: gerarNumeroChecklist(), status: 'Rascunho',
+          criadoEm: new Date().toLocaleString('pt-BR'), ...dados,
+          fotos: [], inspecaoVisual: [], diagnostico: [],
+          observacoesTecnicas: '', tecnicoId: null, tecnicoNome: '',
+          diagnosticadoEm: null, osId: null, atendente: currentUser?.nome || '',
+        }, ...prev]
+      })
+      draftSavedRef.current = true
+    }
+    setSaveStatus('salvo')
+    setTimeout(() => setSaveStatus(''), 2500)
   }
 
   // ── Finalizar ────────────────────────────────────────────────
@@ -912,13 +910,11 @@ export default function ChecklistNovo() {
         </button>
 
         <div className="flex items-center gap-2">
-          {/* Botão "Salvar Agora" — aparece em TODOS os passos durante edição */}
-          {ckEditar && (
-            <button onClick={salvarRapido}
-              className="flex items-center gap-2 border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors">
-              <Save size={16} /> Salvar Agora
-            </button>
-          )}
+          {/* Botão "Salvar Agora" — aparece em todos os passos */}
+          <button onClick={salvarRapido}
+            className="flex items-center gap-2 border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors">
+            <Save size={16} /> {saveStatus === 'salvo' ? 'Salvo!' : 'Salvar Agora'}
+          </button>
 
           {passo < 4 ? (
             <button onClick={proximo}
