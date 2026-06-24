@@ -286,7 +286,7 @@ export default function Orcamentos() {
       itens: itensOS,
     })
     mudarStatus(orc.id, 'Convertido')
-    navigate(`/ordens/${osId}`)
+    navigate(`/ordens-servico/${encodeURIComponent(osId)}`)
   }
 
   function enviarWhatsapp() {
