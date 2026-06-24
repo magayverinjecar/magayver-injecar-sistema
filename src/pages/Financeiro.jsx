@@ -24,7 +24,7 @@ function diasVencimento(dataStr) {
 export default function Financeiro() {
   const {
     financeiro, setFinanceiro, adicionarLancamento,
-    devedores, getCliente, pagarOrdem, resumoFinanceiro,
+    devedores, getCliente, pagarOrdem, resumoFinanceiro, totalOrdem,
     compras, atualizarCompra,
     caixaTurno, registrarSangria,
   } = useApp()
@@ -270,7 +270,7 @@ export default function Financeiro() {
                     <p className="text-xs text-slate-400">{o.servico} · {o.data}</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <p className="text-sm font-bold text-orange-600">R$ {o.valor}</p>
+                    <p className="text-sm font-bold text-orange-600">{fmt(totalOrdem(o))}</p>
                     <button onClick={() => pagarOrdem(o.id)}
                       className="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
                       Receber
