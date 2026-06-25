@@ -553,8 +553,8 @@ export function AppProvider({ children }) {
   }
 
   const resumoFinanceiro = {
-    receitas: financeiro.filter(f => f.tipo === 'receita').reduce((s, f) => s + pValor(f.valor), 0),
-    despesas: financeiro.filter(f => f.tipo === 'despesa').reduce((s, f) => s + pValor(f.valor), 0),
+    receitas: financeiro.filter(f => f.tipo === 'receita' && !f.pendente).reduce((s, f) => s + pValor(f.valor), 0),
+    despesas: financeiro.filter(f => f.tipo === 'despesa' && !f.pendente).reduce((s, f) => s + pValor(f.valor), 0),
   }
 
   const estoqueAlerta = estoque.filter(i => Number(i.estoque) <= Number(i.minimo))
