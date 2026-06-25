@@ -205,12 +205,12 @@ export default function Agenda() {
           })}
         </div>
 
-        <div className={`grid min-h-64`} style={{ gridTemplateColumns: `repeat(${diaVisao.length}, 1fr)` }}>
+        <div className={`grid`} style={{ gridTemplateColumns: `repeat(${diaVisao.length}, 1fr)` }}>
           {diaVisao.map((dia, i) => {
             const ags = agendamentosNoDia(dia)
             const ehHoje = toLocaleDateStr(dia) === toLocaleDateStr(hoje)
             return (
-              <div key={i} className={`border-r border-slate-100 last:border-r-0 p-2 min-h-48 space-y-1.5 ${ehHoje ? 'bg-primary-50/30' : ''}`}>
+              <div key={i} className={`border-r border-slate-100 last:border-r-0 p-2 overflow-y-auto space-y-1.5 ${ehHoje ? 'bg-primary-50/30' : ''}`} style={{ height: '420px' }}>
                 {ags.length === 0 && (
                   <p className="text-xs text-slate-300 text-center mt-4">Sem agendamentos</p>
                 )}
