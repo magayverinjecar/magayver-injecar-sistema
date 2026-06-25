@@ -79,7 +79,13 @@ export default function Agenda() {
   }
 
   function abrirModal(dia) {
-    const dataStr = dia ? dia.toISOString().split('T')[0] : ''
+    let dataStr = ''
+    if (dia) {
+      const y = dia.getFullYear()
+      const m = String(dia.getMonth() + 1).padStart(2, '0')
+      const d = String(dia.getDate()).padStart(2, '0')
+      dataStr = `${y}-${m}-${d}`
+    }
     setFormC({ ...VAZIO_CADASTRADO, data: dataStr })
     setFormA({ ...VAZIO_AVULSO, data: dataStr })
     setModal(true)
