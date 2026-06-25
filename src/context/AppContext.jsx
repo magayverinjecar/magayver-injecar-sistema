@@ -117,23 +117,32 @@ export function AppProvider({ children }) {
       _setFornecedores(fornecedoresData)
       _setCaixaHistorico(caixaHistoricoData)
 
-      // caixa_turno: sempre 1 linha com id fixo 'caixa-turno'
-      const { data: turnoRows, error: turnoErr } = await supabase
-        .from('caixa_turno').select('id, data').eq('id', 'caixa-turno')
-      if (turnoErr) console.error('[caixa_turno] Erro ao carregar:', turnoErr)
-      const turno = turnoRows?.[0] ? { id: 'caixa-turno', ...turnoRows[0].data } : null
-      r.current.caixaTurno = turno
-      _setCaixaTurno(turno)
-
-      const { data: configRows, error: configErr } = await supabase
-        .from('configuracoes').select('id, data').eq('id', 'config-oficina')
-      if (configErr) console.error('[configuracoes] Erro ao carregar:', configErr)
-      const configData = configRows?.[0]?.data || {}
-      r.current.config = configData
-      _setConfig(configData)
-      try { localStorage.setItem('config-oficina', JSON.stringify(configData)) } catch {}
-
+      // Libera UI imediatamente — dados principais já estão prontos
       setCarregando(false)
+
+      // caixa_turno e configuracoes carregam em segundo plano sem bloquear a UI
+      try {
+        const { data: turnoRows, error: turnoErr } = await supabase
+          .from('caixa_turno').select('id, data').eq('id', 'caixa-turno')
+        if (turnoErr) console.error('[caixa_turno] Erro ao carregar:', turnoErr)
+        else {
+          const turno = turnoRows?.[0] ? { id: 'caixa-turno', ...turnoRows[0].data } : null
+          r.current.caixaTurno = turno
+          _setCaixaTurno(turno)
+        }
+      } catch (e) { console.error('[caixa_turno] Erro:', e) }
+
+      try {
+        const { data: configRows, error: configErr } = await supabase
+          .from('configuracoes').select('id, data').eq('id', 'config-oficina')
+        if (configErr) console.error('[configuracoes] Erro ao carregar:', configErr)
+        else {
+          const configData = configRows?.[0]?.data || {}
+          r.current.config = configData
+          _setConfig(configData)
+          try { localStorage.setItem('config-oficina', JSON.stringify(configData)) } catch {}
+        }
+      } catch (e) { console.error('[configuracoes] Erro:', e) }
     }
     init().catch(e => { console.error(e); setCarregando(false) })
   }, [])
