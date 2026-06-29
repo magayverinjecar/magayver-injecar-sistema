@@ -235,7 +235,7 @@ export default function ChecklistNovo() {
   // ── PASSO 4 — Assinatura (igual step 3 do original) ──────────
   const [assinatura, setAssinatura] = useState(ckEditar?.assinatura || null)
 
-  // ── Auto-save ────────────────────────────────────────────────
+  // ── Dados atuais ─────────────────────────────────────────────
   const getDadosAtuais = useCallback(() => ({
     clienteId,
     clienteNome: cliente.nome,
@@ -259,6 +259,7 @@ export default function ChecklistNovo() {
     assinatura,
   }), [cliente, veiculo, clienteId, veiculoId, luzesPainel, relatoCliente, assinatura])
 
+  // Auto-save com debounce de 3s — apenas status visual, não compete com saves manuais
   useEffect(() => {
     if (!cliente.nome.trim() && !veiculo.placa.trim()) return
     clearTimeout(saveTimerRef.current)
@@ -278,9 +279,9 @@ export default function ChecklistNovo() {
       }
       setSaveStatus('salvo')
       setTimeout(() => setSaveStatus(''), 2500)
-    }, 800)
+    }, 3000)
     return () => clearTimeout(saveTimerRef.current)
-  }, [cliente, veiculo, clienteId, veiculoId, luzesPainel, relatoCliente, assinatura])
+  }, [cliente, veiculo, clienteId, veiculoId, luzesPainel, relatoCliente, assinatura, getDadosAtuais])
 
   // ── Busca de cliente ─────────────────────────────────────────
   const clientesFiltrados = clientes.filter(c =>
@@ -399,11 +400,19 @@ export default function ChecklistNovo() {
     return Object.keys(e).length === 0
   }
 
-  function proximo() { if (validar()) { setPasso(p => p + 1); setErros({}) } }
+  function proximo() {
+    if (validar()) {
+      clearTimeout(saveTimerRef.current)
+      salvarRapido()
+      setPasso(p => p + 1)
+      setErros({})
+    }
+  }
   function anterior() { setPasso(p => p - 1); setErros({}) }
 
   // Salva o que foi preenchido até agora sem sair do formulário
   function salvarRapido() {
+    clearTimeout(saveTimerRef.current)
     const dados = getDadosAtuais()
     if (ckEditar) {
       setChecklists(prev => prev.map(c => c.id === ckEditar.id ? { ...c, ...dados } : c))
@@ -428,6 +437,7 @@ export default function ChecklistNovo() {
 
   // ── Finalizar ────────────────────────────────────────────────
   function finalizar() {
+    clearTimeout(saveTimerRef.current) // cancela auto-save pendente para evitar race condition
     const agora = new Date().toLocaleString('pt-BR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
