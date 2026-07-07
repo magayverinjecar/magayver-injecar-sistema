@@ -107,6 +107,7 @@ export default function ClienteAssinatura() {
   const [assinatura, setAssinatura] = useState(null)
   const [enviando, setEnviando] = useState(false)
   const [sucesso, setSucesso] = useState(false)
+  const [erroEnvio, setErroEnvio] = useState('')
 
   useEffect(() => {
     async function carregar() {
@@ -149,17 +150,22 @@ export default function ClienteAssinatura() {
   async function confirmar() {
     if (!assinatura || !checklist) return
     setEnviando(true)
+    setErroEnvio('')
     try {
-      const { id: ckId, ...rest } = checklist
-      const dataAtualizado = { ...rest, assinatura, assinaturaTempo: Date.now() }
+      // Recarrega dados mais recentes para não sobrescrever campos adicionados após o carregamento inicial
+      const { data: frescos, error: erroFetch } = await supabase
+        .from('checklists').select('id, data').eq('id', String(checklist.id))
+      if (erroFetch) throw erroFetch
+      const baseData = frescos?.[0]?.data || {}
+      const dataAtualizado = { ...baseData, assinatura, assinaturaTempo: Date.now() }
       const { error } = await supabase
         .from('checklists')
-        .upsert({ id: String(ckId), data: dataAtualizado })
+        .upsert({ id: String(checklist.id), data: dataAtualizado })
       if (error) throw error
       setSucesso(true)
     } catch (err) {
       console.error(err)
-      alert('Erro ao salvar assinatura. Tente novamente.')
+      setErroEnvio('Erro ao salvar assinatura. Verifique sua conexão e tente novamente.')
     } finally {
       setEnviando(false)
     }
@@ -312,7 +318,12 @@ export default function ClienteAssinatura() {
           </div>
 
           {/* Botão confirmar */}
-          <div className="pt-4 border-t border-slate-700">
+          <div className="pt-4 border-t border-slate-700 space-y-3">
+            {erroEnvio && (
+              <div className="p-3 bg-red-900/20 text-red-400 text-sm rounded-lg flex items-center gap-2 border border-red-900/30">
+                <AlertTriangle size={16} /> {erroEnvio}
+              </div>
+            )}
             <button
               onClick={confirmar}
               disabled={!assinatura || enviando}

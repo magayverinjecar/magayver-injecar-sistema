@@ -353,7 +353,7 @@ export default function ChecklistNovo() {
   // ── Salva rascunho no Supabase para o link remoto ser válido ────
   async function salvarRascunho() {
     if (ckEditar) return
-    await supabase.from('checklists').upsert({
+    const { error } = await supabase.from('checklists').upsert({
       id: String(ckIdNovo),
       data: {
         clienteNome: cliente.nome,
@@ -363,11 +363,18 @@ export default function ChecklistNovo() {
         status: 'Aguardando diagnóstico',
       }
     })
+    if (error) throw error
   }
 
   // ── Link de assinatura remota ────────────────────────────────
   async function enviarWhatsApp() {
-    await salvarRascunho()
+    try {
+      await salvarRascunho()
+    } catch (e) {
+      console.error('[salvarRascunho]', e)
+      alert('Não foi possível preparar o link. Verifique sua conexão e tente novamente.')
+      return
+    }
     const fone = cliente.telefone.replace(/\D/g, '')
     const primeiroNome = cliente.nome.split(' ')[0]
     const ckId = ckEditar?.id || ckIdNovo
@@ -377,7 +384,13 @@ export default function ChecklistNovo() {
   }
 
   async function copiarLink() {
-    await salvarRascunho()
+    try {
+      await salvarRascunho()
+    } catch (e) {
+      console.error('[salvarRascunho]', e)
+      alert('Não foi possível preparar o link. Verifique sua conexão e tente novamente.')
+      return
+    }
     const ckId = ckEditar?.id || ckIdNovo
     const link = `${window.location.origin}/assinar/${ckId}`
     await navigator.clipboard.writeText(link)
@@ -470,6 +483,13 @@ export default function ChecklistNovo() {
       vId = novoV.id
     }
 
+    // Preserva assinatura remota se o cliente já assinou pelo link antes do finalizar
+    const ckAtual = checklists.find(c => c.id === (ckEditar?.id || ckIdNovo))
+    const assinaturaFinal = assinatura || ckAtual?.assinatura || null
+    const assinaturaTempoFinal = assinaturaFinal
+      ? (ckAtual?.assinaturaTempo ?? (assinatura ? Date.now() : null))
+      : null
+
     const dadosEntrada = {
       clienteId: cId,
       clienteNome: cliente.nome,
@@ -492,8 +512,8 @@ export default function ChecklistNovo() {
       luzesPainel,
       relatoCliente,
       falhasScanner: '',   // preenchido pelo reparador no diagnóstico
-      assinatura,
-      assinaturaTempo: assinatura ? Date.now() : null,
+      assinatura: assinaturaFinal,
+      assinaturaTempo: assinaturaTempoFinal,
       atendente: currentUser?.nome || '',
     }
 
