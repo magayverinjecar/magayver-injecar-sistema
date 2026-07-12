@@ -94,18 +94,18 @@ export default function ChecklistDiagnosticoDetalhe() {
   }
 
   function abrirOS() {
-    if (ck.osId) { navigate(`/ordens-servico/${ck.osId}`); return }
-    const novaOs = novaOrdem({
+    // O id da OS começa com '#'; encodeURIComponent evita que vire âncora na URL
+    if (ck.osId) { navigate(`/ordens-servico/${encodeURIComponent(ck.osId)}`); return }
+    // novaOrdem retorna o id da OS (string), não um objeto
+    const osId = novaOrdem({
       clienteId: ck.clienteId,
-      clienteNome: ck.clienteNome,
       veiculoId: ck.veiculoId,
-      veiculoInfo: `${ck.veiculoModelo || ''} ${ck.veiculoPlaca || ''}`.trim(),
-      descricao: ck.relatoCliente || '',
-      checklistId: ck.id,
+      kmEntrada: ck.kmEntrada,
+      descricaoProblema: ck.relatoCliente || '',
     })
-    if (novaOs?.id) {
-      setChecklists(prev => prev.map(c => c.id === ck.id ? { ...c, osId: novaOs.id } : c))
-      navigate(`/ordens-servico/${novaOs.id}`)
+    if (osId) {
+      setChecklists(prev => prev.map(c => c.id === ck.id ? { ...c, osId } : c))
+      navigate(`/ordens-servico/${encodeURIComponent(osId)}`)
     }
   }
 
