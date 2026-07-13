@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Car, User, Clock, Wrench, AlertTriangle, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 
 // ─── Definição das colunas (etapas do pátio) ────────────────────────────────
 // Ordem = fluxo real: entrada → diagnóstico → aprovação → reparo → pronto.
@@ -52,6 +53,9 @@ export default function PatioQuadro() {
     checklists, setChecklists, ordens, novaOrdem, mudarStatusOrdem, reabrirOrdem,
     totalOrdem, getCliente, getVeiculo, getFuncionario, carregando,
   } = useApp()
+  const { currentUser } = useAuth()
+  // Só mostra valores para quem tem a permissão "Ver preços e valores"
+  const podeVerValores = !!currentUser?.permissoes?.verPrecos
 
   const [arrastando, setArrastando] = useState(null) // card sendo arrastado
   const [sobre, setSobre] = useState(null)           // coluna com hover de drop
@@ -306,9 +310,11 @@ export default function PatioQuadro() {
                           <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${idade.bg} ${idade.cor}`}>
                             <Clock size={10} /> {idade.label}
                           </span>
-                          {card.valor != null && (
+                          {card.aReceber && (
+                            <span className="text-[10px] text-blue-500 font-medium">a receber</span>
+                          )}
+                          {podeVerValores && card.valor != null && (
                             <span className="text-xs font-semibold text-slate-700">
-                              {card.aReceber && <span className="text-[10px] text-blue-500 font-medium mr-1">a receber</span>}
                               {fmtBRL(card.valor)}
                             </span>
                           )}
