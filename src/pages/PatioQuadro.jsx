@@ -114,8 +114,7 @@ export default function PatioQuadro() {
   }
 
   // ── Ação ao soltar um card numa coluna ──
-  function soltarNaColuna(destinoId) {
-    const card = arrastando
+  function soltarNaColuna(destinoId, card) {
     setArrastando(null); setSobre(null)
     if (!card) return
     const origemId = colId(card)
@@ -187,6 +186,57 @@ export default function PatioQuadro() {
     else navigate(`/ordens-servico/${encodeURIComponent(card.id)}`)
   }
 
+  // ── Arraste por pointer events: funciona igual no mouse E no toque ──
+  // Um movimento curto = toque/clique (abre o card); mover além do limiar = arrastar.
+  function iniciarArraste(e, card) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    const sx = e.clientX, sy = e.clientY
+    const origem = e.currentTarget
+    let arrastou = false
+    let clone = null
+
+    const colunaSob = (x, y) => document.elementFromPoint(x, y)?.closest('[data-coluna]')?.getAttribute('data-coluna') || null
+
+    const mover = (ev) => {
+      if (!arrastou) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 8) return
+        arrastou = true
+        setArrastando(card)
+        clone = origem.cloneNode(true)
+        Object.assign(clone.style, {
+          position: 'fixed', margin: '0', left: '0', top: '0',
+          width: origem.offsetWidth + 'px', pointerEvents: 'none',
+          opacity: '0.95', zIndex: '9999', transform: 'rotate(2deg)',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.28)',
+        })
+        document.body.appendChild(clone)
+        origem.style.opacity = '0.35'
+      }
+      clone.style.left = (ev.clientX - origem.offsetWidth / 2) + 'px'
+      clone.style.top = (ev.clientY - 22) + 'px'
+      setSobre(colunaSob(ev.clientX, ev.clientY))
+    }
+
+    const soltar = (ev) => {
+      window.removeEventListener('pointermove', mover)
+      window.removeEventListener('pointerup', soltar)
+      window.removeEventListener('pointercancel', soltar)
+      if (clone) clone.remove()
+      origem.style.opacity = ''
+      if (arrastou) {
+        const destino = colunaSob(ev.clientX, ev.clientY)
+        if (destino) soltarNaColuna(destino, card)
+        else { setArrastando(null); setSobre(null) }
+      } else {
+        abrirCard(card) // foi um toque simples, sem arrastar
+      }
+    }
+
+    window.addEventListener('pointermove', mover)
+    window.addEventListener('pointerup', soltar)
+    window.addEventListener('pointercancel', soltar)
+  }
+
   const totalCarros = COLUNAS.reduce((s, col) => s + cardsDaColuna(col).length, 0)
 
   if (carregando) return (
@@ -219,9 +269,7 @@ export default function PatioQuadro() {
             const ativa = sobre === col.id
             return (
               <div key={col.id}
-                onDragOver={e => { e.preventDefault(); setSobre(col.id) }}
-                onDragLeave={() => setSobre(s => s === col.id ? null : s)}
-                onDrop={() => soltarNaColuna(col.id)}
+                data-coluna={col.id}
                 className="flex-1 min-w-[184px] flex flex-col">
                 {/* Cabeçalho colorido da etapa */}
                 <div style={{ backgroundColor: col.cor }}
@@ -230,16 +278,15 @@ export default function PatioQuadro() {
                   <span className="text-xs font-bold bg-white/25 rounded-full px-2 py-0.5 flex-shrink-0">{cards.length}</span>
                 </div>
 
-                <div className={`flex-1 rounded-b-xl p-2 space-y-2 min-h-[80px] transition-colors ${ativa ? 'bg-primary-50 ring-2 ring-inset ring-primary-200' : 'bg-slate-100'}`}>
+                <div style={{ maxHeight: 'calc(100vh - 220px)' }}
+                  className={`flex-1 overflow-y-auto rounded-b-xl p-2 space-y-2 min-h-[80px] transition-colors ${ativa ? 'bg-primary-50 ring-2 ring-inset ring-primary-200' : 'bg-slate-100'}`}>
                   {cards.map(card => {
                     const idade = idadeInfo(card.ts)
                     return (
                       <div key={card.key}
-                        draggable
-                        onDragStart={() => setArrastando(card)}
-                        onDragEnd={() => { setArrastando(null); setSobre(null) }}
-                        onClick={() => abrirCard(card)}
-                        className="bg-white border border-slate-200 rounded-xl p-3 cursor-pointer hover:border-slate-300 hover:shadow-sm transition-all active:cursor-grabbing">
+                        onPointerDown={e => iniciarArraste(e, card)}
+                        style={{ touchAction: 'pan-y' }}
+                        className="bg-white border border-slate-200 rounded-xl p-3 cursor-grab select-none hover:border-slate-300 hover:shadow-sm transition-all active:cursor-grabbing">
                         <p className="text-sm font-bold text-slate-800 leading-tight flex items-center gap-1.5">
                           <Car size={13} className="text-slate-400 flex-shrink-0" />
                           <span className="truncate">{card.titulo}</span>
