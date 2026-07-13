@@ -49,7 +49,7 @@ export default function PinLogin() {
     if (!senha) return setErro('Digite sua senha.')
     if (senha === selecionado.pin) {
       login(selecionado)
-      navigate('/dashboard', { replace: true })
+      navigate('/', { replace: true })
     } else {
       const novas = tentativas + 1
       setTentativas(novas)
@@ -114,7 +114,7 @@ export default function PinLogin() {
             <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
               <p className={txtSub}>Nenhum funcionário com senha configurada.</p>
               <button
-                onClick={() => { login({ id: 0, nome: 'Administrador', perfil: 'admin', pin: '', permissoes: adminPermissoes }); navigate('/dashboard', { replace: true }) }}
+                onClick={() => { login({ id: 0, nome: 'Administrador', perfil: 'admin', pin: '', permissoes: adminPermissoes }); navigate('/', { replace: true }) }}
                 className="w-full bg-primary-500 hover:bg-primary-600 text-white py-3 rounded-xl font-medium text-sm transition-colors"
               >
                 Primeiro Acesso — Entrar como Admin
