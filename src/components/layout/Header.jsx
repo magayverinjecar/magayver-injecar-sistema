@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 
 const titles = {
+  '/patio': 'Quadro do Pátio',
   '/dashboard': 'Início',
   '/agenda': 'Agendamento',
   '/assistente-financeiro': 'Assistente Financeiro',

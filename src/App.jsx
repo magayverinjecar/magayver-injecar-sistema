@@ -34,9 +34,11 @@ import ChecklistGerenciar from './pages/ChecklistGerenciar'
 import ChecklistDetalhe from './pages/ChecklistDetalhe'
 import ClienteAssinatura from './pages/ClienteAssinatura'
 import VistoriaCliente from './pages/VistoriaCliente'
+import PatioQuadro from './pages/PatioQuadro'
 
 // Candidatas ordenadas por prioridade — primeira com permissão é o destino padrão
 const ROTAS_CANDIDATAS = [
+  ['/patio',                  'patio'],
   ['/dashboard',              'dashboard'],
   ['/checklist/novo',         'checklist-novo'],
   ['/checklist/gerenciar',    'checklist-gerenciar'],
@@ -81,6 +83,7 @@ export default function App() {
         <Route path="/vistoria/:id" element={<VistoriaCliente />} />
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<PrimeiraRota />} />
+          <Route path="patio"               element={<Rota perm="patio"><PatioQuadro /></Rota>} />
           <Route path="dashboard"           element={<Rota perm="dashboard"><Dashboard /></Rota>} />
           <Route path="clientes"            element={<Rota perm="clientes"><Clientes /></Rota>} />
           <Route path="veiculos"            element={<Rota perm="veiculos"><Veiculos /></Rota>} />
