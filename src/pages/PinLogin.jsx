@@ -81,7 +81,7 @@ export default function PinLogin() {
     : 'text-slate-400 hover:text-slate-700'
 
   const adminPermissoes = {
-    menus: ['dashboard','agenda','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','gastos','configuracoes'],
+    menus: ['patio','dashboard','agenda','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','gastos','configuracoes'],
     verPrecos: true, verFinanceiro: true, editarConfigs: true, gerenciarFuncionarios: true,
   }
 

@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect } from 'react'
 export const MODELOS = {
   admin: {
     label: 'Administrador',
-    menus: ['dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','gastos','configuracoes'],
+    menus: ['patio','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','gastos','configuracoes'],
     verPrecos: true,
     verFinanceiro: true,
     editarConfigs: true,
@@ -12,7 +12,7 @@ export const MODELOS = {
   },
   reparador: {
     label: 'Reparador',
-    menus: ['dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','ordens-servico','clientes','veiculos','estoque','insumos','produtividade'],
+    menus: ['patio','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','ordens-servico','clientes','veiculos','estoque','insumos','produtividade'],
     verPrecos: false,
     verFinanceiro: false,
     editarConfigs: false,
@@ -20,7 +20,7 @@ export const MODELOS = {
   },
   recepcao: {
     label: 'Recepção',
-    menus: ['dashboard','agenda','checklist-novo','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','caixa'],
+    menus: ['patio','dashboard','agenda','checklist-novo','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','caixa'],
     verPrecos: true,
     verFinanceiro: false,
     editarConfigs: false,
@@ -39,9 +39,9 @@ function loadUser() {
 
 // Migração automática: menus que devem existir para cada perfil
 const MENUS_OBRIGATORIOS = {
-  admin:     ['checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar'],
-  reparador: ['checklist-novo','checklist-fotos','checklist-diagnostico'],
-  recepcao:  ['checklist-novo','checklist-gerenciar'],
+  admin:     ['patio','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar'],
+  reparador: ['patio','checklist-novo','checklist-fotos','checklist-diagnostico'],
+  recepcao:  ['patio','checklist-novo','checklist-gerenciar'],
 }
 
 export function AuthProvider({ children }) {

@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Car, CalendarDays, ClipboardList,
   Wrench, Package, DollarSign, ShoppingCart, UserCog, Settings,
   BarChart3, FileText, Truck, Factory, Droplets, Receipt, Brain,
-  Plus, Camera, FolderOpen, ClipboardCheck
+  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
@@ -12,6 +12,7 @@ const grupos = [
     titulo: 'PRINCIPAL',
     items: [
       { to: '/dashboard', icon: LayoutDashboard, label: 'Início' },
+      { to: '/patio', icon: LayoutGrid, label: 'Quadro do Pátio', permissao: 'patio' },
       { to: '/agenda', icon: CalendarDays, label: 'Agendamento' },
       { to: '/assistente-financeiro', icon: Brain, label: 'Assistente Financeiro' },
     ],
