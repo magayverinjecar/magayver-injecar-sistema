@@ -13,7 +13,7 @@ const COLUNAS = [
   { id: 'aguard_diag',  titulo: 'Aguardando diagnóstico', cor: '#854F0B', ckStatus: 'Aguardando diagnóstico', osStatus: [] },
   { id: 'em_diag',      titulo: 'Em diagnóstico',         cor: '#185FA5', ckStatus: 'Em diagnóstico',         osStatus: ['Diagnóstico'] },
   { id: 'orcamento',    titulo: 'Orçamento',              cor: '#534AB7', ckStatus: 'Diagnóstico concluído',  osStatus: ['Aguardando Aprovação'] },
-  { id: 'aguard_peca',  titulo: 'Aguardando peça',        cor: '#A32D2D', ckStatus: null,                     osStatus: ['Aguardando Peça'] },
+  { id: 'aguard_peca',  titulo: 'Aguardando peça',        cor: '#A32D2D', ckStatus: 'Aguardando peça',        osStatus: ['Aguardando Peça'] },
   { id: 'em_execucao',  titulo: 'Em execução',            cor: '#993C1D', ckStatus: null,                     osStatus: ['Aberta', 'Aprovada', 'Em Execução', 'Em Andamento'] },
   { id: 'pronto',       titulo: 'Pronto p/ retirada',     cor: '#3B6D11', ckStatus: null,                     osStatus: ['Concluída'] },
 ]
