@@ -9,17 +9,18 @@ import { useApp } from '../context/AppContext'
 // estágio pode estar numa ficha (antes da OS) ou numa OS (depois).
 // Status de OS 'Entregue', 'Rejeitada' e 'Cancelada' ficam fora do quadro.
 const COLUNAS = [
-  { id: 'aguard_diag', titulo: 'Aguardando diagnóstico', ckStatus: 'Aguardando diagnóstico', osStatus: [] },
-  { id: 'em_diag',     titulo: 'Em diagnóstico',         ckStatus: 'Em diagnóstico',         osStatus: ['Diagnóstico'] },
-  { id: 'aguard_aprov',titulo: 'Aguardando aprovação',   ckStatus: 'Diagnóstico concluído',  osStatus: ['Aguardando Aprovação'] },
-  { id: 'em_reparo',   titulo: 'Em reparo',              ckStatus: null,                     osStatus: ['Aberta', 'Aprovada', 'Em Execução', 'Aguardando Peça', 'Em Andamento'] },
-  { id: 'pronto',      titulo: 'Pronto p/ retirada',     ckStatus: null,                     osStatus: ['Concluída'] },
+  { id: 'aguard_diag',  titulo: 'Aguardando diagnóstico', cor: '#854F0B', ckStatus: 'Aguardando diagnóstico', osStatus: [] },
+  { id: 'em_diag',      titulo: 'Em diagnóstico',         cor: '#185FA5', ckStatus: 'Em diagnóstico',         osStatus: ['Diagnóstico'] },
+  { id: 'orcamento',    titulo: 'Orçamento',              cor: '#534AB7', ckStatus: 'Diagnóstico concluído',  osStatus: ['Aguardando Aprovação'] },
+  { id: 'aguard_peca',  titulo: 'Aguardando peça',        cor: '#A32D2D', ckStatus: null,                     osStatus: ['Aguardando Peça'] },
+  { id: 'em_execucao',  titulo: 'Em execução',            cor: '#993C1D', ckStatus: null,                     osStatus: ['Aberta', 'Aprovada', 'Em Execução', 'Em Andamento'] },
+  { id: 'pronto',       titulo: 'Pronto p/ retirada',     cor: '#3B6D11', ckStatus: null,                     osStatus: ['Concluída'] },
 ]
 
 // Status canônico da OS ao soltar em cada coluna (para arrastar ordens entre etapas)
 const OS_STATUS_DESTINO = {
-  em_diag: 'Diagnóstico', aguard_aprov: 'Aguardando Aprovação',
-  em_reparo: 'Em Execução', pronto: 'Concluída',
+  em_diag: 'Diagnóstico', orcamento: 'Aguardando Aprovação',
+  aguard_peca: 'Aguardando Peça', em_execucao: 'Em Execução', pronto: 'Concluída',
 }
 
 // Limites de tempo parado (em horas) — amarelo a partir de warn, vermelho a partir de danger.
@@ -129,12 +130,12 @@ export default function PatioQuadro() {
           ? { ...c, status: destino.ckStatus, etapaEm: Date.now() } : c))
         return
       }
-      // Ficha → Em reparo: precisa CRIAR OS (ação pesada) — confirma
-      if (destinoId === 'em_reparo') {
+      // Ficha → Em execução: precisa CRIAR OS (ação pesada) — confirma
+      if (destinoId === 'em_execucao') {
         setConfirmar({ card, destinoId, tipo: 'criarOS',
-          texto: `Gerar Ordem de Serviço para ${card.titulo}${card.placa ? ' (' + card.placa + ')' : ''} e mover para "Em reparo"?` })
+          texto: `Gerar Ordem de Serviço para ${card.titulo}${card.placa ? ' (' + card.placa + ')' : ''} e mover para "Em execução"?` })
       }
-      return // ficha → Pronto (pular o reparo) não é permitido
+      return // ficha → outras colunas de OS (pular o reparo) não é permitido
     }
 
     // card é uma OS
@@ -212,7 +213,7 @@ export default function PatioQuadro() {
 
       {/* Quadro */}
       <div className="overflow-x-auto pb-3">
-        <div className="flex gap-3" style={{ minWidth: '960px' }}>
+        <div className="flex gap-3" style={{ minWidth: '1140px' }}>
           {COLUNAS.map(col => {
             const cards = cardsDaColuna(col)
             const ativa = sobre === col.id
@@ -221,13 +222,15 @@ export default function PatioQuadro() {
                 onDragOver={e => { e.preventDefault(); setSobre(col.id) }}
                 onDragLeave={() => setSobre(s => s === col.id ? null : s)}
                 onDrop={() => soltarNaColuna(col.id)}
-                className={`flex-1 min-w-[184px] rounded-2xl p-2.5 transition-colors ${ativa ? 'bg-primary-50 ring-2 ring-primary-200' : 'bg-slate-100'}`}>
-                <div className="flex items-center justify-between px-1 mb-2.5">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">{col.titulo}</span>
-                  <span className="text-xs font-semibold text-slate-400">{cards.length}</span>
+                className="flex-1 min-w-[184px] flex flex-col">
+                {/* Cabeçalho colorido da etapa */}
+                <div style={{ backgroundColor: col.cor }}
+                  className="flex items-center justify-between rounded-t-xl px-3 py-2 text-white">
+                  <span className="text-xs font-bold uppercase tracking-wide truncate">{col.titulo}</span>
+                  <span className="text-xs font-bold bg-white/25 rounded-full px-2 py-0.5 flex-shrink-0">{cards.length}</span>
                 </div>
 
-                <div className="space-y-2 min-h-[40px]">
+                <div className={`flex-1 rounded-b-xl p-2 space-y-2 min-h-[80px] transition-colors ${ativa ? 'bg-primary-50 ring-2 ring-inset ring-primary-200' : 'bg-slate-100'}`}>
                   {cards.map(card => {
                     const idade = idadeInfo(card.ts)
                     return (
