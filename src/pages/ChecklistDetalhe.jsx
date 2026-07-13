@@ -184,7 +184,7 @@ export default function ChecklistDetalhe() {
     })
 
     setChecklists(prev => prev.map(c => c.id === ck.id ? { ...c, osId } : c))
-    navigate(`/ordens-servico/${osId}`)
+    navigate(`/ordens-servico/${encodeURIComponent(osId)}`)
   }
 
   const statusCfg = STATUS_CK[ck.status] || STATUS_CK['Aguardando diagnóstico']
@@ -215,7 +215,7 @@ export default function ChecklistDetalhe() {
         </div>
 
         {jaTemOS && (
-          <button onClick={() => navigate(`/ordens-servico/${ck.osId}`)}
+          <button onClick={() => navigate(`/ordens-servico/${encodeURIComponent(ck.osId)}`)}
             className="flex items-center gap-2 border border-primary-300 text-primary-600 px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary-50 transition-colors">
             <FileText size={15} /> Ver OS {ck.osId}
           </button>

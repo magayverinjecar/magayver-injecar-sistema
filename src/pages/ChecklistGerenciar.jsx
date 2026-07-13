@@ -152,7 +152,7 @@ export default function ChecklistGerenciar() {
               {/* Ver OS */}
               {ck.osId && (
                 <button
-                  onClick={() => navigate(`/ordens-servico/${ck.osId}`)}
+                  onClick={() => navigate(`/ordens-servico/${encodeURIComponent(ck.osId)}`)}
                   title="Ver OS"
                   className="p-1.5 text-slate-400 hover:text-primary-500 hover:bg-primary-50 rounded-lg transition-colors">
                   <FileText size={14} />
@@ -211,7 +211,7 @@ export default function ChecklistGerenciar() {
           </button>
           {ck.osId && (
             <button
-              onClick={() => navigate(`/ordens-servico/${ck.osId}`)}
+              onClick={() => navigate(`/ordens-servico/${encodeURIComponent(ck.osId)}`)}
               title="Ver OS"
               className="text-xs bg-primary-50 hover:bg-primary-100 text-primary-600 px-2.5 py-1 rounded-lg transition-colors">
               OS
