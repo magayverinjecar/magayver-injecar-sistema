@@ -88,12 +88,17 @@ export default function PatioQuadro() {
     }
   }
 
+  const veiculosComOS = new Set(ordens.map(o => o.veiculoId).filter(Boolean))
+
   function cardsDaColuna(col) {
     const lista = []
     // Fichas (só as que ainda não viraram OS) na etapa da coluna
     if (col.ckStatus) {
       for (const c of checklists) {
-        if (!c.osId && c.status === col.ckStatus) lista.push(cardDoChecklist(c))
+        if (!c.osId && c.status === col.ckStatus) {
+          if (c.veiculoId && veiculosComOS.has(c.veiculoId)) continue
+          lista.push(cardDoChecklist(c))
+        }
       }
     }
     // Ordens de serviço cujo status pertence a esta etapa
