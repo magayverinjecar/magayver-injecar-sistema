@@ -74,6 +74,64 @@ export function AppProvider({ children }) {
     compras: [], fornecedores: [], caixaHistorico: [], caixaTurno: null, config: {},
   })
 
+  // ─── Controle de gravação (evita o "eco" do Realtime) ────────────────────────
+  // Quando este cliente grava, o Supabase reenvia o mesmo evento de volta. Sem
+  // controle, isso recarrega a tabela inteira e pode sobrescrever alterações locais
+  // que ainda não terminaram de salvar (race condition). Aqui contamos as gravações
+  // em andamento e ADIAMOS o recarregamento até todas terminarem.
+  const pendingWrites = useRef({})   // { [tabela]: nº de gravações em andamento }
+  const reloadPendente = useRef({})  // { [tabela]: true } → recarregar quando terminarem
+
+  // Aplica dados recarregados no estado (ref + setState) por tabela
+  const aplicarTabela = {
+    clientes:        (d) => { r.current.clientes       = d; _setClientes(d) },
+    veiculos:        (d) => { r.current.veiculos        = d; _setVeiculos(d) },
+    ordens:          (d) => { r.current.ordens          = d; _setOrdens(d) },
+    estoque:         (d) => { r.current.estoque         = d; _setEstoque(d) },
+    financeiro:      (d) => { r.current.financeiro      = d; _setFinanceiro(d) },
+    agenda:          (d) => { r.current.agenda          = d; _setAgenda(d) },
+    funcionarios:    (d) => { r.current.funcionarios    = d; _setFuncionarios(d) },
+    servicos:        (d) => { r.current.servicos        = d; _setServicos(d) },
+    checklists:      (d) => { r.current.checklists      = d; _setChecklists(d) },
+    orcamentos:      (d) => { r.current.orcamentos      = d; _setOrcamentos(d) },
+    compras:         (d) => { r.current.compras         = d; _setCompras(d) },
+    fornecedores:    (d) => { r.current.fornecedores    = d; _setFornecedores(d) },
+    caixa_historico: (d) => { r.current.caixaHistorico  = d; _setCaixaHistorico(d) },
+  }
+
+  // Recarrega uma tabela do Supabase — MAS só se não houver gravação local em
+  // andamento. Se houver, marca para recarregar depois (não sobrescreve estado local).
+  async function recarregarTabela(table) {
+    if (pendingWrites.current[table] > 0) { reloadPendente.current[table] = true; return }
+    if (table === 'caixa_turno') {
+      const { data } = await supabase.from('caixa_turno').select('id, data').eq('id', 'caixa-turno')
+      const turno = data?.[0] ? { id: 'caixa-turno', ...data[0].data } : null
+      r.current.caixaTurno = turno; _setCaixaTurno(turno)
+      return
+    }
+    if (table === 'configuracoes') {
+      const { data } = await supabase.from('configuracoes').select('id, data').eq('id', 'config-oficina')
+      const configData = data?.[0]?.data || {}
+      r.current.config = configData; _setConfig(configData)
+      try { localStorage.setItem('config-oficina', JSON.stringify(configData)) } catch {}
+      return
+    }
+    const data = await loadTable(table)
+    aplicarTabela[table]?.(data)
+  }
+
+  function marcarGravando(table) {
+    pendingWrites.current[table] = (pendingWrites.current[table] || 0) + 1
+  }
+  function fimGravando(table) {
+    pendingWrites.current[table] = Math.max(0, (pendingWrites.current[table] || 0) - 1)
+    // Última gravação terminou e havia um recarregamento adiado → executa agora
+    if (pendingWrites.current[table] === 0 && reloadPendente.current[table]) {
+      reloadPendente.current[table] = false
+      recarregarTabela(table)
+    }
+  }
+
   // Carrega todos os dados ao montar
   useEffect(() => {
     async function init() {
@@ -147,50 +205,24 @@ export function AppProvider({ children }) {
     init().catch(e => { console.error(e); setCarregando(false) })
   }, [])
 
-  // Sincronização em tempo real via Supabase Realtime
+  // Sincronização em tempo real via Supabase Realtime.
+  // Cada evento passa por recarregarTabela(), que ignora o "eco" das nossas próprias
+  // gravações enquanto elas estão em andamento (evita sobrescrever estado local).
   useEffect(() => {
-    const apply = {
-      clientes:        (d) => { r.current.clientes       = d; _setClientes(d) },
-      veiculos:        (d) => { r.current.veiculos        = d; _setVeiculos(d) },
-      ordens:          (d) => { r.current.ordens          = d; _setOrdens(d) },
-      estoque:         (d) => { r.current.estoque         = d; _setEstoque(d) },
-      financeiro:      (d) => { r.current.financeiro      = d; _setFinanceiro(d) },
-      agenda:          (d) => { r.current.agenda          = d; _setAgenda(d) },
-      funcionarios:    (d) => { r.current.funcionarios    = d; _setFuncionarios(d) },
-      servicos:        (d) => { r.current.servicos        = d; _setServicos(d) },
-      checklists:      (d) => { r.current.checklists      = d; _setChecklists(d) },
-      orcamentos:      (d) => { r.current.orcamentos      = d; _setOrcamentos(d) },
-      compras:         (d) => { r.current.compras         = d; _setCompras(d) },
-      fornecedores:    (d) => { r.current.fornecedores    = d; _setFornecedores(d) },
-      caixa_historico: (d) => { r.current.caixaHistorico  = d; _setCaixaHistorico(d) },
-    }
-
     const ch = supabase.channel('app-realtime')
 
-    for (const table of Object.keys(apply)) {
-      ch.on('postgres_changes', { event: '*', schema: 'public', table }, async () => {
-        const data = await loadTable(table)
-        apply[table](data)
+    for (const table of Object.keys(aplicarTabela)) {
+      ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+        recarregarTabela(table)
       })
     }
 
-    // caixa_turno: query especial (linha única com id fixo)
-    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'caixa_turno' }, async () => {
-      const { data: turnoRows } = await supabase
-        .from('caixa_turno').select('id, data').eq('id', 'caixa-turno')
-      const turno = turnoRows?.[0] ? { id: 'caixa-turno', ...turnoRows[0].data } : null
-      r.current.caixaTurno = turno
-      _setCaixaTurno(turno)
+    // caixa_turno e configuracoes: linhas únicas com id fixo (tratadas dentro de recarregarTabela)
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'caixa_turno' }, () => {
+      recarregarTabela('caixa_turno')
     })
-
-    // configuracoes: query especial (linha única com id fixo)
-    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes' }, async () => {
-      const { data: configRows } = await supabase
-        .from('configuracoes').select('id, data').eq('id', 'config-oficina')
-      const configData = configRows?.[0]?.data || {}
-      r.current.config = configData
-      _setConfig(configData)
-      try { localStorage.setItem('config-oficina', JSON.stringify(configData)) } catch {}
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes' }, () => {
+      recarregarTabela('configuracoes')
     })
 
     ch.subscribe()
@@ -205,7 +237,10 @@ export function AppProvider({ children }) {
       const next = valOrFn instanceof Function ? valOrFn(prev) : valOrFn
       r.current[refKey] = next
       setter(next)
-      supabaseDiff(tableName, prev, next).catch(console.error)
+      marcarGravando(tableName)
+      supabaseDiff(tableName, prev, next)
+        .catch(console.error)
+        .finally(() => fimGravando(tableName))
     }
   }
 
@@ -228,13 +263,17 @@ export function AppProvider({ children }) {
     const next = valOrFn instanceof Function ? valOrFn(prev) : valOrFn
     r.current.caixaTurno = next
     _setCaixaTurno(next)
+    marcarGravando('caixa_turno')
+    const done = () => fimGravando('caixa_turno')
     if (next === null) {
       supabase.from('caixa_turno').delete().eq('id', 'caixa-turno')
         .then(({ error }) => { if (error) console.error('[caixa_turno] Erro ao deletar:', error) })
+        .finally(done)
     } else {
       const { id: _id, ...data } = next
       supabase.from('caixa_turno').upsert({ id: 'caixa-turno', data })
         .then(({ error }) => { if (error) console.error('[caixa_turno] Erro ao salvar:', error) })
+        .finally(done)
     }
   }
 
@@ -244,8 +283,10 @@ export function AppProvider({ children }) {
     r.current.config = next
     _setConfig(next)
     try { localStorage.setItem('config-oficina', JSON.stringify(next)) } catch {}
+    marcarGravando('configuracoes')
     supabase.from('configuracoes').upsert({ id: 'config-oficina', data: next })
       .then(({ error }) => { if (error) console.error('[configuracoes] Erro ao salvar:', error) })
+      .finally(() => fimGravando('configuracoes'))
   }
 
   // --- HELPERS ---
