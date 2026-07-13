@@ -37,11 +37,14 @@ function loadUser() {
   } catch { return null }
 }
 
+// Menus liberados automaticamente para TODOS os perfis (inclusive 'personalizado')
+const MENUS_UNIVERSAIS = ['patio']
+
 // Migração automática: menus que devem existir para cada perfil
 const MENUS_OBRIGATORIOS = {
-  admin:     ['patio','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar'],
-  reparador: ['patio','checklist-novo','checklist-fotos','checklist-diagnostico'],
-  recepcao:  ['patio','checklist-novo','checklist-gerenciar'],
+  admin:     ['checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar'],
+  reparador: ['checklist-novo','checklist-fotos','checklist-diagnostico'],
+  recepcao:  ['checklist-novo','checklist-gerenciar'],
 }
 
 export function AuthProvider({ children }) {
@@ -50,7 +53,7 @@ export function AuthProvider({ children }) {
   // Migração: garante que menus novos apareçam sem precisar refazer login
   useEffect(() => {
     if (!currentUser) return
-    const obrig = MENUS_OBRIGATORIOS[currentUser.perfil] || []
+    const obrig = [...new Set([...MENUS_UNIVERSAIS, ...(MENUS_OBRIGATORIOS[currentUser.perfil] || [])])]
     const menus = currentUser.permissoes?.menus || []
     const faltam = obrig.filter(m => !menus.includes(m))
     if (faltam.length === 0) return
