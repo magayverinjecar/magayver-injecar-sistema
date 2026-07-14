@@ -73,6 +73,7 @@ function gerarCupom(os, cliente, veiculo, mecanico, total, cfg, largura, fSize) 
     <div class="b">ITENS</div>
     <div style="margin-top:3px">${linhaItens || '<div style="color:#aaa">Sem itens</div>'}</div>
     <hr class="hr">
+    ${pNum(os.descontoGeral) > 0 ? `<div class="row"><span>Subtotal:</span><span>${fmt(total + pNum(os.descontoGeral))}</span></div><div class="row" style="color:#b91c1c"><span>Desconto:</span><span>- ${fmt(pNum(os.descontoGeral))}</span></div>` : ''}
     <div class="total"><span>TOTAL:</span><span>${fmt(total)}</span></div>
     <hr class="hr">
     <div class="c" style="margin-top:6px;font-size:${fSize === '12px' ? '10px' : '9px'};font-weight:bold">GARANTIA: 90 DIAS</div>
@@ -293,6 +294,7 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
     <div style="border:1px solid #cbd5e1;border-radius:4px;padding:8px 12px;margin-bottom:14px;display:flex;justify-content:flex-end;gap:24px;align-items:center;background:#f8fafc">
       ${servicos.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL SERVIÇOS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalSrv)}</div></div>` : ''}
       ${pecas.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL PEÇAS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalPec)}</div></div>` : ''}
+      ${pNum(os.descontoGeral) > 0 ? `<div><div style="font-size:9px;color:#b91c1c;font-weight:600">DESCONTO</div><div style="font-size:13px;font-weight:700;color:#b91c1c">- ${fmt(pNum(os.descontoGeral))}</div></div>` : ''}
       <div style="border-left:2px solid #e2e8f0;padding-left:24px"><div style="font-size:9px;color:#64748b;font-weight:600">VALOR TOTAL</div><div style="font-size:20px;font-weight:900;color:#1e293b">${fmt(total)}</div></div>
     </div>
 
@@ -394,6 +396,7 @@ function gerarA4Comp(os, cliente, veiculo, mecanico, total, cfg) {
       <tbody>${itensTableRows(os.itens)}</tbody>
     </table>
 
+    ${pNum(os.descontoGeral) > 0 ? `<div class="total-line" style="border-top:none;padding-top:0"><span style="font-size:10px;color:#b91c1c">DESCONTO</span><span style="font-size:12px;font-weight:700;color:#b91c1c">- ${fmt(pNum(os.descontoGeral))}</span></div>` : ''}
     <div class="total-line">
       <span class="total-label">TOTAL</span>
       <span class="total-val">${fmt(total)}</span>
@@ -482,6 +485,7 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
       </tbody>
     </table>
 
+    ${pNum(os.descontoGeral) > 0 ? `<div class="total-line" style="border-top:none;padding-top:0"><span style="font-size:9px;color:#b91c1c">DESCONTO</span><span style="font-size:11px;font-weight:700;color:#b91c1c">- ${fmt(pNum(os.descontoGeral))}</span></div>` : ''}
     <div class="total-line">
       <span style="font-size:10px;color:#6b7280">TOTAL</span>
       <span class="total-val">${fmt(total)}</span>

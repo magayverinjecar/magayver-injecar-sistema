@@ -296,7 +296,7 @@ export function AppProvider({ children }) {
     return new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
 
-  function totalOrdem(o) {
+  function subtotalOrdem(o) {
     if (o.itens && o.itens.length > 0) {
       return o.itens.reduce((s, i) => {
         const unitario = parseFloat((i.valorUnitario || '0').toString().replace(',', '.'))
@@ -306,6 +306,12 @@ export function AppProvider({ children }) {
       }, 0)
     }
     return parseFloat((o.valor || '0').toString().replace(',', '.')) || 0
+  }
+
+  function totalOrdem(o) {
+    const sub = subtotalOrdem(o)
+    const dg = parseFloat((o.descontoGeral || '0').toString().replace(',', '.'))
+    return Math.max(0, sub - dg)
   }
 
   // --- ORDENS DE SERVIÇO ---
@@ -613,7 +619,7 @@ export function AppProvider({ children }) {
       veiculos, setVeiculos,
       ordens, setOrdens, novaOrdem, pagarOrdem, reabrirOrdem,
       atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
-      adicionarFotoOrdem, removerFotoOrdem, excluirOrdem, totalOrdem,
+      adicionarFotoOrdem, removerFotoOrdem, excluirOrdem, subtotalOrdem, totalOrdem,
       estoque, setEstoque,
       financeiro, setFinanceiro, adicionarLancamento,
       agenda, setAgenda,
