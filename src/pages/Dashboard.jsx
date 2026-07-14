@@ -10,7 +10,7 @@ const statusColor = {
 }
 
 export default function Dashboard() {
-  const { clientes, ordens, resumoFinanceiro, estoqueAlerta, agenda, devedores, getCliente, getVeiculo } = useApp()
+  const { clientes, ordens, resumoFinanceiro, estoqueAlerta, agenda, devedores, getCliente, getVeiculo, totalOrdem } = useApp()
   const navigate = useNavigate()
 
   const ordensAbertas = ordens.filter(o => o.status !== 'Concluída' && o.status !== 'Cancelada')
@@ -83,7 +83,7 @@ export default function Dashboard() {
                     <p className="text-sm font-medium text-slate-800 mt-0.5">{cliente?.nome || '—'}</p>
                     <p className="text-xs text-slate-400">{veiculo?.modelo} • {veiculo?.placa}</p>
                   </div>
-                  <p className="text-sm font-semibold text-slate-700">R$ {os.valor}</p>
+                  <p className="text-sm font-semibold text-slate-700">R$ {totalOrdem(os).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
               )
             })}

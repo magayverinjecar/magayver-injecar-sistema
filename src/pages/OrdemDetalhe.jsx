@@ -25,7 +25,7 @@ export default function OrdemDetalhe() {
   const {
     ordens, checklists, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque,
     atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
-    excluirOrdem, totalOrdem, caixaTurno, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
+    excluirOrdem, subtotalOrdem, totalOrdem, caixaTurno, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
   } = useApp()
 
   const os = ordens.find(o => o.id === osId)
@@ -52,6 +52,8 @@ export default function OrdemDetalhe() {
   const cliente = getCliente(os.clienteId)
   const veiculo = getVeiculo(os.veiculoId)
   const mecanico = os.mecanicoId ? getFuncionario(os.mecanicoId) : null
+  const subtotal = subtotalOrdem(os)
+  const descGeral = pNum(os.descontoGeral)
   const total = totalOrdem(os)
 
   function gerarOrcamento() {
@@ -272,7 +274,7 @@ export default function OrdemDetalhe() {
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <div>
               <h3 className="font-semibold text-slate-800">Itens / Orçamento</h3>
-              <p className="text-sm text-slate-500">Total: {fmt(total)}</p>
+              <p className="text-sm text-slate-500">Total: {fmt(total)}{descGeral > 0 ? ` (desc. ${fmt(descGeral)})` : ''}</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
@@ -328,7 +330,30 @@ export default function OrdemDetalhe() {
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t border-slate-100">
+                {descGeral > 0 && (
+                  <tr className="border-t border-slate-100">
+                    <td colSpan={4} className="py-2 text-right text-sm text-slate-500">Subtotal</td>
+                    <td className="py-2 text-right text-sm text-slate-500">{fmt(subtotal)}</td>
+                    <td></td>
+                  </tr>
+                )}
+                <tr className={descGeral > 0 ? '' : 'border-t border-slate-100'}>
+                  <td colSpan={4} className="py-2 text-right text-sm text-slate-600">
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="text-slate-500">Desconto (R$)</span>
+                      <input
+                        type="text"
+                        value={os.descontoGeral || ''}
+                        onChange={e => atualizarOrdem(os.id, { descontoGeral: e.target.value })}
+                        placeholder="0,00"
+                        className="w-24 text-right text-sm border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  </td>
+                  <td className="py-2 text-right text-sm text-red-500 font-medium">{descGeral > 0 ? `- ${fmt(descGeral)}` : ''}</td>
+                  <td></td>
+                </tr>
+                <tr className="border-t border-slate-200">
                   <td colSpan={4} className="py-3 text-right text-sm font-semibold text-slate-600">Total</td>
                   <td className="py-3 text-right font-bold text-slate-800">{fmt(total)}</td>
                   <td></td>
@@ -467,9 +492,23 @@ export default function OrdemDetalhe() {
                 <button onClick={() => setModalFinalizar(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X size={18} /></button>
               </div>
               <div className="px-5 py-4 space-y-4">
-                <div className="bg-slate-50 rounded-lg px-4 py-3 flex items-center justify-between">
-                  <span className="text-sm text-slate-500">Total da OS</span>
-                  <span className="text-xl font-bold text-primary-600">{fmt(total)}</span>
+                <div className="bg-slate-50 rounded-lg px-4 py-3 space-y-1">
+                  {descGeral > 0 && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-400">Subtotal</span>
+                        <span className="text-sm text-slate-500">{fmt(subtotal)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-red-400">Desconto</span>
+                        <span className="text-sm text-red-500">- {fmt(descGeral)}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-500">Total da OS</span>
+                    <span className="text-xl font-bold text-primary-600">{fmt(total)}</span>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
