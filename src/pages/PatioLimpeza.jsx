@@ -32,9 +32,9 @@ const STATUS_CORES = {
 export default function PatioLimpeza() {
   const navigate = useNavigate()
   const {
-    ordens, checklists, setChecklists,
+    ordens, setOrdens, checklists, setChecklists,
     getCliente, getVeiculo, totalOrdem,
-    pagarOrdem, mudarStatusOrdem, reabrirOrdem, setFinanceiro,
+    financeiro, setFinanceiro, setCaixaTurno,
   } = useApp()
 
   const [filtro, setFiltro] = useState('todos')
@@ -78,21 +78,38 @@ export default function PatioLimpeza() {
     setConfirmar(null)
     setProcessados(prev => new Set(prev).add(os.id))
 
+    const hoje = new Date().toLocaleDateString('pt-BR')
+    const agora = new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    const cli = getCliente(os.clienteId)
+
     if (acao === 'pagou_retirou') {
-      if (os.status !== 'Concluída') {
-        mudarStatusOrdem(os.id, 'Concluída')
+      setOrdens(prev => prev.map(o => {
+        if (o.id !== os.id) return o
+        const hist = [{ id: Date.now(), texto: 'Status alterado para "Concluída"', data: agora }, ...(o.historico || [])]
+        return { ...o, status: 'Concluída', pago: true, dataConclusao: o.dataConclusao || hoje, historico: hist }
+      }))
+      if (!financeiro.find(f => f.osId === os.id)) {
+        setFinanceiro(fp => [{ id: Date.now(), data: hoje, descricao: `${os.id} - ${cli?.nome || 'Cliente'}`, tipo: 'receita', valor: os.valor.toFixed(2).replace('.', ','), osId: os.id }, ...fp])
       }
-      pagarOrdem(os.id)
     } else if (acao === 'retirou_sem_pagar') {
-      if (os.status !== 'Concluída') {
-        mudarStatusOrdem(os.id, 'Concluída')
+      setOrdens(prev => prev.map(o => {
+        if (o.id !== os.id) return o
+        const hist = [{ id: Date.now(), texto: 'Status alterado para "Concluída"', data: agora }, ...(o.historico || [])]
+        return { ...o, status: 'Concluída', dataConclusao: o.dataConclusao || hoje, historico: hist }
+      }))
+      if (!financeiro.find(f => f.osId === os.id)) {
+        setFinanceiro(fp => [{ id: Date.now(), data: hoje, descricao: `${os.id} - ${cli?.nome || 'Cliente'}`, tipo: 'receita', valor: os.valor.toFixed(2).replace('.', ','), osId: os.id }, ...fp])
       }
-      // Não marca como pago — fica como devedor
     } else if (acao === 'cancelar') {
-      if (os.status === 'Concluída') {
-        reabrirOrdem(os.id)
-      }
-      mudarStatusOrdem(os.id, 'Cancelada')
+      setOrdens(prev => prev.map(o => {
+        if (o.id !== os.id) return o
+        const entries = []
+        if (o.status === 'Concluída') entries.push({ id: Date.now(), texto: 'OS reaberta (estorno)', data: agora })
+        entries.push({ id: Date.now() + 1, texto: 'Status alterado para "Cancelada"', data: agora })
+        return { ...o, status: 'Cancelada', pago: false, historico: [...entries, ...(o.historico || [])] }
+      }))
+      setFinanceiro(fp => fp.filter(f => f.osId !== os.id))
+      setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.osId !== os.id) } : t)
     } else if (acao === 'ainda_aqui') {
       setProcessados(prev => {
         const n = new Set(prev)
