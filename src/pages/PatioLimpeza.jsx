@@ -63,16 +63,18 @@ export default function PatioLimpeza() {
       .sort((a, b) => b.dias - a.dias)
   }, [ordens, getCliente, getVeiculo, totalOrdem])
 
+  const visiveis = useMemo(() => osParadas.filter(o => !processados.has(o.id)), [osParadas, processados])
+
   const filtradas = useMemo(() => {
-    if (filtro === 'concluidas') return osParadas.filter(o => o.status === 'Concluída')
-    if (filtro === 'execucao') return osParadas.filter(o => ['Em Execução', 'Em Andamento', 'Aberta', 'Aprovada'].includes(o.status))
-    if (filtro === 'outras') return osParadas.filter(o => ['Diagnóstico', 'Aguardando Aprovação', 'Aguardando Peça'].includes(o.status))
-    return osParadas
-  }, [osParadas, filtro])
+    if (filtro === 'concluidas') return visiveis.filter(o => o.status === 'Concluída')
+    if (filtro === 'execucao') return visiveis.filter(o => ['Em Execução', 'Em Andamento', 'Aberta', 'Aprovada'].includes(o.status))
+    if (filtro === 'outras') return visiveis.filter(o => ['Diagnóstico', 'Aguardando Aprovação', 'Aguardando Peça'].includes(o.status))
+    return visiveis
+  }, [visiveis, filtro])
 
   const totalValor = filtradas.reduce((s, o) => s + o.valor, 0)
-  const totalConcluidas = osParadas.filter(o => o.status === 'Concluída').length
-  const totalExecucao = osParadas.filter(o => ['Em Execução', 'Em Andamento', 'Aberta', 'Aprovada'].includes(o.status)).length
+  const totalConcluidas = visiveis.filter(o => o.status === 'Concluída').length
+  const totalExecucao = visiveis.filter(o => ['Em Execução', 'Em Andamento', 'Aberta', 'Aprovada'].includes(o.status)).length
 
   function executarAcao(os, acao) {
     setConfirmar(null)
@@ -154,7 +156,7 @@ export default function PatioLimpeza() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <p className="text-xs text-slate-500 mb-1">OS pendentes</p>
-          <p className="text-2xl font-bold text-slate-800">{osParadas.length}</p>
+          <p className="text-2xl font-bold text-slate-800">{visiveis.length}</p>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <p className="text-xs text-slate-500 mb-1">Concluídas s/ baixa</p>
@@ -188,18 +190,6 @@ export default function PatioLimpeza() {
       {/* Lista de OS */}
       <div className="space-y-2">
         {filtradas.map(os => {
-          const jaProcessou = processados.has(os.id)
-          if (jaProcessou) {
-            return (
-              <div key={os.id} className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
-                <CheckCircle2 size={20} className="text-green-500 flex-shrink-0" />
-                <span className="text-sm text-green-700 font-medium">
-                  {os.id} — {os.modelo} ({os.placa}) — Processado
-                </span>
-              </div>
-            )
-          }
-
           return (
             <div key={os.id} className="bg-white border border-slate-200 rounded-xl p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
