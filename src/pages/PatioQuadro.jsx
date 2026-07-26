@@ -1,34 +1,29 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Car, User, Clock, Wrench, AlertTriangle, X } from 'lucide-react'
+import { Car, User, Clock, Wrench, Monitor, Minimize2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 
-// ─── Definição das colunas (etapas do pátio) ────────────────────────────────
-// Ordem = fluxo real: entrada → diagnóstico → aprovação → reparo → pronto.
-// Cada coluna aceita fichas (ckStatus) e/ou ordens (osStatus), pois o mesmo
-// estágio pode estar numa ficha (antes da OS) ou numa OS (depois).
-// Status de OS 'Entregue', 'Rejeitada' e 'Cancelada' ficam fora do quadro.
+// ─── 5 colunas (padrão mercado): Recepção → Diagnóstico → Orçamento → Execução → Pronto ───
+// ckStatus: array de status de checklist que aparecem nesta coluna
+// osStatus: array de status de OS que aparecem nesta coluna
 const COLUNAS = [
-  { id: 'aguard_diag',  titulo: 'Aguardando diagnóstico', cor: '#854F0B', ckStatus: 'Aguardando diagnóstico', osStatus: [] },
-  { id: 'em_diag',      titulo: 'Em diagnóstico',         cor: '#185FA5', ckStatus: 'Em diagnóstico',         osStatus: ['Diagnóstico'] },
-  { id: 'orcamento',    titulo: 'Orçamento',              cor: '#534AB7', ckStatus: 'Diagnóstico concluído',  osStatus: ['Aguardando Aprovação'] },
-  { id: 'aguard_peca',  titulo: 'Aguardando peça',        cor: '#A32D2D', ckStatus: 'Aguardando peça',        osStatus: ['Aguardando Peça'] },
-  { id: 'em_execucao',  titulo: 'Em execução',            cor: '#993C1D', ckStatus: null,                     osStatus: ['Aberta', 'Aprovada', 'Em Execução', 'Em Andamento'] },
-  { id: 'pronto',       titulo: 'Pronto p/ retirada',     cor: '#3B6D11', ckStatus: null,                     osStatus: ['Concluída'] },
+  { id: 'recepcao',    titulo: 'Recepção',           cor: '#854F0B', ckStatus: ['Aguardando diagnóstico'],                    osStatus: [] },
+  { id: 'diagnostico', titulo: 'Diagnóstico',        cor: '#185FA5', ckStatus: ['Em diagnóstico'],                            osStatus: ['Diagnóstico'] },
+  { id: 'orcamento',   titulo: 'Orçamento',          cor: '#534AB7', ckStatus: ['Diagnóstico concluído', 'Aguardando peça'],  osStatus: ['Aguardando Aprovação'] },
+  { id: 'em_execucao', titulo: 'Em execução',        cor: '#993C1D', ckStatus: [],                                           osStatus: ['Aberta', 'Aprovada', 'Em Execução', 'Em Andamento', 'Aguardando Peça'] },
+  { id: 'pronto',      titulo: 'Pronto p/ retirada', cor: '#3B6D11', ckStatus: [],                                           osStatus: ['Concluída'] },
 ]
 
-// Status canônico da OS ao soltar em cada coluna (para arrastar ordens entre etapas)
+// Status da OS ao soltar em cada coluna (apenas colunas intermediárias — Pronto é bloqueado no modo híbrido)
 const OS_STATUS_DESTINO = {
-  em_diag: 'Diagnóstico', orcamento: 'Aguardando Aprovação',
-  aguard_peca: 'Aguardando Peça', em_execucao: 'Em Execução', pronto: 'Concluída',
+  diagnostico: 'Diagnóstico',
+  orcamento: 'Aguardando Aprovação',
+  em_execucao: 'Em Execução',
 }
 
-// Limites de tempo parado (em horas) — amarelo a partir de warn, vermelho a partir de danger.
-// Configurável no futuro; padrões conservadores por enquanto.
 const LIMITES = { warn: 24, danger: 72 }
 
-// Converte datas pt-BR ('dd/mm/aaaa' ou 'dd/mm/aaaa hh:mm') para timestamp
 function parseBR(s) {
   if (!s) return null
   const m = String(s).match(/(\d{2})\/(\d{2})\/(\d{4})(?:[ ,]+(\d{2}):(\d{2}))?/)
@@ -37,31 +32,92 @@ function parseBR(s) {
 }
 
 function idadeInfo(ts) {
-  if (!ts) return { label: '—', cor: 'text-slate-400', bg: 'bg-slate-100' }
+  if (!ts) return { label: '—', cor: 'text-slate-400', bg: 'bg-slate-100', nivel: 0 }
   const h = (Date.now() - ts) / 3600000
   const label = h < 1 ? '<1h' : h < 24 ? `${Math.round(h)}h` : `${Math.round(h / 24)} dia(s)`
-  if (h >= LIMITES.danger) return { label, cor: 'text-red-700', bg: 'bg-red-100' }
-  if (h >= LIMITES.warn)   return { label, cor: 'text-amber-700', bg: 'bg-amber-100' }
-  return { label, cor: 'text-green-700', bg: 'bg-green-50' }
+  if (h >= LIMITES.danger) return { label, cor: 'text-red-700', bg: 'bg-red-100', nivel: 2 }
+  if (h >= LIMITES.warn)   return { label, cor: 'text-amber-700', bg: 'bg-amber-100', nivel: 1 }
+  return { label, cor: 'text-green-700', bg: 'bg-green-50', nivel: 0 }
 }
 
 const fmtBRL = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+function useClock() {
+  const [now, setNow] = useState(new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000)
+    return () => clearInterval(id)
+  }, [])
+  return now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function AutoScrollColumn({ children, ativo }) {
+  const ref = useRef(null)
+  const dirRef = useRef(1)
+
+  useEffect(() => {
+    if (!ativo) return
+    const el = ref.current
+    if (!el) return
+    const id = setInterval(() => {
+      if (!el || el.scrollHeight <= el.clientHeight) return
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2
+      const atTop = el.scrollTop <= 0
+      if (atBottom) dirRef.current = -1
+      if (atTop) dirRef.current = 1
+      el.scrollBy({ top: dirRef.current * 1, behavior: 'auto' })
+    }, 50)
+    return () => clearInterval(id)
+  }, [ativo])
+
+  return <div ref={ref} className="tv-scroll-col">{children}</div>
+}
+
 export default function PatioQuadro() {
   const navigate = useNavigate()
   const {
-    checklists, setChecklists, ordens, novaOrdem, mudarStatusOrdem, reabrirOrdem,
+    checklists, setChecklists, ordens, mudarStatusOrdem,
     totalOrdem, getCliente, getVeiculo, getFuncionario, carregando,
   } = useApp()
   const { currentUser } = useAuth()
-  // Só mostra valores para quem tem a permissão "Ver preços e valores"
   const podeVerValores = !!currentUser?.permissoes?.verPrecos
 
-  const [arrastando, setArrastando] = useState(null) // card sendo arrastado
-  const [sobre, setSobre] = useState(null)           // coluna com hover de drop
-  const [confirmar, setConfirmar] = useState(null)   // { card, coluna, tipo, texto }
+  const [arrastando, setArrastando] = useState(null)
+  const [sobre, setSobre] = useState(null)
+  const [modoTV, setModoTV] = useState(false)
+  const hora = useClock()
 
-  // ── Monta os cards de cada coluna a partir dos dados existentes ──
+  // ── Fullscreen API ──
+  const tvContainerRef = useRef(null)
+
+  const entrarModoTV = useCallback(() => {
+    setModoTV(true)
+    setTimeout(() => {
+      tvContainerRef.current?.requestFullscreen?.().catch(() => {})
+    }, 50)
+  }, [])
+
+  const sairModoTV = useCallback(() => {
+    setModoTV(false)
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement && modoTV) setModoTV(false)
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [modoTV])
+
+  useEffect(() => {
+    if (!modoTV) return
+    const onKey = (e) => { if (e.key === 'Escape') sairModoTV() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [modoTV, sairModoTV])
+
+  // ── Monta os cards ──
   function cardDoChecklist(ck) {
     const ts = parseBR(ck.criadoEm) || (Number.isFinite(Number(ck.id)) ? Number(ck.id) : null)
     const tsEtapa = ck.etapaEm || ts
@@ -69,7 +125,7 @@ export default function PatioQuadro() {
       key: `ck-${ck.id}`, kind: 'checklist', id: ck.id,
       titulo: ck.veiculoModelo || '—', placa: ck.veiculoPlaca || '',
       cliente: ck.clienteNome || '—', mecanico: ck.tecnicoNome || '',
-      valor: null, aReceber: false, ts: tsEtapa,
+      valor: null, aReceber: false, aguardandoPeca: false, ts: tsEtapa,
     }
   }
 
@@ -84,7 +140,9 @@ export default function PatioQuadro() {
       placa: veic?.placa || os.veiculoPlaca || '',
       cliente: cli?.nome || os.clienteNome || '—',
       mecanico: mec?.nome || '',
-      valor: totalOrdem(os), aReceber: os.status === 'Concluída' && !os.pago, ts,
+      valor: totalOrdem(os), aReceber: os.status === 'Concluída' && !os.pago,
+      aguardandoPeca: os.status === 'Aguardando Peça',
+      ts,
     }
   }
 
@@ -92,16 +150,14 @@ export default function PatioQuadro() {
 
   function cardsDaColuna(col) {
     const lista = []
-    // Fichas (só as que ainda não viraram OS) na etapa da coluna
-    if (col.ckStatus) {
+    if (col.ckStatus.length) {
       for (const c of checklists) {
-        if (!c.osId && c.status === col.ckStatus) {
+        if (!c.osId && col.ckStatus.includes(c.status)) {
           if (c.veiculoId && veiculosComOS.has(c.veiculoId)) continue
           lista.push(cardDoChecklist(c))
         }
       }
     }
-    // Ordens de serviço cujo status pertence a esta etapa
     if (col.osStatus.length) {
       for (const o of ordens) {
         if (col.osStatus.includes(o.status) && !(o.status === 'Concluída' && o.pago)) {
@@ -109,95 +165,63 @@ export default function PatioQuadro() {
         }
       }
     }
-    return lista.sort((a, b) => (a.ts || 0) - (b.ts || 0)) // parado há mais tempo no topo
+    return lista.sort((a, b) => (a.ts || 0) - (b.ts || 0))
   }
 
-  // Descobre em qual coluna um card está atualmente
   function colId(card) {
     if (card.kind === 'checklist') {
       const ck = checklists.find(c => c.id === card.id)
-      return COLUNAS.find(col => col.ckStatus && col.ckStatus === ck?.status)?.id
+      return COLUNAS.find(col => col.ckStatus.length && col.ckStatus.includes(ck?.status))?.id
     }
     const os = ordens.find(o => o.id === card.id)
     return COLUNAS.find(col => col.osStatus.includes(os?.status))?.id
   }
 
-  // ── Ação ao soltar um card numa coluna ──
-  function soltarNaColuna(destinoId, card) {
-    setArrastando(null); setSobre(null)
-    if (!card) return
+  // ── Valida se o card pode ser solto nesta coluna (modo híbrido) ──
+  function podeDropar(card, destinoId) {
+    if (!card) return false
     const origemId = colId(card)
-    if (!origemId || origemId === destinoId) return
+    if (!origemId || origemId === destinoId) return false
 
     const destino = COLUNAS.find(c => c.id === destinoId)
 
     if (card.kind === 'checklist') {
-      // Entre etapas de ficha (coluna com ckStatus): só troca de status — seguro
-      if (destino.ckStatus) {
-        setChecklists(prev => prev.map(c => c.id === card.id
-          ? { ...c, status: destino.ckStatus, etapaEm: Date.now() } : c))
-        return
-      }
-      // Ficha → Em execução: precisa CRIAR OS (ação pesada) — confirma
-      if (destinoId === 'em_execucao') {
-        setConfirmar({ card, destinoId, tipo: 'criarOS',
-          texto: `Gerar Ordem de Serviço para ${card.titulo}${card.placa ? ' (' + card.placa + ')' : ''} e mover para "Em execução"?` })
-      }
-      return // ficha → outras colunas de OS (pular o reparo) não é permitido
+      return destino.ckStatus.length > 0
     }
 
-    // card é uma OS
-    const novoStatus = OS_STATUS_DESTINO[destinoId]
-    if (!novoStatus) return // ex.: mover OS para "Aguardando diagnóstico" não é permitido
-
-    // Concluir (lança receita no financeiro) — confirma
-    if (destinoId === 'pronto') {
-      setConfirmar({ card, destinoId, tipo: 'concluir',
-        texto: `Concluir a OS ${card.id}? A receita será lançada no Financeiro.` })
-      return
-    }
-    // Reabrir (voltar de Pronto — estorna a receita lançada) — confirma
-    if (origemId === 'pronto') {
-      setConfirmar({ card, destinoId, tipo: 'reabrir',
-        texto: `Reabrir a OS ${card.id}? A receita lançada será estornada.` })
-      return
-    }
-    // Demais mudanças de status da OS (Diagnóstico, Aguardando Aprovação, Em Execução) — direto
-    mudarStatusOrdem(card.id, novoStatus)
+    // OS: bloqueado mover para/de Pronto e para Recepção
+    if (destinoId === 'pronto') return false
+    if (origemId === 'pronto') return false
+    if (destinoId === 'recepcao') return false
+    return !!OS_STATUS_DESTINO[destinoId]
   }
 
-  function executarConfirmado() {
-    const c = confirmar
-    setConfirmar(null)
-    if (!c) return
-    if (c.tipo === 'criarOS') {
-      const ck = checklists.find(x => x.id === c.card.id)
-      if (!ck) return
-      const osId = novaOrdem({
-        clienteId: ck.clienteId,
-        veiculoId: ck.veiculoId,
-        kmEntrada: ck.kmEntrada,
-        descricaoProblema: ck.relatoCliente || '',
-        diagnostico: ck.observacoesTecnicas || '',
-        status: 'Em Execução',
-      })
-      setChecklists(prev => prev.map(x => x.id === ck.id ? { ...x, osId } : x))
-    } else if (c.tipo === 'concluir') {
-      mudarStatusOrdem(c.card.id, 'Concluída')
-    } else if (c.tipo === 'reabrir') {
-      reabrirOrdem(c.card.id)
+  // ── Ação ao soltar (modo híbrido: só mudanças de status leves) ──
+  function soltarNaColuna(destinoId, card) {
+    setArrastando(null); setSobre(null)
+    if (!card || !podeDropar(card, destinoId)) return
+
+    const destino = COLUNAS.find(c => c.id === destinoId)
+
+    if (card.kind === 'checklist') {
+      setChecklists(prev => prev.map(c => c.id === card.id
+        ? { ...c, status: destino.ckStatus[0], etapaEm: Date.now() } : c))
+      return
     }
+
+    // OS: muda status entre colunas intermediárias
+    const novoStatus = OS_STATUS_DESTINO[destinoId]
+    if (novoStatus) mudarStatusOrdem(card.id, novoStatus)
   }
 
   function abrirCard(card) {
-    // O id da OS começa com '#'; encodeURIComponent evita que vire âncora na URL
     if (card.kind === 'checklist') navigate(`/checklist/${card.id}`)
     else navigate(`/ordens-servico/${encodeURIComponent(card.id)}`)
   }
 
-  // ── Arraste por pointer events: funciona igual no mouse E no toque ──
-  // Um movimento curto = toque/clique (abre o card); mover além do limiar = arrastar.
+  // ── Arraste por pointer events ──
   function iniciarArraste(e, card) {
+    if (modoTV) return
     if (e.pointerType === 'mouse' && e.button !== 0) return
     const sx = e.clientX, sy = e.clientY
     const origem = e.currentTarget
@@ -223,7 +247,8 @@ export default function PatioQuadro() {
       }
       clone.style.left = (ev.clientX - origem.offsetWidth / 2) + 'px'
       clone.style.top = (ev.clientY - 22) + 'px'
-      setSobre(colunaSob(ev.clientX, ev.clientY))
+      const col = colunaSob(ev.clientX, ev.clientY)
+      setSobre(col && podeDropar(card, col) ? col : null)
     }
 
     const soltar = (ev) => {
@@ -237,7 +262,7 @@ export default function PatioQuadro() {
         if (destino) soltarNaColuna(destino, card)
         else { setArrastando(null); setSobre(null) }
       } else {
-        abrirCard(card) // foi um toque simples, sem arrastar
+        abrirCard(card)
       }
     }
 
@@ -255,6 +280,254 @@ export default function PatioQuadro() {
     </div>
   )
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // MODO TV
+  // ════════════════════════════════════════════════════════════════════════════
+  if (modoTV) {
+    return (
+      <div ref={tvContainerRef} style={{
+        position: 'fixed', inset: 0, zIndex: 99999,
+        background: 'linear-gradient(135deg, #0c1222 0%, #162032 50%, #0c1222 100%)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        fontFamily: "'Inter', sans-serif",
+      }}>
+        {/* Barra superior TV */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <Car size={28} color="#f97316" />
+            <span style={{ color: '#f1f5f9', fontSize: '22px', fontWeight: 700 }}>
+              Quadro do Pátio
+            </span>
+            <span style={{
+              background: 'rgba(249,115,22,0.15)', color: '#fb923c',
+              padding: '4px 14px', borderRadius: '20px',
+              fontSize: '18px', fontWeight: 700,
+            }}>
+              {totalCarros} veículo{totalCarros !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+            <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: '#94a3b8' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e' }} /> OK
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b' }} /> Atenção
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444' }} /> Crítico
+              </span>
+            </div>
+
+            <span style={{
+              color: '#94a3b8', fontSize: '20px', fontWeight: 600,
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {hora}
+            </span>
+
+            <button onClick={sairModoTV} style={{
+              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '10px', padding: '6px 14px',
+              color: '#94a3b8', fontSize: '13px', fontWeight: 500,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+            }}>
+              <Minimize2 size={14} /> ESC
+            </button>
+          </div>
+        </div>
+
+        {/* Colunas TV */}
+        <div style={{
+          flex: 1, display: 'grid',
+          gridTemplateColumns: `repeat(${COLUNAS.length}, 1fr)`,
+          gap: '10px', padding: '12px 16px 16px', overflow: 'hidden',
+          minHeight: 0,
+        }}>
+          {COLUNAS.map(col => {
+            const cards = cardsDaColuna(col)
+            return (
+              <div key={col.id} style={{
+                display: 'flex', flexDirection: 'column',
+                borderRadius: '16px', overflow: 'hidden',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                minHeight: 0,
+              }}>
+                <div style={{
+                  background: col.cor, padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  flexShrink: 0,
+                }}>
+                  <span style={{
+                    color: '#fff', fontSize: '14px', fontWeight: 700,
+                    textTransform: 'uppercase', letterSpacing: '0.05em',
+                  }}>{col.titulo}</span>
+                  <span style={{
+                    background: 'rgba(255,255,255,0.25)', color: '#fff',
+                    borderRadius: '20px', padding: '2px 12px',
+                    fontSize: '16px', fontWeight: 800, minWidth: '32px', textAlign: 'center',
+                  }}>{cards.length}</span>
+                </div>
+
+                <AutoScrollColumn ativo={modoTV}>
+                  <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {cards.map(card => {
+                      const idade = idadeInfo(card.ts)
+                      const corBorda = idade.nivel === 2 ? '#ef4444'
+                        : idade.nivel === 1 ? '#f59e0b' : `${col.cor}44`
+
+                      return (
+                        <div key={card.key} style={{
+                          background: `linear-gradient(135deg, ${col.cor}18, ${col.cor}08)`,
+                          border: `2px solid ${corBorda}`,
+                          borderRadius: '12px', padding: '10px 12px',
+                          animation: idade.nivel === 2 ? 'tvPulseRed 2s ease-in-out infinite'
+                            : idade.nivel === 1 ? 'tvPulseAmber 3s ease-in-out infinite' : 'none',
+                        }}>
+                          {/* PLACA */}
+                          <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            gap: '8px', marginBottom: '6px',
+                          }}>
+                            <span style={{
+                              fontFamily: "'Courier New', monospace",
+                              fontSize: '22px', fontWeight: 900, letterSpacing: '2px',
+                              color: '#fff', background: 'rgba(0,0,0,0.4)',
+                              padding: '3px 10px', borderRadius: '6px',
+                              border: '1px solid rgba(255,255,255,0.15)',
+                            }}>
+                              {card.placa || '---'}
+                            </span>
+                            <span style={{
+                              fontSize: '13px', fontWeight: 700,
+                              padding: '2px 10px', borderRadius: '12px',
+                              background: idade.nivel === 2 ? 'rgba(239,68,68,0.2)'
+                                : idade.nivel === 1 ? 'rgba(245,158,11,0.2)' : 'rgba(34,197,94,0.15)',
+                              color: idade.nivel === 2 ? '#fca5a5'
+                                : idade.nivel === 1 ? '#fcd34d' : '#86efac',
+                              display: 'flex', alignItems: 'center', gap: '4px',
+                              flexShrink: 0,
+                            }}>
+                              <Clock size={12} /> {idade.label}
+                            </span>
+                          </div>
+
+                          {/* Modelo */}
+                          <div style={{
+                            color: '#e2e8f0', fontSize: '14px', fontWeight: 600,
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            marginBottom: '4px',
+                          }}>
+                            <Car size={14} color="#94a3b8" />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {card.titulo}
+                            </span>
+                          </div>
+
+                          {/* Cliente + Mecânico */}
+                          <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            gap: '8px', flexWrap: 'wrap',
+                          }}>
+                            <span style={{
+                              color: '#94a3b8', fontSize: '12px',
+                              display: 'flex', alignItems: 'center', gap: '4px',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                              <User size={11} /> {card.cliente}
+                            </span>
+                            {card.mecanico && (
+                              <span style={{
+                                color: '#fbbf24', fontSize: '12px', fontWeight: 600,
+                                display: 'flex', alignItems: 'center', gap: '4px',
+                                background: 'rgba(251,191,36,0.1)',
+                                padding: '1px 8px', borderRadius: '8px',
+                              }}>
+                                <Wrench size={10} /> {card.mecanico}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Tag Aguardando peça (TV) */}
+                          {card.aguardandoPeca && (
+                            <div style={{ marginTop: '6px' }}>
+                              <span style={{
+                                fontSize: '11px', color: '#fca5a5', fontWeight: 600,
+                                background: 'rgba(239,68,68,0.15)',
+                                padding: '2px 8px', borderRadius: '8px',
+                              }}>Aguardando peça</span>
+                            </div>
+                          )}
+
+                          {/* Valor + A Receber */}
+                          {(podeVerValores && card.valor != null) || card.aReceber ? (
+                            <div style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              marginTop: '6px', gap: '6px',
+                            }}>
+                              {card.aReceber && (
+                                <span style={{
+                                  fontSize: '11px', color: '#60a5fa', fontWeight: 600,
+                                  background: 'rgba(96,165,250,0.12)',
+                                  padding: '1px 8px', borderRadius: '8px',
+                                }}>a receber</span>
+                              )}
+                              {podeVerValores && card.valor != null && (
+                                <span style={{
+                                  fontSize: '13px', color: '#e2e8f0', fontWeight: 700,
+                                  marginLeft: 'auto',
+                                }}>{fmtBRL(card.valor)}</span>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                    {cards.length === 0 && (
+                      <div style={{
+                        textAlign: 'center', color: 'rgba(255,255,255,0.15)',
+                        padding: '32px 0', fontSize: '14px',
+                        border: '2px dashed rgba(255,255,255,0.08)',
+                        borderRadius: '12px',
+                      }}>
+                        vazio
+                      </div>
+                    )}
+                  </div>
+                </AutoScrollColumn>
+              </div>
+            )
+          })}
+        </div>
+
+        <style>{`
+          .tv-scroll-col {
+            flex: 1;
+            overflow-y: hidden;
+            min-height: 0;
+          }
+          @keyframes tvPulseRed {
+            0%, 100% { border-color: #ef4444; box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+            50% { border-color: #f87171; box-shadow: 0 0 12px 2px rgba(239,68,68,0.25); }
+          }
+          @keyframes tvPulseAmber {
+            0%, 100% { border-color: #f59e0b; box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+            50% { border-color: #fbbf24; box-shadow: 0 0 10px 2px rgba(245,158,11,0.2); }
+          }
+        `}</style>
+      </div>
+    )
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // MODO NORMAL
+  // ════════════════════════════════════════════════════════════════════════════
   return (
     <div className="space-y-4">
       {/* Cabeçalho */}
@@ -263,16 +536,22 @@ export default function PatioQuadro() {
           <h2 className="text-xl font-bold text-slate-800">Quadro do Pátio</h2>
           <p className="text-sm text-slate-500">{totalCarros} veículo(s) no pátio · arraste os cards entre as etapas</p>
         </div>
-        <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-green-500" /> no prazo</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> atenção</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> parado demais</span>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={entrarModoTV}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700 transition-colors shadow-sm">
+            <Monitor size={16} /> Modo TV
+          </button>
+          <div className="flex items-center gap-3 text-xs text-slate-500">
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-green-500" /> no prazo</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> atenção</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> parado demais</span>
+          </div>
         </div>
       </div>
 
       {/* Quadro */}
       <div className="overflow-x-auto pb-3">
-        <div className="flex gap-3" style={{ minWidth: '1140px' }}>
+        <div className="flex gap-3" style={{ minWidth: '960px' }}>
           {COLUNAS.map(col => {
             const cards = cardsDaColuna(col)
             const ativa = sobre === col.id
@@ -280,7 +559,6 @@ export default function PatioQuadro() {
               <div key={col.id}
                 data-coluna={col.id}
                 className="flex-1 min-w-[184px] flex flex-col">
-                {/* Cabeçalho colorido da etapa */}
                 <div style={{ backgroundColor: col.cor }}
                   className="flex items-center justify-between rounded-t-xl px-3 py-2 text-white">
                   <span className="text-xs font-bold uppercase tracking-wide truncate">{col.titulo}</span>
@@ -311,6 +589,11 @@ export default function PatioQuadro() {
                             <Wrench size={10} /> {card.mecanico}
                           </p>
                         )}
+                        {card.aguardandoPeca && (
+                          <p className="text-[11px] text-red-700 bg-red-50 inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded font-medium">
+                            Aguardando peça
+                          </p>
+                        )}
                         <div className="flex items-center justify-between mt-2 gap-2">
                           <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${idade.bg} ${idade.cor}`}>
                             <Clock size={10} /> {idade.label}
@@ -338,36 +621,6 @@ export default function PatioQuadro() {
           })}
         </div>
       </div>
-
-      {/* Modal de confirmação para ações pesadas (criar OS, concluir, reabrir) */}
-      {confirmar && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                <AlertTriangle size={20} className="text-amber-500" />
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-slate-800 mb-1">Confirmar mudança</p>
-                <p className="text-sm text-slate-500">{confirmar.texto}</p>
-              </div>
-              <button onClick={() => setConfirmar(null)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmar(null)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={executarConfirmado}
-                className="flex-1 py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold transition-colors">
-                Confirmar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
