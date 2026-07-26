@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect } from 'react'
 export const MODELOS = {
   admin: {
     label: 'Administrador',
-    menus: ['patio','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','gastos','configuracoes'],
+    menus: ['patio','patio-limpeza','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','gastos','configuracoes'],
     verPrecos: true,
     verFinanceiro: true,
     editarConfigs: true,
@@ -46,7 +46,7 @@ const MENUS_UNIVERSAIS = ['patio']
 
 // Migração automática: menus que devem existir para cada perfil
 const MENUS_OBRIGATORIOS = {
-  admin:     ['checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar'],
+  admin:     ['patio-limpeza','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar'],
   reparador: ['checklist-novo','checklist-fotos','checklist-diagnostico'],
   recepcao:  ['checklist-novo','checklist-gerenciar'],
 }

@@ -79,7 +79,7 @@ export default function PatioQuadro() {
     checklists, setChecklists, ordens, mudarStatusOrdem,
     totalOrdem, getCliente, getVeiculo, getFuncionario, carregando,
   } = useApp()
-  const { currentUser } = useAuth()
+  const { currentUser, temPermissao } = useAuth()
   const podeVerValores = !!currentUser?.permissoes?.verPrecos
 
   const [arrastando, setArrastando] = useState(null)
@@ -537,10 +537,12 @@ export default function PatioQuadro() {
           <p className="text-sm text-slate-500">{totalCarros} veículo(s) no pátio · arraste os cards entre as etapas</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={() => navigate('/patio/limpeza')}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors">
-            <Trash2 size={16} /> Limpeza
-          </button>
+          {temPermissao('patio-limpeza') && (
+            <button onClick={() => navigate('/patio/limpeza')}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors">
+              <Trash2 size={16} /> Limpeza
+            </button>
+          )}
           <button onClick={entrarModoTV}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700 transition-colors shadow-sm">
             <Monitor size={16} /> Modo TV

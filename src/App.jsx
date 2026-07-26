@@ -85,7 +85,7 @@ export default function App() {
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<PrimeiraRota />} />
           <Route path="patio"               element={<Rota perm="patio"><PatioQuadro /></Rota>} />
-          <Route path="patio/limpeza"       element={<Rota perm="patio"><PatioLimpeza /></Rota>} />
+          <Route path="patio/limpeza"       element={<Rota perm="patio-limpeza"><PatioLimpeza /></Rota>} />
           <Route path="dashboard"           element={<Rota perm="dashboard"><Dashboard /></Rota>} />
           <Route path="clientes"            element={<Rota perm="clientes"><Clientes /></Rota>} />
           <Route path="veiculos"            element={<Rota perm="veiculos"><Veiculos /></Rota>} />
