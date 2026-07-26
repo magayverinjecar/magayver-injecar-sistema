@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Car, User, Clock, Wrench, Monitor, Minimize2 } from 'lucide-react'
+import { Car, User, Clock, Wrench, Monitor, Minimize2, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 
@@ -537,6 +537,10 @@ export default function PatioQuadro() {
           <p className="text-sm text-slate-500">{totalCarros} veículo(s) no pátio · arraste os cards entre as etapas</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={() => navigate('/patio/limpeza')}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors">
+            <Trash2 size={16} /> Limpeza
+          </button>
           <button onClick={entrarModoTV}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700 transition-colors shadow-sm">
             <Monitor size={16} /> Modo TV
