@@ -46,6 +46,7 @@ export default function PatioLimpeza() {
     return ordens
       .filter(o => statusAtivos.includes(o.status))
       .filter(o => !(o.status === 'Concluída' && o.pago))
+      .filter(o => !o.retirado)
       .map(o => {
         const cli = getCliente(o.clienteId)
         const veic = getVeiculo(o.veiculoId)
@@ -96,8 +97,8 @@ export default function PatioLimpeza() {
     } else if (acao === 'retirou_sem_pagar') {
       setOrdens(prev => prev.map(o => {
         if (o.id !== os.id) return o
-        const hist = [{ id: Date.now(), texto: 'Status alterado para "Concluída"', data: agora }, ...(o.historico || [])]
-        return { ...o, status: 'Concluída', dataConclusao: o.dataConclusao || hoje, historico: hist }
+        const hist = [{ id: Date.now(), texto: 'Veículo retirado sem pagar', data: agora }, ...(o.historico || [])]
+        return { ...o, status: 'Concluída', retirado: true, dataConclusao: o.dataConclusao || hoje, historico: hist }
       }))
       if (!financeiro.find(f => f.osId === os.id)) {
         setFinanceiro(fp => [{ id: Date.now(), data: hoje, descricao: `${os.id} - ${cli?.nome || 'Cliente'}`, tipo: 'receita', valor: os.valor.toFixed(2).replace('.', ','), osId: os.id }, ...fp])
