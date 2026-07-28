@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import gerarId from '../utils/id'
 import {
   ArrowLeft, Camera, Trash2, CheckCircle2, AlertTriangle,
   Save, User, Clock, Car, X, ZoomIn, ChevronLeft, ChevronRight, MessageCircle, Copy, Check
@@ -194,7 +195,7 @@ export default function ChecklistFotosDetalhe() {
       const caminho = `fotos/checklists/${ck.id}/${Date.now()}.jpg`
       const url = await uploadFoto(blob, caminho)
       const novaFoto = {
-        id: Date.now() + Math.random(),
+        id: gerarId(),
         url,
         categoria: categoriaAtual,
         timestamp: new Date().toLocaleString('pt-BR'),

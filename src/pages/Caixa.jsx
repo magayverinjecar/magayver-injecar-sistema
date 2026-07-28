@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext'
 import { imprimirReciboCaixa } from '../utils/print'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function pNum(v) { return parseFloat((v || '0').toString().replace(',', '.')) || 0 }
+function pNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
 
 const FORMAS_FECHAMENTO = ['Dinheiro', 'PIX', 'Cartão Crédito', 'Cartão Débito', 'Transferência', 'Boleto', 'Vale Funcionário']
 
@@ -114,7 +114,7 @@ export default function Caixa() {
     setContagem({}); setJustificativa(''); setModalFechar(true)
   }
   function confirmarFechar() {
-    const totalContado = FORMAS_FECHAMENTO.reduce((s, f) => s + (parseFloat((contagem[f] || '0').toString().replace(',', '.')) || 0), 0)
+    const totalContado = FORMAS_FECHAMENTO.reduce((s, f) => s + pNum(contagem[f]), 0)
     fecharCaixa(contagem, justificativa, saldoEsperado, totalContado)
     setModalFechar(false)
   }

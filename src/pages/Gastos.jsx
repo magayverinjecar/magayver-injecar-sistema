@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Plus, Search, Pencil, Trash2, X, TrendingUp, Zap, Clock, CheckCircle, Repeat, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function parseNum(v) { return parseFloat((v || '0').toString().replace(',', '.')) || 0 }
+function parseNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
 
 const CATEGORIAS = ['Outros', 'Aluguel', 'Água', 'Energia', 'Internet', 'Telefone', 'Salário', 'Impostos', 'Manutenção', 'Marketing']
 const STATUS_COR = {
@@ -76,7 +77,7 @@ export default function Gastos() {
       setGastos(prev => prev.map(g => g.id === editId ? atualizado : g))
       sincronizarFinanceiro(atualizado, antigo.status)
     } else {
-      const novo = { ...form, id: Date.now(), vencimento }
+      const novo = { ...form, id: gerarId(), vencimento }
       setGastos(prev => [novo, ...prev])
       sincronizarFinanceiro(novo, null)
     }

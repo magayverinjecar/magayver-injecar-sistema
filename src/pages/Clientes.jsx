@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Search, Plus, Phone, Mail, Car, Trash2, ChevronRight, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 import Modal from '../components/ui/Modal'
 
 const vazio = { nome: '', telefone: '', email: '' }
@@ -19,7 +20,7 @@ export default function Clientes() {
     if (!form.nome.trim()) { setErroNome(true); return }
     setErroNome(false)
     try {
-      setClientes(prev => [...prev, { ...form, id: Date.now() }])
+      setClientes(prev => [...prev, { ...form, id: gerarId() }])
       setForm(vazio)
       setModal(false)
     } catch (err) {

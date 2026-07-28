@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import gerarId from '../utils/id'
 import {
   ArrowLeft, User, Car, AlertTriangle, MessageSquare, Eye,
   Wrench, CheckCircle2, ClipboardList, Save, FileText, Clock,
@@ -125,7 +126,7 @@ export default function ChecklistDetalhe() {
       const reader = new FileReader()
       reader.onload = ev => {
         const novaFoto = {
-          id: Date.now() + Math.random(),
+          id: gerarId(),
           dataUrl: ev.target.result,
           categoria: categoriaFoto,
           timestamp: new Date().toLocaleString('pt-BR'),

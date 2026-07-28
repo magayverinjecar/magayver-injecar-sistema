@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, AlertTriangle, Car, User, Clock, DollarSign, Ban, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 
 const fmtBRL = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -88,27 +89,24 @@ export default function PatioLimpeza() {
     if (acao === 'pagou_retirou') {
       setOrdens(prev => prev.map(o => {
         if (o.id !== os.id) return o
-        const hist = [{ id: Date.now(), texto: 'Status alterado para "Concluída"', data: agora }, ...(o.historico || [])]
+        const hist = [{ id: gerarId(), texto: 'Status alterado para "Concluída"', data: agora }, ...(o.historico || [])]
         return { ...o, status: 'Concluída', pago: true, dataConclusao: o.dataConclusao || hoje, historico: hist }
       }))
       if (!financeiro.find(f => f.osId === os.id)) {
-        setFinanceiro(fp => [{ id: Date.now(), data: hoje, descricao: `${os.id} - ${cli?.nome || 'Cliente'}`, tipo: 'receita', valor: os.valor.toFixed(2).replace('.', ','), osId: os.id }, ...fp])
+        setFinanceiro(fp => [{ id: gerarId(), data: hoje, descricao: `${os.id} - ${cli?.nome || 'Cliente'}`, tipo: 'receita', valor: os.valor.toFixed(2).replace('.', ','), osId: os.id }, ...fp])
       }
     } else if (acao === 'retirou_sem_pagar') {
       setOrdens(prev => prev.map(o => {
         if (o.id !== os.id) return o
-        const hist = [{ id: Date.now(), texto: 'Veículo retirado sem pagar', data: agora }, ...(o.historico || [])]
+        const hist = [{ id: gerarId(), texto: 'Veículo retirado sem pagar', data: agora }, ...(o.historico || [])]
         return { ...o, status: 'Concluída', retirado: true, dataConclusao: o.dataConclusao || hoje, historico: hist }
       }))
-      if (!financeiro.find(f => f.osId === os.id)) {
-        setFinanceiro(fp => [{ id: Date.now(), data: hoje, descricao: `${os.id} - ${cli?.nome || 'Cliente'}`, tipo: 'receita', valor: os.valor.toFixed(2).replace('.', ','), osId: os.id }, ...fp])
-      }
     } else if (acao === 'cancelar') {
       setOrdens(prev => prev.map(o => {
         if (o.id !== os.id) return o
         const entries = []
-        if (o.status === 'Concluída') entries.push({ id: Date.now(), texto: 'OS reaberta (estorno)', data: agora })
-        entries.push({ id: Date.now() + 1, texto: 'Status alterado para "Cancelada"', data: agora })
+        if (o.status === 'Concluída') entries.push({ id: gerarId(), texto: 'OS reaberta (estorno)', data: agora })
+        entries.push({ id: gerarId(), texto: 'Status alterado para "Cancelada"', data: agora })
         return { ...o, status: 'Cancelada', pago: false, historico: [...entries, ...(o.historico || [])] }
       }))
       setFinanceiro(fp => fp.filter(f => f.osId !== os.id))

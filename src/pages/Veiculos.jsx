@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Search, Plus, Car, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 import Modal from '../components/ui/Modal'
 
 const vazio = { placa: '', modelo: '', ano: '', cor: '', clienteId: '', km: '' }
@@ -22,7 +23,7 @@ export default function Veiculos() {
 
   function salvar() {
     if (!form.placa.trim() || !form.modelo.trim()) return
-    setVeiculos(prev => [...prev, { ...form, id: Date.now(), clienteId: Number(form.clienteId) || null }])
+    setVeiculos(prev => [...prev, { ...form, id: gerarId(), clienteId: Number(form.clienteId) || null }])
     setForm(vazio)
     setModal(false)
   }

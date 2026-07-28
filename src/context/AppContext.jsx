@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase'
+import gerarId from '../utils/id'
 
 const AppContext = createContext(null)
 
@@ -17,10 +18,11 @@ function item2row(item) {
   return { id: String(id), data }
 }
 
-// Carrega tabela inteira
+// Carrega tabela inteira — retorna null em caso de erro para que o chamador
+// possa distinguir "tabela vazia" (array []) de "falha de rede" (null).
 async function loadTable(tableName) {
   const { data, error } = await supabase.from(tableName).select('id, data').order('id', { ascending: false })
-  if (error) { console.error(`Erro ao carregar ${tableName}:`, error); return [] }
+  if (error) { console.error(`Erro ao carregar ${tableName}:`, error); return null }
   return (data || []).map(row2item)
 }
 
@@ -117,6 +119,7 @@ export function AppProvider({ children }) {
       return
     }
     const data = await loadTable(table)
+    if (data === null) return
     aplicarTabela[table]?.(data)
   }
 
@@ -147,33 +150,33 @@ export function AppProvider({ children }) {
         loadTable('caixa_historico'),
       ])
 
-      r.current.clientes      = clientesData
-      r.current.veiculos      = veiculosData
-      r.current.ordens        = ordensData
-      r.current.estoque       = estoqueData
-      r.current.financeiro    = financeiroData
-      r.current.agenda        = agendaData
-      r.current.funcionarios  = funcionariosData
-      r.current.servicos      = servicosData
-      r.current.checklists    = checklistsData
-      r.current.orcamentos    = orcamentosData
-      r.current.compras       = comprasData
-      r.current.fornecedores  = fornecedoresData
-      r.current.caixaHistorico = caixaHistoricoData
+      r.current.clientes      = clientesData || []
+      r.current.veiculos      = veiculosData || []
+      r.current.ordens        = ordensData || []
+      r.current.estoque       = estoqueData || []
+      r.current.financeiro    = financeiroData || []
+      r.current.agenda        = agendaData || []
+      r.current.funcionarios  = funcionariosData || []
+      r.current.servicos      = servicosData || []
+      r.current.checklists    = checklistsData || []
+      r.current.orcamentos    = orcamentosData || []
+      r.current.compras       = comprasData || []
+      r.current.fornecedores  = fornecedoresData || []
+      r.current.caixaHistorico = caixaHistoricoData || []
 
-      _setClientes(clientesData)
-      _setVeiculos(veiculosData)
-      _setOrdens(ordensData)
-      _setEstoque(estoqueData)
-      _setFinanceiro(financeiroData)
-      _setAgenda(agendaData)
-      _setFuncionarios(funcionariosData)
-      _setServicos(servicosData)
-      _setChecklists(checklistsData)
-      _setOrcamentos(orcamentosData)
-      _setCompras(comprasData)
-      _setFornecedores(fornecedoresData)
-      _setCaixaHistorico(caixaHistoricoData)
+      _setClientes(r.current.clientes)
+      _setVeiculos(r.current.veiculos)
+      _setOrdens(r.current.ordens)
+      _setEstoque(r.current.estoque)
+      _setFinanceiro(r.current.financeiro)
+      _setAgenda(r.current.agenda)
+      _setFuncionarios(r.current.funcionarios)
+      _setServicos(r.current.servicos)
+      _setChecklists(r.current.checklists)
+      _setOrcamentos(r.current.orcamentos)
+      _setCompras(r.current.compras)
+      _setFornecedores(r.current.fornecedores)
+      _setCaixaHistorico(r.current.caixaHistorico)
 
       // Libera UI imediatamente — dados principais já estão prontos
       setCarregando(false)
@@ -290,27 +293,50 @@ export function AppProvider({ children }) {
   }
 
   // --- HELPERS ---
-  function gerarNumeroOS() { return '#' + Math.floor(10000 + Math.random() * 89999) }
-  function gerarNumeroChecklist() { return 'CK-' + Math.floor(1000 + Math.random() * 8999) }
+  function gerarNumeroOS() {
+    const existentes = new Set(r.current.ordens.map(o => o.id))
+    for (let i = 0; i < 20; i++) {
+      const n = '#' + Math.floor(10000 + Math.random() * 89999)
+      if (!existentes.has(n)) return n
+    }
+    const nums = r.current.ordens.map(o => parseInt((o.id || '').replace('#', '')) || 0)
+    return '#' + ((Math.max(0, ...nums)) + 1)
+  }
+  function gerarNumeroChecklist() {
+    const existentes = new Set(r.current.checklists.map(c => c.numero))
+    for (let i = 0; i < 20; i++) {
+      const n = 'CK-' + Math.floor(1000 + Math.random() * 8999)
+      if (!existentes.has(n)) return n
+    }
+    const nums = r.current.checklists.map(c => parseInt((c.numero || '').replace('CK-', '')) || 0)
+    return 'CK-' + ((Math.max(0, ...nums)) + 1)
+  }
   function carimboData() {
     return new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+
+  function parseBR(v) {
+    if (typeof v === 'number') return v
+    const s = (v || '0').toString()
+    if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0
+    return parseFloat(s) || 0
   }
 
   function subtotalOrdem(o) {
     if (o.itens && o.itens.length > 0) {
       return o.itens.reduce((s, i) => {
-        const unitario = parseFloat((i.valorUnitario || '0').toString().replace(',', '.'))
+        const unitario = parseBR(i.valorUnitario)
         const qtd = Number(i.quantidade) || 1
-        const desconto = parseFloat((i.desconto || '0').toString().replace(',', '.'))
+        const desconto = parseBR(i.desconto)
         return s + (unitario * qtd - desconto)
       }, 0)
     }
-    return parseFloat((o.valor || '0').toString().replace(',', '.')) || 0
+    return parseBR(o.valor)
   }
 
   function totalOrdem(o) {
     const sub = subtotalOrdem(o)
-    const dg = parseFloat((o.descontoGeral || '0').toString().replace(',', '.'))
+    const dg = parseBR(o.descontoGeral)
     return Math.max(0, sub - dg)
   }
 
@@ -335,7 +361,7 @@ export function AppProvider({ children }) {
       itens: dados.itens || [],
       pecas: dados.pecas || [],
       fotos: [],
-      historico: [{ id: Date.now(), texto: 'OS criada', data: carimboData() }],
+      historico: [{ id: gerarId(), texto: 'OS criada', data: carimboData() }],
       pago: false,
     }
     if (nova.pecas && nova.pecas.length > 0) {
@@ -354,7 +380,7 @@ export function AppProvider({ children }) {
   }
 
   function adicionarItemOrdem(id, item) {
-    const novo = { ...item, id: Date.now() + Math.random() }
+    const novo = { ...item, id: gerarId() }
     if (item.tipo === 'peca' && item.produtoId) {
       setEstoque(prev => prev.map(p => p.id === Number(item.produtoId)
         ? { ...p, estoque: Math.max(0, Number(p.estoque) - (Number(item.quantidade) || 1)) } : p))
@@ -394,23 +420,17 @@ export function AppProvider({ children }) {
     const lista = r.current.ordens
     const o = lista.find(x => x.id === id)
     if (!o) return
-    const historico = [{ id: Date.now(), texto: `Status alterado para "${novoStatus}"`, data: carimboData() }, ...(o.historico || [])]
+    const historico = [{ id: gerarId(), texto: `Status alterado para "${novoStatus}"`, data: carimboData() }, ...(o.historico || [])]
     let extra = {}
     if (novoStatus === 'Concluída') {
       const hoje = new Date().toLocaleDateString('pt-BR')
       extra.dataConclusao = o.dataConclusao || hoje
-      const cliente = r.current.clientes.find(c => c.id === o.clienteId)
-      const total = totalOrdem(o)
-      setFinanceiro(fp => {
-        if (fp.find(f => f.osId === id)) return fp
-        return [{ id: Date.now(), data: hoje, descricao: `${id} - ${cliente?.nome || 'Cliente'}`, tipo: 'receita', valor: total.toFixed(2).replace('.', ','), osId: id }, ...fp]
-      })
     }
-    setOrdens(prev => prev.map(x => x.id === id ? { ...x, status: novoStatus, historico, ...extra } : x))
+    setOrdens(prev => prev.map(x => x.id === id ? { ...x, status: novoStatus, historico, etapaEm: Date.now(), ...extra } : x))
   }
 
   function adicionarFotoOrdem(id, url) {
-    setOrdens(prev => prev.map(o => o.id === id ? { ...o, fotos: [...(o.fotos || []), { id: Date.now() + Math.random(), url }] } : o))
+    setOrdens(prev => prev.map(o => o.id === id ? { ...o, fotos: [...(o.fotos || []), { id: gerarId(), url }] } : o))
   }
 
   function removerFotoOrdem(id, fotoId) {
@@ -430,7 +450,7 @@ export function AppProvider({ children }) {
   function reabrirOrdem(osId) {
     const o = r.current.ordens.find(x => x.id === osId)
     if (!o) return
-    const historico = [{ id: Date.now(), texto: 'OS reaberta (estorno)', data: carimboData() }, ...(o.historico || [])]
+    const historico = [{ id: gerarId(), texto: 'OS reaberta (estorno)', data: carimboData() }, ...(o.historico || [])]
     // Desfaz pagamento e status
     setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Em Andamento', pago: false, historico } : x))
     // Remove receita do financeiro gerada ao concluir
@@ -442,13 +462,22 @@ export function AppProvider({ children }) {
   // --- FINANCEIRO ---
   function adicionarLancamento(lancamento) {
     const hoje = new Date().toLocaleDateString('pt-BR')
-    setFinanceiro(prev => [{ ...lancamento, id: Date.now(), data: hoje }, ...prev])
+    setFinanceiro(prev => [{ ...lancamento, id: gerarId(), data: hoje }, ...prev])
   }
 
   // --- COMPRAS ---
   function criarCompra() {
-    const id = Date.now()
-    const numero = '#' + Math.floor(400 + Math.random() * 600)
+    const id = gerarId()
+    const existentes = new Set(r.current.compras.map(c => c.numero))
+    let numero
+    for (let i = 0; i < 20; i++) {
+      const n = '#' + Math.floor(400 + Math.random() * 600)
+      if (!existentes.has(n)) { numero = n; break }
+    }
+    if (!numero) {
+      const nums = r.current.compras.map(c => parseInt((c.numero || '').replace('#', '')) || 0)
+      numero = '#' + ((Math.max(0, ...nums)) + 1)
+    }
     const nova = {
       id, numero, fornecedorId: '', fornecedorNome: '',
       status: 'Rascunho', observacoes: '', itens: [], total: 0,
@@ -480,7 +509,7 @@ export function AppProvider({ children }) {
       setEstoque(prev => [
         ...prev,
         ...novasEntradas.map(i => ({
-          id: Date.now() + Math.random(),
+          id: gerarId(),
           nome: i.novoItemDados.nome,
           codigo: i.novoItemDados.codigo || '',
           categoria: i.novoItemDados.categoria || '',
@@ -498,7 +527,7 @@ export function AppProvider({ children }) {
         adicionarLancamento({
           descricao: `Compra ${compra.numero} - ${compra.fornecedorNome || 'Fornecedor'} (${idx + 1}/${parcelas.length})`,
           tipo: 'despesa',
-          valor: parseFloat((p.valor || '0').toString().replace(',', '.')).toFixed(2).replace('.', ','),
+          valor: parseBR(p.valor).toFixed(2).replace('.', ','),
           vencimento: p.vencimento || '',
           compraId: id,
         })
@@ -521,7 +550,7 @@ export function AppProvider({ children }) {
   }
 
   // --- CAIXA ---
-  function pNum(v) { return parseFloat((v || '0').toString().replace(',', '.')) || 0 }
+  function pNum(v) { return parseBR(v) }
   function horaAgora() { return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
 
   function abrirCaixa(saldoInicial, operador) {
@@ -540,10 +569,19 @@ export function AppProvider({ children }) {
   function registrarVendaCaixa(venda) {
     const recebido = (venda.pagamentos || [])
       .filter(p => p.forma !== 'Pagar Depois')
-      .reduce((s, p) => s + (pNum(p.valor) - pNum(p.taxa)), 0)
+      .reduce((s, p) => s + pNum(p.valor), 0)
     const pago = recebido >= venda.total - 0.001
-    const numero = '#' + Math.floor(3000 + Math.random() * 7000)
-    const novaVenda = { ...venda, id: Date.now(), numero, status: pago ? 'Paga' : 'Pendente', recebido, hora: horaAgora() }
+    const vendasExistentes = new Set((caixaTurno?.vendas || []).map(v => v.numero))
+    let numero
+    for (let i = 0; i < 20; i++) {
+      const n = '#' + Math.floor(3000 + Math.random() * 7000)
+      if (!vendasExistentes.has(n)) { numero = n; break }
+    }
+    if (!numero) {
+      const nums = (caixaTurno?.vendas || []).map(v => parseInt((v.numero || '').replace('#', '')) || 0)
+      numero = '#' + ((Math.max(0, ...nums)) + 1)
+    }
+    const novaVenda = { ...venda, id: gerarId(), numero, status: pago ? 'Paga' : 'Pendente', recebido, hora: horaAgora() }
 
     setCaixaTurno(t => t ? { ...t, vendas: [novaVenda, ...t.vendas] } : t)
 
@@ -554,30 +592,32 @@ export function AppProvider({ children }) {
     }))
 
     if (recebido > 0) {
-      adicionarLancamento({
+      const lanc = {
         descricao: `Venda ${numero} - ${venda.clienteNome || 'Cliente'}`,
         tipo: 'receita',
         valor: recebido.toFixed(2).replace('.', ','),
         vendaId: novaVenda.id,
         caixa: true,
-      })
+      }
+      if (venda.osId) lanc.osId = venda.osId
+      adicionarLancamento(lanc)
     }
     return numero
   }
 
   function registrarSangria(valor, motivo, forma = 'Dinheiro') {
-    setCaixaTurno(t => t ? { ...t, movimentos: [{ id: Date.now(), tipo: 'sangria', valor: pNum(valor), motivo, forma, hora: horaAgora() }, ...t.movimentos] } : t)
+    setCaixaTurno(t => t ? { ...t, movimentos: [{ id: gerarId(), tipo: 'sangria', valor: pNum(valor), motivo, forma, hora: horaAgora() }, ...t.movimentos] } : t)
   }
 
   function registrarReforco(valor, motivo, forma = 'Dinheiro') {
-    setCaixaTurno(t => t ? { ...t, movimentos: [{ id: Date.now(), tipo: 'reforco', valor: pNum(valor), motivo, forma, hora: horaAgora() }, ...t.movimentos] } : t)
+    setCaixaTurno(t => t ? { ...t, movimentos: [{ id: gerarId(), tipo: 'reforco', valor: pNum(valor), motivo, forma, hora: horaAgora() }, ...t.movimentos] } : t)
   }
 
   function fecharCaixa(contagem, justificativa, saldoEsperado, totalContado) {
     if (!r.current.caixaTurno) return
     const fechado = {
       ...r.current.caixaTurno,
-      id: Date.now(), // ID único para cada entrada de histórico
+      id: gerarId(),
       aberto: false,
       dataFechamento: new Date().toLocaleDateString('pt-BR'),
       horaFechamento: horaAgora(),
@@ -594,10 +634,7 @@ export function AppProvider({ children }) {
   // --- DADOS DERIVADOS ---
   const devedores = ordens.filter(o => o.status === 'Concluída' && !o.pago)
 
-  function pValor(v) {
-    if (typeof v === 'number') return v
-    return parseFloat((v || '0').toString().replace(',', '.')) || 0
-  }
+  function pValor(v) { return parseBR(v) }
 
   const resumoFinanceiro = {
     receitas: financeiro.filter(f => f.tipo === 'receita' && !f.pendente).reduce((s, f) => s + pValor(f.valor), 0),

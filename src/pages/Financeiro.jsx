@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { TrendingUp, TrendingDown, DollarSign, CalendarDays, Plus, Trash2, CheckCircle2, Package, X, Banknote, CreditCard, Smartphone, ArrowRightLeft, FileText } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 import Modal from '../components/ui/Modal'
 
 const vazio = { descricao: '', tipo: 'receita', valor: '' }
@@ -56,7 +57,7 @@ export default function Financeiro() {
   const [formBoleto, setFormBoleto] = useState(VAZIO_BOLETO)
 
   const fmt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  const pNum = (v) => parseFloat((v || '0').toString().replace(',', '.')) || 0
+  const pNum = (v) => { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
   const lucro = resumoFinanceiro.receitas - resumoFinanceiro.despesas
 
   // Parcelas pendentes de compras cadastradas
@@ -159,7 +160,7 @@ export default function Financeiro() {
       const m = String(venc.getMonth() + 1).padStart(2, '0')
       const d = String(venc.getDate()).padStart(2, '0')
       novas.push({
-        id: Date.now() + i,
+        id: gerarId(),
         tipo: 'despesa',
         avulso: true,
         pendente: true,

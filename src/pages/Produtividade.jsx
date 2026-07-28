@@ -3,7 +3,7 @@ import { TrendingUp, Users, FileText, Calendar, ChevronDown, ChevronUp, Wrench, 
 import { useApp } from '../context/AppContext'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function pNum(v) { return parseFloat((v || '0').toString().replace(',', '.')) || 0 }
+function pNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
 
 function parseDateBR(str) {
   if (!str) return null

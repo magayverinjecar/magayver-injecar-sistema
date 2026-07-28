@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Plus, Search, Pencil, ArrowUpDown, AlertTriangle, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function parseNum(v) { return parseFloat((v || '0').toString().replace(',', '.')) || 0 }
+function parseNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
 
 const INICIAL = [
   { id: 1, nome: 'Sabão', marca: 'Norte', codigo: '', custo: '10,00', estoque: 1, minimo: 1, descricao: '' },
@@ -44,7 +45,7 @@ export default function Insumos() {
     if (editId) {
       setInsumos(prev => prev.map(i => i.id === editId ? { ...i, ...form, estoque: Number(form.estoque) || 0, minimo: Number(form.minimo) || 0 } : i))
     } else {
-      setInsumos(prev => [...prev, { ...form, id: Date.now(), estoque: Number(form.estoque) || 0, minimo: Number(form.minimo) || 0 }])
+      setInsumos(prev => [...prev, { ...form, id: gerarId(), estoque: Number(form.estoque) || 0, minimo: Number(form.minimo) || 0 }])
     }
     setModalNovo(false); setForm(VAZIO); setEditId(null)
   }

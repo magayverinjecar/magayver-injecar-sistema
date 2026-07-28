@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Plus, Trash2, Printer, FileText, CheckCircle, Package } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { imprimirReciboCaixa } from '../utils/print'
+import gerarId from '../utils/id'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function pNum(v) { return parseFloat((v || '0').toString().replace(',', '.')) || 0 }
+function pNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
 
 const FORMAS = ['Dinheiro', 'PIX', 'Transferência', 'Cartão Crédito', 'Cartão Débito', 'Boleto', 'Vale Funcionário', 'Outro', 'Pagar Depois']
 const COM_TAXA = ['Cartão Crédito', 'Cartão Débito']
@@ -41,7 +42,7 @@ export default function NovaVenda() {
 
   const subtotal = itens.reduce((s, i) => s + pNum(i.preco) * pNum(i.qtd) - pNum(i.desc), 0)
   const total = subtotal
-  const totalPago = pagamentos.filter(p => p.forma !== 'Pagar Depois').reduce((s, p) => s + pNum(p.valor) - pNum(p.taxa), 0)
+  const totalPago = pagamentos.filter(p => p.forma !== 'Pagar Depois').reduce((s, p) => s + pNum(p.valor), 0)
   const falta = Math.max(0, total - totalPago)
 
   const veiculosCliente = clienteId ? veiculosPorCliente(Number(clienteId)) : []
@@ -60,7 +61,7 @@ export default function NovaVenda() {
     if (os) {
       const cli = getCliente(os.clienteId)
       if (cli) { setClienteId(String(cli.id)); setClienteNome(cli.nome) }
-      setItens([{ id: Date.now(), tipo: 'servico', nome: os.servico, preco: os.valor, qtd: '1', desc: '0' }])
+      setItens([{ id: gerarId(), tipo: 'servico', nome: os.servico, preco: os.valor, qtd: '1', desc: '0' }])
       alert(`OS ${os.id} importada!`)
       return
     }
@@ -68,7 +69,7 @@ export default function NovaVenda() {
     if (orc) {
       setClienteNome(orc.nome)
       if (orc.clienteId) setClienteId(String(orc.clienteId))
-      setItens(orc.itens.map(it => ({ id: Date.now() + Math.random(), tipo: it.tipo === 'Serviço' ? 'servico' : 'peca', nome: it.descricao, preco: it.valorUnitario, qtd: it.quantidade, desc: it.desconto || '0' })))
+      setItens(orc.itens.map(it => ({ id: gerarId(), tipo: it.tipo === 'Serviço' ? 'servico' : 'peca', nome: it.descricao, preco: it.valorUnitario, qtd: it.quantidade, desc: it.desconto || '0' })))
       alert(`Orçamento ${orc.numero} importado!`)
       return
     }
@@ -83,10 +84,10 @@ export default function NovaVenda() {
     setItens(prev => [...prev, item])
   }
   function addPeca(p) {
-    addItem({ id: Date.now() + Math.random(), tipo: 'peca', nome: p.nome, produtoId: p.id, preco: p.preco, qtd: '1', desc: '0' })
+    addItem({ id: gerarId(), tipo: 'peca', nome: p.nome, produtoId: p.id, preco: p.preco, qtd: '1', desc: '0' })
   }
   function addServico(s) {
-    addItem({ id: Date.now() + Math.random(), tipo: 'servico', nome: s.nome, preco: s.preco, qtd: '1', desc: '0' })
+    addItem({ id: gerarId(), tipo: 'servico', nome: s.nome, preco: s.preco, qtd: '1', desc: '0' })
   }
   function updItem(id, campo, val) {
     setItens(prev => prev.map(i => i.id === id ? { ...i, [campo]: val } : i))
@@ -97,15 +98,15 @@ export default function NovaVenda() {
   function addPagamento() {
     const v = formaPag === 'Pagar Depois' ? falta : pNum(valorPag)
     if (formaPag !== 'Pagar Depois' && v <= 0) return
-    setPagamentos(prev => [...prev, { id: Date.now(), forma: formaPag, valor: formaPag === 'Pagar Depois' ? 0 : v, taxa: pNum(taxaPag), ref: refPag, depois: formaPag === 'Pagar Depois' ? falta : 0 }])
+    setPagamentos(prev => [...prev, { id: gerarId(), forma: formaPag, valor: formaPag === 'Pagar Depois' ? 0 : v, taxa: pNum(taxaPag), ref: refPag, depois: formaPag === 'Pagar Depois' ? falta : 0 }])
     setValorPag(''); setTaxaPag(''); setRefPag('')
   }
   function preencherRestante() {
-    setPagamentos(prev => [...prev, { id: Date.now(), forma: formaPag, valor: falta, taxa: pNum(taxaPag), ref: refPag }])
+    setPagamentos(prev => [...prev, { id: gerarId(), forma: formaPag, valor: falta, taxa: pNum(taxaPag), ref: refPag }])
     setValorPag(''); setTaxaPag(''); setRefPag('')
   }
   function restantePagarDepois() {
-    setPagamentos(prev => [...prev, { id: Date.now(), forma: 'Pagar Depois', valor: 0, taxa: 0, ref: '', depois: falta }])
+    setPagamentos(prev => [...prev, { id: gerarId(), forma: 'Pagar Depois', valor: 0, taxa: 0, ref: '', depois: falta }])
   }
   function delPagamento(id) { setPagamentos(prev => prev.filter(p => p.id !== id)) }
 

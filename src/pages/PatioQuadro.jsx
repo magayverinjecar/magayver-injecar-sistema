@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext'
 const COLUNAS = [
   { id: 'recepcao',    titulo: 'Recepção',           cor: '#854F0B', ckStatus: ['Aguardando diagnóstico'],                    osStatus: [] },
   { id: 'diagnostico', titulo: 'Diagnóstico',        cor: '#185FA5', ckStatus: ['Em diagnóstico'],                            osStatus: ['Diagnóstico'] },
-  { id: 'orcamento',   titulo: 'Orçamento',          cor: '#534AB7', ckStatus: ['Diagnóstico concluído', 'Aguardando peça'],  osStatus: ['Aguardando Aprovação'] },
+  { id: 'orcamento',   titulo: 'Orçamento',          cor: '#534AB7', ckStatus: ['Diagnóstico concluído', 'Aguardando peça'],  osStatus: ['Aguardando Aprovação', 'Rejeitada'] },
   { id: 'em_execucao', titulo: 'Em execução',        cor: '#993C1D', ckStatus: [],                                           osStatus: ['Aberta', 'Aprovada', 'Em Execução', 'Em Andamento', 'Aguardando Peça'] },
   { id: 'pronto',      titulo: 'Pronto p/ retirada', cor: '#3B6D11', ckStatus: [],                                           osStatus: ['Concluída'] },
 ]
@@ -129,24 +129,41 @@ export default function PatioQuadro() {
     }
   }
 
+  const veiculosComOS = new Set(ordens.map(o => o.veiculoId).filter(Boolean))
+
+  const placasDuplicadas = (() => {
+    const contagem = {}
+    for (const o of ordens) {
+      const placa = (getVeiculo(o.veiculoId)?.placa || o.veiculoPlaca || '').toUpperCase().trim()
+      if (!placa) continue
+      const col = COLUNAS.find(c => c.osStatus.includes(o.status))
+      if (!col) continue
+      if (o.status === 'Concluída' && o.pago) continue
+      contagem[placa] = (contagem[placa] || 0) + 1
+    }
+    const dup = new Set()
+    for (const [p, n] of Object.entries(contagem)) { if (n > 1) dup.add(p) }
+    return dup
+  })()
+
   function cardDaOrdem(os) {
     const veic = getVeiculo(os.veiculoId)
     const cli = getCliente(os.clienteId)
     const mec = os.mecanicoId ? getFuncionario(os.mecanicoId) : null
     const ts = os.etapaEm || parseBR(os.dataEntrada) || parseBR(os.data)
+    const placa = veic?.placa || os.veiculoPlaca || ''
     return {
       key: `os-${os.id}`, kind: 'os', id: os.id,
       titulo: veic?.modelo || os.veiculoInfo || os.veiculoModelo || '—',
-      placa: veic?.placa || os.veiculoPlaca || '',
+      placa,
       cliente: cli?.nome || os.clienteNome || '—',
       mecanico: mec?.nome || '',
       valor: totalOrdem(os), aReceber: os.status === 'Concluída' && !os.pago,
       aguardandoPeca: os.status === 'Aguardando Peça',
+      duplicado: placa && placasDuplicadas.has(placa.toUpperCase().trim()),
       ts,
     }
   }
-
-  const veiculosComOS = new Set(ordens.map(o => o.veiculoId).filter(Boolean))
 
   function cardsDaColuna(col) {
     const lista = []
@@ -464,6 +481,15 @@ export default function PatioQuadro() {
                               }}>Aguardando peça</span>
                             </div>
                           )}
+                          {card.duplicado && (
+                            <div style={{ marginTop: '6px' }}>
+                              <span style={{
+                                fontSize: '11px', color: '#fdba74', fontWeight: 600,
+                                background: 'rgba(251,146,60,0.15)',
+                                padding: '2px 8px', borderRadius: '8px',
+                              }}>⚠ OS duplicada</span>
+                            </div>
+                          )}
 
                           {/* Valor + A Receber */}
                           {(podeVerValores && card.valor != null) || card.aReceber ? (
@@ -598,6 +624,11 @@ export default function PatioQuadro() {
                         {card.aguardandoPeca && (
                           <p className="text-[11px] text-red-700 bg-red-50 inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded font-medium">
                             Aguardando peça
+                          </p>
+                        )}
+                        {card.duplicado && (
+                          <p className="text-[11px] text-orange-700 bg-orange-50 inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded font-medium">
+                            ⚠ OS duplicada p/ este veículo
                           </p>
                         )}
                         <div className="flex items-center justify-between mt-2 gap-2">

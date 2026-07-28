@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus, X, Clock } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
@@ -99,7 +100,7 @@ export default function Agenda() {
       const cliente = getCliente(Number(formC.clienteId))
       const veiculo = getVeiculo(Number(formC.veiculoId))
       setAgenda(prev => [...prev, {
-        id: Date.now(),
+        id: gerarId(),
         clienteId: Number(formC.clienteId),
         veiculoId: Number(formC.veiculoId) || null,
         nomeCliente: cliente?.nome || '',
@@ -117,7 +118,7 @@ export default function Agenda() {
       if (!formA.nome || !formA.hora || !formA.data) return
       const dataFmt = new Date(formA.data + 'T12:00:00').toLocaleDateString('pt-BR')
       setAgenda(prev => [...prev, {
-        id: Date.now(),
+        id: gerarId(),
         clienteId: null,
         nomeCliente: formA.nome,
         nomeVeiculo: formA.veiculo,

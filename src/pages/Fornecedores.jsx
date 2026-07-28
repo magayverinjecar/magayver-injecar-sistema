@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, Search, Pencil, Trash2, X, CheckCircle, Circle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 
 const VAZIO = { nome: '', cnpj: '', contato: '', telefone: '', email: '', endereco: '', ativo: true }
 
@@ -33,7 +34,7 @@ export default function Fornecedores() {
     if (editId) {
       setFornecedores(prev => prev.map(f => f.id === editId ? { ...f, ...form } : f))
     } else {
-      setFornecedores(prev => [...prev, { ...form, id: Date.now() }])
+      setFornecedores(prev => [...prev, { ...form, id: gerarId() }])
     }
     setModal(false)
     setForm(VAZIO)

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, Search, Wrench, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 import Modal from '../components/ui/Modal'
 
 const vazio = { nome: '', categoria: '', preco: '', tempo: '' }
@@ -15,7 +16,7 @@ export default function Servicos() {
 
   function salvar() {
     if (!form.nome.trim()) return
-    setServicos(prev => [...prev, { ...form, id: Date.now() }])
+    setServicos(prev => [...prev, { ...form, id: gerarId() }])
     setForm(vazio)
     setModal(false)
   }

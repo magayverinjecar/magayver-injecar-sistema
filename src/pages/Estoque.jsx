@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Search, Plus, AlertTriangle, Trash2, Pencil } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 import Modal from '../components/ui/Modal'
 
 const vazio = { codigo: '', nome: '', categoria: '', estoque: '', minimo: '', precoCusto: '', preco: '' }
@@ -21,7 +22,7 @@ export default function Estoque() {
 
   function salvar() {
     if (!form.nome.trim()) return
-    setEstoque(prev => [...prev, { ...form, id: Date.now(), estoque: Number(form.estoque) || 0, minimo: Number(form.minimo) || 0 }])
+    setEstoque(prev => [...prev, { ...form, id: gerarId(), estoque: Number(form.estoque) || 0, minimo: Number(form.minimo) || 0 }])
     setForm(vazio)
     setModal(false)
   }

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Plus, FileText, Eye, Copy, MessageCircle, Printer, ArrowRight, Trash2, X, List, Search, ChevronDown, Pencil } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 import { imprimirOrcamento } from '../utils/print'
 
 const statusColor = {
@@ -15,7 +16,9 @@ const VAZIO_CLIENTE = { clienteId: '', nome: '', telefone: '', veiculo: '', plac
 const VAZIO_ITEM = { tipo: 'Serviço', refId: '', descricao: '', quantidade: '1', valorUnitario: '', desconto: '0' }
 
 function parseNum(v) {
-  return parseFloat((v || '0').toString().replace(',', '.')) || 0
+  if (typeof v === 'number') return v; const s = (v || '0').toString()
+  if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0
+  return parseFloat(s) || 0
 }
 const fmt = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -146,7 +149,7 @@ export default function Orcamentos() {
       setItens(prev => prev.map(i => i.id === itemEditandoId ? { ...item, id: itemEditandoId } : i))
       setItemEditandoId(null)
     } else {
-      setItens(prev => [...prev, { ...item, id: Date.now() }])
+      setItens(prev => [...prev, { ...item, id: gerarId() }])
     }
     setItem(VAZIO_ITEM)
     setModalItem(false)
@@ -174,7 +177,7 @@ export default function Orcamentos() {
 
   function salvarNovo() {
     if (!novoForm.nome.trim()) return
-    const id = Date.now()
+    const id = gerarId()
     if (item.tipo === 'Serviço') {
       const novo = { id, nome: novoForm.nome, categoria: novoForm.categoria || '', preco: novoForm.preco || '0', tempo: novoForm.tempo || '' }
       setServicos(prev => [...prev, novo])
@@ -221,9 +224,18 @@ export default function Orcamentos() {
       setOrcamentoEditandoId(null)
     } else {
       // Cria novo orçamento
-      const numero = '#' + Math.floor(1000 + Math.random() * 9000)
+      const existentes = new Set(orcamentos.map(o => o.numero))
+      let numero
+      for (let i = 0; i < 20; i++) {
+        const n = '#' + Math.floor(1000 + Math.random() * 9000)
+        if (!existentes.has(n)) { numero = n; break }
+      }
+      if (!numero) {
+        const nums = orcamentos.map(o => parseInt((o.numero || '').replace('#', '')) || 0)
+        numero = '#' + ((Math.max(0, ...nums)) + 1)
+      }
       const novo = {
-        id: Date.now(),
+        id: gerarId(),
         numero,
         clienteId: dados.clienteId ? Number(dados.clienteId) : null,
         nome: nomeCliente,
@@ -268,7 +280,7 @@ export default function Orcamentos() {
 
     // transfere os itens do orçamento para o formato da OS
     const itensOS = (orc.itens || []).map(i => ({
-      id: Date.now() + Math.random(),
+      id: gerarId(),
       tipo: i.tipo === 'Serviço' ? 'servico' : 'peca',
       produtoId: i.tipo !== 'Serviço' && i.tipo !== 'servico' ? Number(i.refId) || null : null,
       servicoId: i.tipo === 'Serviço' || i.tipo === 'servico' ? Number(i.refId) || null : null,

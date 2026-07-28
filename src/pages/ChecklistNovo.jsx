@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import gerarId from '../utils/id'
 import {
   ArrowLeft, ArrowRight, Check, User, Car, AlertTriangle,
   PenTool, Search, Eraser, Smartphone, Link, MessageSquare, Copy, Save
@@ -169,7 +170,7 @@ export default function ChecklistNovo() {
   const location = useLocation()
   const ckEditar = location.state?.editar || null
 
-  const [ckIdNovo] = useState(() => Date.now())
+  const [ckIdNovo] = useState(() => gerarId())
 
   const [passo, setPasso] = useState(1)
   const [erros, setErros] = useState({})
@@ -458,7 +459,7 @@ export default function ChecklistNovo() {
 
     let cId = clienteId
     if (!cId) {
-      const novo = { id: Date.now(), ...cliente }
+      const novo = { id: gerarId(), ...cliente }
       setClientes(prev => [novo, ...prev])
       cId = novo.id
     } else {
@@ -469,7 +470,7 @@ export default function ChecklistNovo() {
     if (!vId) {
       const parts = veiculo.modelo.trim().split(' ')
       const novoV = {
-        id: Date.now() + 1,
+        id: gerarId(),
         clienteId: cId,
         marca: parts[0] || '',
         modelo: parts.slice(1).join(' ') || veiculo.modelo,

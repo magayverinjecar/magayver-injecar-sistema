@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, Phone, Wrench, Trash2, ClipboardList, Shield, Eye, EyeOff, Pencil, Check, DollarSign } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 import { MODELOS, useAuth } from '../context/AuthContext'
 import Modal from '../components/ui/Modal'
 
@@ -132,7 +133,7 @@ export default function Funcionarios() {
       // atualiza sessão em tempo real se for o próprio usuário logado
       refreshPermissoes({ id: editando, ...dados })
     } else {
-      setFuncionarios(prev => [...prev, { ...dados, id: Date.now() }])
+      setFuncionarios(prev => [...prev, { ...dados, id: gerarId() }])
     }
     setModal(false)
   }

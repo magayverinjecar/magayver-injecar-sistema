@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Plus, X, Trash2, Package, Save, Search, CheckCircle2, AlertTriangle, CalendarDays } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 
 const statusColor = {
   Rascunho: 'bg-slate-100 text-slate-600',
@@ -11,7 +12,7 @@ const statusColor = {
 }
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function parseNum(v) { return parseFloat((v || '0').toString().replace(',', '.')) || 0 }
+function parseNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
 
 const VAZIO_ITEM = { produtoId: '', descricao: '', codigo: '', quantidade: '1', valorUnitario: '' }
 const VAZIO_NOVO = { nome: '', codigo: '', categoria: '', precoVenda: '', minimo: '0' }
@@ -104,7 +105,7 @@ export default function CompraDetalhe() {
       ...item,
       descricao,
       codigo: cadastrarNova ? novoItemDados.codigo : item.codigo,
-      id: Date.now(),
+      id: gerarId(),
       ...(cadastrarNova ? { cadastrarNova: true, novoItemDados: { ...novoItemDados } } : {}),
     }
     const novosItens = [...compra.itens, novoItem]
@@ -195,7 +196,7 @@ export default function CompraDetalhe() {
                 onClick={() => {
                   const parcelas = compra.parcelas || []
                   const restante = Math.max(0, totalCompra - parcelas.reduce((s, p) => s + parseNum(p.valor), 0))
-                  const nova = { id: Date.now(), valor: restante.toFixed(2).replace('.', ','), vencimento: '' }
+                  const nova = { id: gerarId(), valor: restante.toFixed(2).replace('.', ','), vencimento: '' }
                   salvarDados('parcelas', [...parcelas, nova])
                 }}
                 className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"

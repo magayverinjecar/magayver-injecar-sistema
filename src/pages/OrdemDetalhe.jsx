@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, Lock, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Banknote, Smartphone, CreditCard, ArrowRightLeft } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 import { STATUS_OS, statusColor } from './OrdensServico'
 import { imprimirOS } from '../utils/print'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function pNum(v) { return parseFloat((v || '0').toString().replace(',', '.')) || 0 }
+function pNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
 
 const MODELOS_IMPRESSAO = [
   { id: 'termica80', nome: 'Térmica 80mm (cupom)', desc: 'Impressoras térmicas 80mm — fonte grande, alto contraste' },
@@ -121,7 +122,7 @@ export default function OrdemDetalhe() {
   function addPgto() {
     const soma = pgtos.reduce((s, p) => s + pNum(p.valor), 0)
     const restante = Math.max(0, total - soma)
-    setPgtos(ps => [...ps, { id: Date.now(), forma: 'PIX', valor: restante.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }])
+    setPgtos(ps => [...ps, { id: gerarId(), forma: 'PIX', valor: restante.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }])
   }
 
   function removePgto(id) {
@@ -168,14 +169,14 @@ export default function OrdemDetalhe() {
   function aplicarTaxaItem(item) {
     const pct = parseFloat(taxaPct) || 0
     if (!pct) return
-    editarItemOrdem(os.id, item.id, { valorUnitario: (pNum(item.valorUnitario) * (1 + pct / 100)).toFixed(2).replace('.', ',') })
+    editarItemOrdem(os.id, item.id, { valorUnitario: (pNum(item.valorUnitario) * (1 + pct / 100)).toFixed(2).replace('.', ','), quantidade: item.quantidade })
   }
 
   function aplicarTaxaTodos() {
     const pct = parseFloat(taxaPct) || 0
     if (!pct || !os.itens?.length) return
     os.itens.forEach(item => {
-      editarItemOrdem(os.id, item.id, { valorUnitario: (pNum(item.valorUnitario) * (1 + pct / 100)).toFixed(2).replace('.', ',') })
+      editarItemOrdem(os.id, item.id, { valorUnitario: (pNum(item.valorUnitario) * (1 + pct / 100)).toFixed(2).replace('.', ','), quantidade: item.quantidade })
     })
   }
 
@@ -213,7 +214,7 @@ export default function OrdemDetalhe() {
           </div>
           <button onClick={whatsapp} className="flex items-center gap-1.5 border border-green-200 text-green-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-green-50 transition-colors whitespace-nowrap flex-shrink-0"><MessageCircle size={14} />WhatsApp</button>
           <button onClick={gerarOrcamento} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><FileText size={14} />Gerar Orçamento</button>
-          {os.status !== 'Concluída' && os.status !== 'Cancelada' && (
+          {os.status !== 'Concluída' && os.status !== 'Entregue' && os.status !== 'Cancelada' && (
             <button onClick={() => { setPgtos([{ id: 1, forma: 'PIX', valor: total.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }]); setModalFinalizar(true) }} className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
               <CheckCircle2 size={14} />Finalizar OS
             </button>
@@ -232,7 +233,8 @@ export default function OrdemDetalhe() {
         <label className="text-sm font-medium text-slate-600 whitespace-nowrap">Alterar Status:</label>
         <select value={os.status} onChange={e => mudarStatusOrdem(os.id, e.target.value)}
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-          {STATUS_OS.map(s => <option key={s}>{s}</option>)}
+          {STATUS_OS.filter(s => s !== 'Concluída' && s !== 'Entregue' && s !== 'Cancelada').map(s => <option key={s}>{s}</option>)}
+          {['Concluída', 'Entregue', 'Cancelada'].includes(os.status) && <option>{os.status}</option>}
         </select>
       </div>
 

@@ -1,10 +1,14 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { Brain, Send, Bot, User, Sparkles } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import gerarId from '../utils/id'
 
 function parseVal(v) {
   if (!v) return 0
-  return parseFloat(v.toString().replace(',', '.')) || 0
+  if (typeof v === 'number') return v
+  const s = v.toString()
+  if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0
+  return parseFloat(s) || 0
 }
 
 function fmt(v) {
@@ -372,7 +376,7 @@ export default function AssistenteFinanceiro() {
   }
 
   function enviarPergunta(pergunta) {
-    const idUser = Date.now()
+    const idUser = gerarId()
     setMensagens(prev => [...prev, { id: idUser, tipo: 'user', texto: pergunta, animado: false }])
     setPensando(true)
 
@@ -380,7 +384,7 @@ export default function AssistenteFinanceiro() {
     setTimeout(() => {
       const resposta = gerarTexto(pergunta)
       setPensando(false)
-      setMensagens(prev => [...prev, { id: Date.now(), tipo: 'bot', texto: resposta, animado: true }])
+      setMensagens(prev => [...prev, { id: gerarId(), tipo: 'bot', texto: resposta, animado: true }])
     }, delay)
   }
 
