@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Car, User, Clock, Wrench, Stethoscope, Play, CheckCircle2,
-  Package, ClipboardCheck, ShieldCheck, Camera, PackageCheck,
+  Package, ClipboardCheck, ShieldCheck, Camera, PackageCheck, Search, X,
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
@@ -26,6 +26,7 @@ export default function MeusServicos() {
   const [ocupado, setOcupado] = useState(null)
   const [verTodosFinalizados, setVerTodosFinalizados] = useState(false)
   const [abaEscolhida, setAbaEscolhida] = useState(null)
+  const [busca, setBusca] = useState('')
 
   // Só quem tem a tela de fotos liberada vê o atalho — senão o botão levava
   // direto para a parede de "sem permissão".
@@ -98,20 +99,39 @@ export default function MeusServicos() {
     .map(enriquecer)
     .sort(maisRecentePrimeiro)
 
+  // Busca casada com placa, modelo, cliente e número da OS. Ignora acento,
+  // hífen e espaço para "abc1234" achar "ABC-1234" e "JOAO" achar "João".
+  const SEM_ACENTO = /[̀-ͯ]/g
+  const limpar = s => String(s || '')
+    .normalize('NFD').replace(SEM_ACENTO, '')
+    .toLowerCase().replace(/[^a-z0-9]/g, '')
+  const termo = limpar(busca)
+  const filtrar = lista => termo
+    ? lista.filter(o => limpar(`${o.placa} ${o.modelo} ${o.cliente} ${o.id}`).includes(termo))
+    : lista
+
   // Empilhar tudo numa página só obrigava a rolar até o fim para achar um carro
   // finalizado. Cada grupo vira uma aba com a contagem à mostra.
   const GRUPOS = [
-    { id: 'comigo',   label: 'Comigo',        lista: comigo },
-    { id: 'andamento', label: 'Em andamento', lista: emAndamento },
-    { id: 'livres',   label: 'Livres',        lista: livres },
-    { id: 'peca',     label: 'Esperando peça', lista: esperandoPeca },
-    { id: 'prontos',  label: 'Prontos',       lista: prontos },
-    { id: 'entregues', label: 'Entregues',    lista: entregues },
+    { id: 'comigo',   label: 'Comigo',        lista: filtrar(comigo) },
+    { id: 'andamento', label: 'Em andamento', lista: filtrar(emAndamento) },
+    { id: 'livres',   label: 'Livres',        lista: filtrar(livres) },
+    { id: 'peca',     label: 'Esperando peça', lista: filtrar(esperandoPeca) },
+    { id: 'prontos',  label: 'Prontos',       lista: filtrar(prontos) },
+    { id: 'entregues', label: 'Entregues',    lista: filtrar(entregues) },
   ]
-  // Abre no primeiro grupo que tem carro, para a tela nunca nascer vazia
-  const padrao = (GRUPOS.find(g => g.lista.length > 0) || GRUPOS[0]).id
-  const abaAtual = abaEscolhida ?? padrao
-  const grupo = GRUPOS.find(g => g.id === abaAtual) || GRUPOS[0]
+  const comResultado = GRUPOS.find(g => g.lista.length > 0)
+  const escolhido = GRUPOS.find(g => g.id === abaEscolhida)
+  // Abre no primeiro grupo que tem carro, para a tela nunca nascer vazia. Durante
+  // a busca pula sozinho para a aba onde o carro está — senão a pessoa digitava a
+  // placa certa e via "nenhum resultado" só por estar na aba errada.
+  const grupo = (escolhido?.lista.length ? escolhido : null)
+    || (termo ? comResultado : null)
+    || escolhido
+    || comResultado
+    || GRUPOS[0]
+  const abaAtual = grupo.id
+  const totalEncontrado = GRUPOS.reduce((s, g) => s + g.lista.length, 0)
 
   function agir(id, fn, pergunta) {
     if (ocupado) return
@@ -170,6 +190,31 @@ export default function MeusServicos() {
         </span>
       </div>
 
+      {/* Uma busca só, casada com placa, modelo, cliente e número da OS */}
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <input
+          type="search" value={busca} onChange={e => setBusca(e.target.value)}
+          placeholder="Buscar por placa, carro, cliente ou nº da OS"
+          aria-label="Buscar veículo"
+          className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-9 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+        />
+        {busca && (
+          <button onClick={() => setBusca('')} aria-label="Limpar busca"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600">
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      {termo && (
+        <p className="text-xs text-slate-500 -mt-2">
+          {totalEncontrado === 0
+            ? <span className="text-slate-400">Nenhum veículo encontrado para "{busca}"</span>
+            : <>{totalEncontrado} veículo(s) encontrado(s) — mostrando os de <strong>{grupo.label}</strong></>}
+        </p>
+      )}
+
       {/* Menu das abas — rola na horizontal no celular */}
       <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1">
         {GRUPOS.map(g => (
@@ -196,7 +241,7 @@ export default function MeusServicos() {
       {/* ── Em andamento na oficina ── */}
       {abaAtual === 'andamento' && (
         <div className="space-y-2">
-          {emAndamento.map(os => {
+          {grupo.lista.map(os => {
             const semDono = os.responsavelId == null
             return (
               <div key={os.id} onClick={() => abrir(os)}
@@ -244,7 +289,7 @@ export default function MeusServicos() {
       {/* ── Livres para pegar ── */}
       {abaAtual === 'livres' && (
           <div className="space-y-2">
-            {livres.map(os => {
+            {grupo.lista.map(os => {
               const paraDiagnostico = os.status === 'Recepção'
               return (
                 <div key={os.id} onClick={() => abrir(os)}
@@ -270,7 +315,7 @@ export default function MeusServicos() {
       {/* ── Comigo agora ── */}
       {abaAtual === 'comigo' && (
           <div className="space-y-2">
-            {comigo.map(os => {
+            {grupo.lista.map(os => {
               const emDiagnostico = os.status === 'Em Diagnóstico'
               const emConferencia = os.status === 'Em Conferência'
               return (
@@ -337,7 +382,7 @@ export default function MeusServicos() {
       {/* ── Esperando peça ── */}
       {abaAtual === 'peca' && (
           <div className="space-y-2">
-            {esperandoPeca.map(os => (
+            {grupo.lista.map(os => (
               <div key={os.id} onClick={() => abrir(os)}
                 className="bg-white border border-red-200 rounded-2xl p-4 cursor-pointer hover:shadow-sm transition-all">
                 <Cabecalho os={os} />
