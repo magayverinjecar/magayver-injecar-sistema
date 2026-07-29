@@ -15,7 +15,7 @@ const PASSOS = ['Identificação', 'Itens', 'Pagamento', 'Confirmação', 'Concl
 
 export default function NovaVenda() {
   const navigate = useNavigate()
-  const { caixaTurno, registrarVendaCaixa, clientes, veiculosPorCliente, servicos, estoque, ordens, orcamentos, getCliente } = useApp()
+  const { caixaTurno, registrarVendaCaixa, clientes, veiculosPorCliente, servicos, estoque, setEstoque, ordens, orcamentos, getCliente } = useApp()
 
   const [passo, setPasso] = useState(1)
   const [clienteId, setClienteId] = useState('')
@@ -121,6 +121,19 @@ export default function NovaVenda() {
       observacoes: obsPag,
     }
     const numero = registrarVendaCaixa(dadosVenda)
+
+    // Peça vendida no balcão precisa sair do estoque — só a peça lançada dentro
+    // da OS dava baixa, e o estoque ia ficando maior do que a prateleira real.
+    const pecas = itens.filter(i => i.tipo === 'peca' && i.produtoId)
+    if (pecas.length > 0) {
+      setEstoque(prev => prev.map(item => {
+        const vendida = pecas.find(p => Number(p.produtoId) === item.id)
+        if (!vendida) return item
+        const qtd = pNum(vendida.qtd) || 1
+        return { ...item, estoque: Math.max(0, Number(item.estoque) - qtd) }
+      }))
+    }
+
     setVendaFinalizada({ ...dadosVenda, numero })
     setVendaNumero(numero)
     setPasso(5)

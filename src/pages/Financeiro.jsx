@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { TrendingUp, TrendingDown, DollarSign, CalendarDays, Plus, Trash2, CheckCircle2, Package, X, Banknote, CreditCard, Smartphone, ArrowRightLeft, FileText } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
@@ -41,10 +42,11 @@ function alertaVenc(vencimento) {
 export default function Financeiro() {
   const {
     financeiro, setFinanceiro, adicionarLancamento,
-    devedores, getCliente, pagarOrdem, resumoFinanceiro, totalOrdem,
+    devedores, getCliente, resumoFinanceiro, totalOrdem,
     compras, atualizarCompra,
     caixaTurno, registrarSangria,
   } = useApp()
+  const navigate = useNavigate()
 
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(vazio)
@@ -383,7 +385,10 @@ export default function Financeiro() {
                   </div>
                   <div className="flex items-center gap-3">
                     <p className="text-sm font-bold text-orange-600">{fmt(totalOrdem(o))}</p>
-                    <button onClick={() => pagarOrdem(o.id)}
+                    {/* Chamava pagarOrdem sem informar o pagamento: a OS ficava
+                        paga e o dinheiro não entrava nem no caixa nem aqui.
+                        Agora manda receber na OS, que é onde o valor é lançado. */}
+                    <button onClick={() => navigate(`/ordens-servico/${encodeURIComponent(o.id)}`)}
                       className="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
                       Receber
                     </button>

@@ -369,6 +369,12 @@ export default function OrdemDetalhe() {
 
   const osFinalizada = ['Entregue', 'Cancelada'].includes(os.status)
 
+  // Cobrar não depende mais de a OS estar em "Concluída": com o cliente no
+  // balcão, a recepção precisa fechar na hora. A "Rejeitada" tem o botão dela
+  // ("Fechar recusa e entregar"), que cobra só o diagnóstico.
+  const semConferencia = !os.conferencia?.aprovado
+  const podeCobrar = !osFinalizada && os.status !== 'Rejeitada' && !os.pago && total > 0
+
   const FORMAS_PGTO = [
     { label: 'PIX', icon: Smartphone },
     { label: 'Dinheiro', icon: Banknote },
@@ -526,15 +532,15 @@ export default function OrdemDetalhe() {
               <span className="text-xs text-slate-500 px-3 py-2 whitespace-nowrap">Aguardando conferência</span>
             )
           )}
+          {podeCobrar && (
+            <button onClick={() => { setPgtos([{ id: 1, forma: 'PIX', valor: total.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }]); setModalFinalizar(true) }} disabled={processandoAcao} className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
+              <Banknote size={14} />Pagar e entregar
+            </button>
+          )}
           {os.status === 'Concluída' && (
-            <>
-              <button onClick={() => { setPgtos([{ id: 1, forma: 'PIX', valor: total.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }]); setModalFinalizar(true) }} disabled={processandoAcao} className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
-                <Banknote size={14} />Pagar e entregar
-              </button>
-              <button onClick={() => setModalReabrir(true)} disabled={processandoAcao} className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
-                <ArrowRightLeft size={14} />Reabrir OS
-              </button>
-            </>
+            <button onClick={() => setModalReabrir(true)} disabled={processandoAcao} className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
+              <ArrowRightLeft size={14} />Reabrir OS
+            </button>
           )}
           {os.status === 'Entregue' && (
             <button onClick={() => setModalReabrir(true)} disabled={processandoAcao} className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
@@ -551,6 +557,10 @@ export default function OrdemDetalhe() {
         <select value={os.status} onChange={e => trocarStatus(e.target.value)}
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
           {STATUS_OS.filter(s => s !== 'Concluída' && s !== 'Entregue' && s !== 'Cancelada').map(s => <option key={s}>{s}</option>)}
+          {/* OS antigas têm status que saíram do fluxo ("Aberta", "Em Andamento").
+              Sem esta linha o seletor exibia "Recepção" — um status que não era o
+              real — e quem encostasse nele movia a OS sem perceber. */}
+          {!STATUS_OS.includes(os.status) && <option>{os.status}</option>}
           {['Concluída', 'Entregue', 'Cancelada'].includes(os.status) && <option>{os.status}</option>}
         </select>
         {(os.pago || os.status === 'Entregue') && (
@@ -1200,23 +1210,38 @@ export default function OrdemDetalhe() {
                   </div>
                 )}
 
+                {semConferencia && (
+                  <div className="flex items-start gap-2 bg-cyan-50 border border-cyan-200 text-cyan-800 text-xs px-3 py-2 rounded-lg">
+                    <ClipboardList size={14} className="flex-shrink-0 mt-0.5" />
+                    <span>Este veículo não passou pela conferência. Pode entregar assim mesmo — vai ficar registrado no histórico que foi você quem liberou.</span>
+                  </div>
+                )}
+
+                {/* Sem caixa aberto a venda era descartada em silêncio e só o
+                    financeiro recebia o valor — o relatório do caixa nunca fechava. */}
                 {!caixaTurno && (
-                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg">
-                    <AlertTriangle size={14} />
-                    Caixa fechado — o valor será lançado no financeiro mas não no caixa.
+                  <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">
+                    <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                    <span><strong>Caixa fechado.</strong> Abra o caixa antes de receber, senão este valor não entra no relatório do turno.</span>
                   </div>
                 )}
 
                 <div className="flex gap-2 pt-1">
-                  <button type="button" onClick={() => confirmarPagarEntregar(false)} disabled={!valido}
+                  <button type="button" onClick={() => confirmarPagarEntregar(false)} disabled={!valido || !caixaTurno}
                     className="flex-1 border border-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     Confirmar
                   </button>
-                  <button type="button" onClick={() => confirmarPagarEntregar(true)} disabled={!valido}
+                  <button type="button" onClick={() => confirmarPagarEntregar(true)} disabled={!valido || !caixaTurno}
                     className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5">
                     <Printer size={15} />Confirmar e Imprimir
                   </button>
                 </div>
+                {!caixaTurno && (
+                  <button type="button" onClick={() => navigate('/caixa')}
+                    className="w-full bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                    Abrir o caixa agora
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1324,8 +1349,8 @@ export default function OrdemDetalhe() {
                       {FORMAS_PGTO.map(f => <option key={f.label} value={f.label}>{f.label}</option>)}
                     </select>
                   </div>
-                  <button type="button" onClick={() => confirmarRecusa(true)}
-                    className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                  <button type="button" onClick={() => confirmarRecusa(true)} disabled={!caixaTurno}
+                    className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">
                     <Banknote size={15} /> Cobrar diagnóstico e entregar
                   </button>
                 </div>
@@ -1340,9 +1365,9 @@ export default function OrdemDetalhe() {
               </div>
 
               {!caixaTurno && (
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg">
-                  <AlertTriangle size={14} />
-                  Caixa fechado — o valor entra no financeiro, mas não no caixa do turno.
+                <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                  <span><strong>Caixa fechado.</strong> Abra o caixa para cobrar o diagnóstico — "Liberar sem cobrar" continua disponível.</span>
                 </div>
               )}
             </div>

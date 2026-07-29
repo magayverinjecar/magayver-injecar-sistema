@@ -726,7 +726,14 @@ export function AppProvider({ children }) {
     const o = r.current.ordens.find(x => x.id === osId)
     if (!o) return
     if (o.status === 'Entregue') return   // evita duplo-clique gerando venda duplicada no caixa
-    const historico = [evento('Veículo entregue e pago'), ...(o.historico || [])]
+    // A recepção pode cobrar sem esperar a conferência (cliente no balcão), mas
+    // isso não passa em branco: fica escrito quem liberou o carro sem conferir.
+    const semConferencia = !o.conferencia?.aprovado
+    const historico = [
+      evento('Veículo entregue e pago'),
+      ...(semConferencia ? [evento(`Entregue sem passar pela conferência — liberado por ${currentUser?.nome || 'usuário'}`)] : []),
+      ...(o.historico || []),
+    ]
     // Guarda como o cliente pagou na própria OS: a venda do caixa some quando o
     // turno está fechado, e sem isto o recibo reimpresso depois sai sem pagamento.
     setOrdens(prev => prev.map(x => x.id === osId ? {
@@ -741,7 +748,8 @@ export function AppProvider({ children }) {
     const total = totalOrdem(o)
     registrarVendaCaixa({
       osId,
-      clienteNome: clienteNome || '',
+      // Sem o nome aqui a receita entrava no financeiro como "Venda #X - Cliente"
+      clienteNome: clienteNome || o.clienteNome || '',
       itens: o.itens || [],
       total,
       pagamentos: pagamentos || [],
