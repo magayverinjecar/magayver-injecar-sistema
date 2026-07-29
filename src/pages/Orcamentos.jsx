@@ -270,7 +270,13 @@ export default function Orcamentos() {
   }
 
   function converterEmOS(orc) {
-    if (!confirm('Converter este orçamento em Ordem de Serviço?')) return
+    // Orçamento que o cliente já aprovou não precisa de diagnóstico: a OS nasce
+    // liberada e o carro cai direto na lista do reparador como "Iniciar reparo".
+    const jaAprovado = orc.status === 'Aprovado'
+    const pergunta = jaAprovado
+      ? 'Converter em Ordem de Serviço?\n\nEste orçamento está aprovado — a OS já entra liberada para o reparador iniciar o reparo.'
+      : 'Converter este orçamento em Ordem de Serviço?'
+    if (!confirm(pergunta)) return
 
     // tenta encontrar o veículo pelo clienteId + placa
     const veiculosDoCliente = orc.clienteId ? veiculosPorCliente(Number(orc.clienteId)) : []
@@ -299,7 +305,11 @@ export default function Orcamentos() {
       clienteId: orc.clienteId ? Number(orc.clienteId) : null,
       veiculoId: veiculo?.id || null,
       descricaoProblema: orc.observacoes || `Convertido do Orçamento ${orc.numero}`,
-      status: 'Recepção',
+      status: jaAprovado ? 'Aprovado' : 'Recepção',
+      aprovadoEm: jaAprovado ? Date.now() : null,
+      textoCriacao: jaAprovado
+        ? `OS criada do orçamento ${orc.numero} — cliente já havia aprovado`
+        : `OS criada do orçamento ${orc.numero}`,
       itens: itensOS,
       pecas: pecasOS,
       orcamentoId: orc.id,

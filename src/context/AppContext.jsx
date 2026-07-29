@@ -514,10 +514,12 @@ export function AppProvider({ children }) {
       data: hoje,
       dataConclusao: '',
       status: dados.status || 'Recepção',
+      // Preenchido quando a OS já nasce aprovada (veio de um orçamento fechado)
+      aprovadoEm: dados.aprovadoEm ?? null,
       itens: dados.itens || [],
       pecas: dados.pecas || [],
       fotos: dados.fotos || [],
-      historico: [evento('OS criada')],
+      historico: [evento(dados.textoCriacao || 'OS criada')],
       pago: false,
       etapaEm: Date.now(),
       // Campos de entrada/vistoria (absorvidos do antigo checklist)
