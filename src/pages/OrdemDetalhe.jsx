@@ -578,6 +578,13 @@ export default function OrdemDetalhe() {
             <button key={a} onClick={() => trocarAba(a)}
               className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 ${aba === a ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               {a}
+              {/* Sem o contador ninguém descobria que a OS tinha foto — era
+                  preciso abrir a aba e rolar até o fim para ver as do reparo. */}
+              {a === 'Fotos e Vistoria' && todasFotosOS.length > 0 && (
+                <span className="text-[10px] font-bold bg-cyan-100 text-cyan-700 px-1.5 py-0.5 rounded-full">
+                  {todasFotosOS.length}
+                </span>
+              )}
               {pendente && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Alterações não salvas" />}
             </button>
           )
@@ -956,11 +963,15 @@ export default function OrdemDetalhe() {
             </div>
           )}
 
-          <div className="space-y-4">
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+          {/* As fotos do reparo (peça velha e nova) são a prova do serviço e é o
+              que se procura aqui — ficavam no fim, atrás da grade de entrada, e
+              pareciam não existir. Quando há fotos de reparo, elas vêm primeiro. */}
+          <div className="flex flex-col gap-4">
+            <div className={`bg-white rounded-xl shadow-sm border border-slate-100 p-5 ${fotosReparoOS.length > 0 ? 'order-2' : 'order-1'}`}>
               <div className="flex items-center gap-2 mb-4">
                 <Camera size={15} className="text-cyan-500" />
                 <h3 className="font-semibold text-slate-800">Fotos do Veículo</h3>
+                <span className="text-xs text-slate-400">na entrada</span>
                 <span className="ml-auto text-xs text-slate-400">{fotosOS.length} foto(s)</span>
               </div>
 
@@ -1006,16 +1017,20 @@ export default function OrdemDetalhe() {
             </div>
 
             {fotosReparoOS.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border border-orange-100 p-5">
+              <div className="bg-white rounded-xl shadow-sm border-2 border-orange-200 p-5 order-1">
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   <Wrench size={15} className="text-orange-500" />
                   <h3 className="font-semibold text-slate-800">Fotos do reparo</h3>
-                  <span className="text-xs text-slate-400">{fotosReparoOS.length} foto(s)</span>
+                  <span className="text-xs text-slate-400">peça velha, peça nova, antes e depois</span>
+                  <span className="text-xs font-semibold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full">{fotosReparoOS.length} foto(s)</span>
                   <button onClick={() => navigate(`/oficina/reparo/${encodeURIComponent(os.id)}`)}
                     className="ml-auto text-xs text-orange-700 font-medium hover:underline">
                     Adicionar ou remover
                   </button>
                 </div>
+                <p className="text-xs text-slate-500 mb-3">
+                  O cliente vê estas fotos no link de "Enviar fotos", em um bloco separado das fotos de entrada.
+                </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {fotosReparoOS.map(f => (
                     <div key={f.id} className="relative aspect-video bg-slate-100 rounded-xl overflow-hidden border border-slate-200 cursor-zoom-in"
@@ -1028,7 +1043,7 @@ export default function OrdemDetalhe() {
               </div>
             )}
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 order-3">
               <div className="flex items-center gap-2 mb-4">
                 <Eye size={15} className="text-slate-500" />
                 <h3 className="font-semibold text-slate-800">Inspeção Visual</h3>
@@ -1056,7 +1071,7 @@ export default function OrdemDetalhe() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3 order-4">
               {vistoriaPendente && (
                 <span className="text-xs text-amber-700 font-medium flex items-center gap-1 mr-auto">
                   <AlertTriangle size={13} /> Alterações ainda não salvas
