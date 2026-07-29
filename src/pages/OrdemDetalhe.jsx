@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, Lock, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Banknote, Smartphone, CreditCard, ArrowRightLeft, Wrench, Eye, Save, ImagePlus, PenTool, ClipboardList, Loader2, ThumbsUp, ThumbsDown, Copy, Check } from 'lucide-react'
+import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, Lock, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Banknote, Smartphone, CreditCard, ArrowRightLeft, Wrench, Eye, Save, ImagePlus, PenTool, ClipboardList, Loader2, ThumbsUp, ThumbsDown, Copy, Check, ShieldCheck } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import gerarId from '../utils/id'
@@ -373,6 +373,9 @@ export default function OrdemDetalhe() {
   // balcão, a recepção precisa fechar na hora. A "Rejeitada" tem o botão dela
   // ("Fechar recusa e entregar"), que cobra só o diagnóstico.
   const semConferencia = !os.conferencia?.aprovado
+  // Mais recente primeiro. OS antiga pode ter só o registro único `conferencia`.
+  const conferencias = (os.conferencias?.length ? [...os.conferencias].reverse()
+    : os.conferencia ? [os.conferencia] : [])
   const podeCobrar = !osFinalizada && os.status !== 'Rejeitada' && !os.pago && total > 0
 
   const FORMAS_PGTO = [
@@ -602,6 +605,26 @@ export default function OrdemDetalhe() {
             <Linha label="Mecânico Responsável" valor={mecanico?.nome || '—'} />
             {os.descricaoProblema && <div className="pt-3 mt-1 border-t border-slate-50"><p className="text-xs text-slate-400 mb-1">Descrição do Problema</p><p className="text-sm text-slate-600">{os.descricaoProblema}</p></div>}
             {os.diagnostico && <div className="pt-3 mt-2 border-t border-slate-50"><p className="text-xs text-slate-400 mb-1">Diagnóstico</p><p className="text-sm text-slate-600">{os.diagnostico}</p></div>}
+            {/* O que o reparador anotou só aparecia na aba Orçamento, longe de
+                quem abre a OS para entender o que foi feito no carro. */}
+            {os.observacoesTecnicas && (
+              <div className="pt-3 mt-2 border-t border-slate-50">
+                <p className="text-xs text-slate-400 mb-1">
+                  Anotações do reparador{os.tecnicoNome ? ` — ${os.tecnicoNome}` : ''}
+                </p>
+                <p className="text-sm text-slate-600 whitespace-pre-line">{os.observacoesTecnicas}</p>
+              </div>
+            )}
+            {os.pecasNecessarias?.length > 0 && (
+              <div className="pt-3 mt-2 border-t border-slate-50">
+                <p className="text-xs text-slate-400 mb-1">Peças que ele pediu</p>
+                <ul className="text-sm text-slate-600 space-y-0.5">
+                  {os.pecasNecessarias.map((p, i) => (
+                    <li key={i}>• {p.quantidade || 1}x {p.nome || p.descricao || p}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
             <h3 className="font-semibold text-slate-800 mb-4">Cliente / Veículo</h3>
@@ -610,6 +633,54 @@ export default function OrdemDetalhe() {
             <Linha label="Veículo" valor={[veiculo?.placa || os.veiculoPlaca, nomeVeiculo(veiculo, os)].filter(x => x && x !== '—').join(' - ') || '—'} />
             <Linha label="Ano/Cor" valor={veiculo ? `${veiculo.ano || '—'} / ${veiculo.cor || '—'}` : '—'} />
           </div>
+
+          {/* A conferência de entrega era gravada e nunca lida: não havia como
+              saber quem liberou o carro, quando, nem o que foi checado. */}
+          {conferencias.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 lg:col-span-2">
+              <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                <ShieldCheck size={15} className="text-cyan-500" />Conferência de entrega
+              </h3>
+              <div className="space-y-4">
+                {conferencias.map((c, i) => {
+                  const problemas = (c.itens || []).filter(it => it.status === 'problema')
+                  const ok = (c.itens || []).filter(it => it.status === 'ok').length
+                  const na = (c.itens || []).filter(it => it.status === 'na').length
+                  return (
+                    <div key={c.conferidoEm + i} className={`rounded-xl border p-4 ${c.aprovado ? 'border-green-200 bg-green-50/40' : 'border-red-200 bg-red-50/40'}`}>
+                      <div className="flex items-center gap-2 flex-wrap mb-2">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.aprovado ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {c.aprovado ? 'Liberado para entrega' : 'Devolvido para reparo'}
+                        </span>
+                        <span className="text-sm text-slate-700 font-medium">{c.conferidoPorNome || '—'}</span>
+                        <span className="text-xs text-slate-400">{c.conferidoEm}</span>
+                        <span className="ml-auto text-xs text-slate-400">{ok} ok · {na} n/a · {problemas.length} problema(s)</span>
+                      </div>
+                      {problemas.length > 0 && (
+                        <ul className="mb-2 space-y-1">
+                          {problemas.map(p => (
+                            <li key={p.id} className="text-sm text-red-700 flex gap-1.5">
+                              <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+                              <span><strong>{p.label}:</strong> {p.nota || 'sem descrição'}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="flex flex-wrap gap-1.5">
+                        {(c.itens || []).filter(it => it.status !== 'problema').map(it => (
+                          <span key={it.id} className={`text-xs px-2 py-0.5 rounded-full ${
+                            it.status === 'ok' ? 'bg-white text-slate-600 border border-slate-200' : 'bg-slate-100 text-slate-400'
+                          }`}>
+                            {it.status === 'ok' ? '✓' : '—'} {it.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
