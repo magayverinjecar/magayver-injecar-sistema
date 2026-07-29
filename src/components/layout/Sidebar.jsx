@@ -26,7 +26,7 @@ const grupos = [
   {
     titulo: 'OFICINA',
     items: [
-      { to: '/oficina/meus-servicos', icon: Wrench, label: 'Meus Serviços', permissao: 'checklist-gerenciar' },
+      { to: '/oficina/meus-servicos', icon: Wrench, label: 'Serviços', permissao: 'checklist-gerenciar' },
       { to: '/oficina/diagnostico', icon: ClipboardCheck, label: 'Realizar Diagnóstico', permissao: 'checklist-diagnostico' },
       { to: '/oficina/fotos', icon: Camera, label: 'Fotos e Vistoria', permissao: 'checklist-fotos' },
     ],

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Car, User, Clock, Wrench, Stethoscope, Play, CheckCircle2,
-  Package, ClipboardCheck, Inbox, ShieldCheck, Camera, PackageCheck,
+  Package, ClipboardCheck, ShieldCheck, Camera, PackageCheck,
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
@@ -117,10 +117,10 @@ export default function MeusServicos() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-xl mx-auto">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 max-w-xl mx-auto flex flex-col gap-6">
+      <div className="flex items-center justify-between order-1">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Meus serviços</h2>
+          <h2 className="text-xl font-bold text-slate-800">Serviços</h2>
           <p className="text-sm text-slate-500 mt-0.5">{meuNome}</p>
         </div>
         <span className="text-sm text-slate-500 flex items-center gap-1.5">
@@ -129,7 +129,7 @@ export default function MeusServicos() {
       </div>
 
       {/* ── Livres para pegar ── */}
-      <section>
+      <section className="order-3">
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
           Livres para pegar
         </h3>
@@ -163,17 +163,13 @@ export default function MeusServicos() {
         )}
       </section>
 
-      {/* ── Comigo agora ── */}
-      <section>
+      {/* ── Comigo agora — sobe para o topo assim que o reparador pega um
+           carro. Ficava embaixo e ele tinha que rolar toda a lista de livres
+           para achar o serviço que já estava na mão dele. ── */}
+      <section className={comigo.length > 0 ? 'order-2' : 'hidden'}>
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
           Comigo agora
         </h3>
-        {comigo.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center border-2 border-dashed border-slate-200 rounded-xl">
-            <Inbox size={26} className="text-slate-300 mb-2" />
-            <p className="text-sm text-slate-400">Você não está com nenhum veículo</p>
-          </div>
-        ) : (
           <div className="space-y-2">
             {comigo.map(os => {
               const emDiagnostico = os.status === 'Em Diagnóstico'
@@ -237,12 +233,11 @@ export default function MeusServicos() {
               )
             })}
           </div>
-        )}
       </section>
 
       {/* ── Esperando peça ── */}
       {esperandoPeca.length > 0 && (
-        <section>
+        <section className="order-4">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
             Esperando peça
           </h3>
