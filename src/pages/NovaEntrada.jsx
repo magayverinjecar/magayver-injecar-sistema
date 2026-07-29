@@ -361,8 +361,26 @@ export default function NovaEntrada() {
   }
   function anterior() { setPasso(p => p - 1); setErros({}) }
 
-  function finalizar() {
+  async function finalizar() {
     clearTimeout(rascunhoRef.current)
+
+    // O cliente pode ter assinado pelo celular enquanto a recepção ainda
+    // digitava. Essa assinatura fica gravada no rascunho do link e precisa vir
+    // junto — antes ela era apagada com o rascunho e o cliente assinava à toa.
+    let assinaturaFinal = assinatura
+    let assinaturaTempoFinal = assinatura ? Date.now() : null
+    if (osIdParaLink) {
+      try {
+        const { data } = await supabase.from('ordens')
+          .select('data').eq('id', String(osIdParaLink)).maybeSingle()
+        if (!assinaturaFinal && data?.data?.assinatura) {
+          assinaturaFinal = data.data.assinatura
+          assinaturaTempoFinal = data.data.assinaturaTempo || Date.now()
+        }
+      } catch (e) {
+        console.error('[finalizar] não consegui ler o rascunho do link:', e)
+      }
+    }
 
     let cId = clienteId
     if (!cId) {
@@ -386,9 +404,6 @@ export default function NovaEntrada() {
       vId = novoV.id
     }
 
-    // Verificar se há assinatura remota (salva pelo link)
-    // Será tratada quando o ClienteAssinatura for atualizado (Etapa 4)
-
     const osId = novaOrdem({
       clienteId: cId,
       veiculoId: vId,
@@ -397,8 +412,8 @@ export default function NovaEntrada() {
       status: 'Recepção',
       luzesPainel,
       relatoCliente,
-      assinatura: assinatura || null,
-      assinaturaTempo: assinatura ? Date.now() : null,
+      assinatura: assinaturaFinal || null,
+      assinaturaTempo: assinaturaTempoFinal,
       atendente: currentUser?.nome || '',
       ultimaRevisao: veiculo.ultimaRevisao,
       numCondutores: veiculo.numCondutores,
@@ -410,9 +425,14 @@ export default function NovaEntrada() {
       clienteNome: cliente.nome,
     })
 
-    // Se havia um rascunho no supabase para o link, remove
+    // O cliente costuma abrir o link do WhatsApp depois que a recepção já
+    // finalizou. Apagar o rascunho matava o link ("Registro não encontrado"):
+    // agora ele vira um ponteiro para a OS de verdade e o link continua valendo.
     if (osIdParaLink) {
-      supabase.from('ordens').delete().eq('id', String(osIdParaLink)).then(() => {})
+      supabase.from('ordens').upsert({
+        id: String(osIdParaLink),
+        data: { rascunho: true, redirectPara: osId },
+      }).then(() => {})
     }
 
     localStorage.removeItem(RASCUNHO_KEY)

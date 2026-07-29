@@ -142,7 +142,15 @@ export default function ClienteAssinatura() {
       // Tenta buscar na tabela ordens primeiro (novo fluxo), depois checklists (legado)
       const { data: osData } = await supabase.from('ordens').select('id, data').eq('id', id)
       if (osData?.length) {
-        const os = await completarDaOS({ id: osData[0].id, ...osData[0].data })
+        let linha = osData[0]
+        // Link gerado na Nova Entrada: o rascunho aponta para a OS já criada.
+        // Sem seguir o ponteiro, o cliente assinaria num registro descartado.
+        const alvo = linha.data?.redirectPara
+        if (alvo) {
+          const { data: real } = await supabase.from('ordens').select('id, data').eq('id', String(alvo))
+          if (real?.length) linha = real[0]
+        }
+        const os = await completarDaOS({ id: linha.id, ...linha.data })
         setChecklist(os)
         if (os.assinatura) setSucesso(true)
         setCarregando(false)
