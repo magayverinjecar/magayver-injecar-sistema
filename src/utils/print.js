@@ -8,6 +8,35 @@ function getConfig() {
 function pNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Quantidade aceita vírgula ("4,5" litros de óleo). Number() sozinho devolvia
+// NaN e caía para 1, fazendo a linha da nota não fechar com o total.
+function qtd(v) { const n = pNum(v); return n > 0 ? n : 1 }
+
+// Texto do usuário vai para dentro de HTML: sem escapar, uma descrição com
+// "<" engole o resto da linha na nota impressa.
+function esc(v) {
+  if (v == null) return ''
+  return String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+// O cadastro separa marca e modelo ("GOL" + "TESTE"). Imprimir só o modelo
+// entregava ao cliente uma nota com o carro pela metade.
+function nomeModelo(veiculo, os) {
+  if (os?.veiculoModelo) return os.veiculoModelo
+  if (!veiculo) return ''
+  return [veiculo.marca, veiculo.modelo].filter(Boolean).join(' ').trim() || veiculo.modelo || ''
+}
+
+// Quem trabalhou no carro nem sempre está em os.mecanicoId — o fluxo novo grava
+// o nome de quem reparou, diagnosticou ou assumiu a OS.
+function nomeMecanico(mecanico, os) {
+  return mecanico?.nome || os?.reparadorNome || os?.responsavelNome || os?.tecnicoNome || ''
+}
+
 function abrirJanela(html, titulo) {
   const w = window.open('', '_blank')
   if (!w) { alert('Permita popups para imprimir.'); return }
@@ -20,9 +49,9 @@ function abrirJanela(html, titulo) {
 function itensTableRows(itens) {
   if (!itens || itens.length === 0) return '<tr><td colspan="4" style="text-align:center;color:#aaa;padding:8px">Nenhum item</td></tr>'
   return itens.map(it => {
-    const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
+    const sub = pNum(it.valorUnitario) * qtd(it.quantidade) - pNum(it.desconto)
     return `<tr>
-      <td>${it.descricao}</td>
+      <td>${esc(it.descricao)}</td>
       <td style="text-align:center">${it.quantidade}</td>
       <td style="text-align:right">${fmt(pNum(it.valorUnitario))}</td>
       <td style="text-align:right">${fmt(sub)}</td>
@@ -44,15 +73,15 @@ function gerarCupom(os, cliente, veiculo, mecanico, total, cfg, largura, fSize) 
     .total { font-weight: bold; font-size: ${fSize === '12px' ? '15px' : '13px'}; display: flex; justify-content: space-between; margin-top: 4px; }
   `
   const linhaItens = (os.itens || []).map(it => {
-    const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
-    return `<div><span>${it.quantidade}x ${it.descricao}</span></div><div class="row"><span style="color:#555">${fmt(pNum(it.valorUnitario))} cada</span><span class="b">${fmt(sub)}</span></div>`
+    const sub = pNum(it.valorUnitario) * qtd(it.quantidade) - pNum(it.desconto)
+    return `<div><span>${it.quantidade}x ${esc(it.descricao)}</span></div><div class="row"><span style="color:#555">${fmt(pNum(it.valorUnitario))} cada</span><span class="b">${fmt(sub)}</span></div>`
   }).join('<hr class="hr" style="margin:2px 0;border-style:dotted">')
 
   const body = `
-    <div class="c b">${cfg.nome || 'Oficina'}</div>
-    ${cfg.cnpj ? `<div class="c">CNPJ: ${cfg.cnpj}</div>` : ''}
-    ${cfg.telefone ? `<div class="c">Tel: ${cfg.telefone}</div>` : ''}
-    ${cfg.endereco ? `<div class="c" style="font-size:10px">${cfg.endereco}</div>` : ''}
+    <div class="c b">${esc(cfg.nome || 'Oficina')}</div>
+    ${cfg.cnpj ? `<div class="c">CNPJ: ${esc(cfg.cnpj)}</div>` : ''}
+    ${cfg.telefone ? `<div class="c">Tel: ${esc(cfg.telefone)}</div>` : ''}
+    ${cfg.endereco ? `<div class="c" style="font-size:10px">${esc(cfg.endereco)}</div>` : ''}
     <hr class="hr">
     <div class="c b">ORDEM DE SERVIÇO</div>
     <div class="row"><span>Nº:</span><span class="b">${os.id}</span></div>
@@ -61,14 +90,14 @@ function gerarCupom(os, cliente, veiculo, mecanico, total, cfg, largura, fSize) 
     <div class="row"><span>Status:</span><span class="b">${os.status}</span></div>
     <hr class="hr">
     <div class="b">CLIENTE</div>
-    <div>${cliente?.nome || '—'}</div>
+    <div>${esc(cliente?.nome || '—')}</div>
     ${cliente?.telefone ? `<div>Tel: ${cliente.telefone}</div>` : ''}
     <hr class="hr">
     <div class="b">VEÍCULO</div>
-    ${veiculo ? `<div>${veiculo.modelo} ${veiculo.ano || ''}</div><div>Placa: ${veiculo.placa}</div>` : '<div>—</div>'}
+    ${veiculo ? `<div>${esc(nomeModelo(veiculo, os))} ${veiculo.ano || ''}</div><div>Placa: ${esc(veiculo.placa)}</div>` : '<div>—</div>'}
     ${os.kmEntrada ? `<div>KM: ${os.kmEntrada}</div>` : ''}
-    ${mecanico ? `<div>Mecânico: ${mecanico.nome}</div>` : ''}
-    ${os.descricaoProblema ? `<hr class="hr"><div class="b">PROBLEMA</div><div style="font-size:10px">${os.descricaoProblema}</div>` : ''}
+    ${nomeMecanico(mecanico, os) ? `<div>Mecânico: ${esc(nomeMecanico(mecanico, os))}</div>` : ''}
+    ${os.descricaoProblema ? `<hr class="hr"><div class="b">PROBLEMA</div><div style="font-size:10px">${esc(os.descricaoProblema)}</div>` : ''}
     <hr class="hr">
     <div class="b">ITENS</div>
     <div style="margin-top:3px">${linhaItens || '<div style="color:#aaa">Sem itens</div>'}</div>
@@ -80,7 +109,7 @@ function gerarCupom(os, cliente, veiculo, mecanico, total, cfg, largura, fSize) 
     <div class="c" style="font-size:${fSize === '12px' ? '9px' : '8px'}">nos serviços realizados (CDC art. 26)</div>
     <hr class="hr">
     <div class="c" style="margin-top:8px">Obrigado pela preferência!</div>
-    <div class="c" style="font-size:9px;margin-top:2px">${cfg.nome || ''}</div>
+    <div class="c" style="font-size:9px;margin-top:2px">${esc(cfg.nome || '')}</div>
     <br><br>
   `
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>OS ${os.id}</title><style>${css}</style></head><body>${body}</body></html>`
@@ -102,13 +131,13 @@ function tabelaCliente(cliente, os) {
       <th style="text-align:left;padding:4px 7px;font-size:9px;color:#64748b;font-weight:600;width:15%">E-MAIL</th>
     </tr>
     <tr>
-      <td style="padding:5px 7px;border-right:1px solid #e2e8f0;font-weight:600">${cliente?.nome || '—'}</td>
-      <td style="padding:5px 7px;border-right:1px solid #e2e8f0">${cliente?.telefone || '—'}</td>
-      <td style="padding:5px 7px;border-right:1px solid #e2e8f0">${cliente?.cpf || '—'}</td>
-      <td style="padding:5px 7px">${cliente?.email || '—'}</td>
+      <td style="padding:5px 7px;border-right:1px solid #e2e8f0;font-weight:600">${esc(cliente?.nome || '—')}</td>
+      <td style="padding:5px 7px;border-right:1px solid #e2e8f0">${esc(cliente?.telefone || '—')}</td>
+      <td style="padding:5px 7px;border-right:1px solid #e2e8f0">${esc(cliente?.cpf || '—')}</td>
+      <td style="padding:5px 7px">${esc(cliente?.email || '—')}</td>
     </tr>
   </table>
-  ${cliente?.endereco ? `<table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;border-top:0;margin-bottom:0"><tr><td style="padding:4px 7px;font-size:10px"><span style="color:#64748b;font-size:9px;font-weight:600">ENDEREÇO: </span>${cliente.endereco}</td></tr></table>` : ''}
+  ${cliente?.endereco ? `<table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;border-top:0;margin-bottom:0"><tr><td style="padding:4px 7px;font-size:10px"><span style="color:#64748b;font-size:9px;font-weight:600">ENDEREÇO: </span>${esc(cliente.endereco)}</td></tr></table>` : ''}
   `
 }
 
@@ -119,7 +148,7 @@ function tabelaVeiculo(veiculo, os, mecanico) {
   <table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;margin-bottom:0;table-layout:fixed">
     <tr>
       ${cel('PLACA', veiculo.placa)}
-      ${cel('MODELO', veiculo.modelo)}
+      ${cel('MODELO', nomeModelo(veiculo, os))}
       ${cel('ANO', veiculo.ano)}
       ${cel('MOTOR', veiculo.motor || '')}
       ${cel('COR', veiculo.cor || '')}
@@ -128,7 +157,7 @@ function tabelaVeiculo(veiculo, os, mecanico) {
   <table style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;border-top:0;margin-bottom:0;table-layout:fixed">
     <tr>
       ${cel('COMBUSTÍVEL', veiculo.combustivel || '')}
-      ${cel('MECÂNICO', mecanico?.nome || '')}
+      ${cel('MECÂNICO', nomeMecanico(mecanico, os))}
       ${cel('DATA ENTRADA', os.dataEntrada || os.data)}
       ${cel('DATA CONCLUSÃO', os.dataConclusao || '')}
       <td style="border-right:0;padding:0"><div style="background:#f8fafc;font-size:8px;color:#64748b;font-weight:600;padding:2px 6px;border-bottom:1px solid #e2e8f0">STATUS</div><div style="padding:4px 6px;font-weight:700;font-size:10px;color:#1e293b">${os.status}</div></td>
@@ -145,7 +174,7 @@ function tabelaVeiculoOrcamento(veiculo) {
 
   const linha1 = [
     cel('PLACA', veiculo.placa),
-    cel('MODELO', veiculo.modelo),
+    cel('MODELO', nomeModelo(veiculo)),
     cel('ANO', veiculo.ano),
     cel('MOTOR', veiculo.motor || ''),
     cel('COR', veiculo.cor || ''),
@@ -167,8 +196,8 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
   const itens = os.itens || []
   const servicos = itens.filter(i => i.tipo === 'servico')
   const pecas    = itens.filter(i => i.tipo !== 'servico')
-  const totalSrv = servicos.reduce((s, i) => s + pNum(i.valorUnitario) * (Number(i.quantidade) || 1) - pNum(i.desconto), 0)
-  const totalPec = pecas.reduce((s, i) => s + pNum(i.valorUnitario) * (Number(i.quantidade) || 1) - pNum(i.desconto), 0)
+  const totalSrv = servicos.reduce((s, i) => s + pNum(i.valorUnitario) * qtd(i.quantidade) - pNum(i.desconto), 0)
+  const totalPec = pecas.reduce((s, i) => s + pNum(i.valorUnitario) * qtd(i.quantidade) - pNum(i.desconto), 0)
 
   const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
@@ -181,10 +210,10 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
   `
 
   const rowServico = (it, idx) => {
-    const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
+    const sub = pNum(it.valorUnitario) * qtd(it.quantidade) - pNum(it.desconto)
     return `<tr style="border-bottom:1px solid #f1f5f9">
       <td style="padding:6px 8px;vertical-align:top">
-        <span style="font-weight:700;color:#1e293b">${String.fromCharCode(65 + idx)}1</span> — ${it.descricao}
+        <span style="font-weight:700;color:#1e293b">${String.fromCharCode(65 + idx)}1</span> — ${esc(it.descricao)}
         ${it.quantidade > 1 ? `<span style="font-size:9px;color:#64748b"> (${it.quantidade}x)</span>` : ''}
       </td>
       <td style="padding:6px 8px;text-align:right;white-space:nowrap;font-weight:700;vertical-align:top">${fmt(sub)}</td>
@@ -192,10 +221,10 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
   }
 
   const rowPeca = (it, idx, srvIdx) => {
-    const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
+    const sub = pNum(it.valorUnitario) * qtd(it.quantidade) - pNum(it.desconto)
     const cod = srvIdx !== undefined ? `${String.fromCharCode(65 + srvIdx)}1.${idx + 1}` : `P${idx + 1}`
     return `<tr style="border-bottom:1px solid #f1f5f9">
-      <td style="padding:5px 8px"><span style="font-weight:700;color:#64748b">${cod}</span> — ${it.descricao}</td>
+      <td style="padding:5px 8px"><span style="font-weight:700;color:#64748b">${cod}</span> — ${esc(it.descricao)}</td>
       <td style="padding:5px 8px;text-align:center">${it.quantidade}</td>
       <td style="padding:5px 8px;text-align:right">UN</td>
       <td style="padding:5px 8px;text-align:right">${fmt(pNum(it.valorUnitario))}</td>
@@ -206,12 +235,12 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
   const body = `
     <!-- CABEÇALHO -->
     <div style="padding-bottom:10px;border-bottom:3px solid #1e293b;margin-bottom:10px">
-      <div style="font-size:20px;font-weight:900;color:#1e293b;letter-spacing:-0.5px">${cfg.nome || 'Oficina'}</div>
+      <div style="font-size:20px;font-weight:900;color:#1e293b;letter-spacing:-0.5px">${esc(cfg.nome || 'Oficina')}</div>
       <div style="font-size:10px;color:#475569;margin-top:2px">
         ${[cfg.telefone, cfg.email].filter(Boolean).join(' / ')}
       </div>
       <div style="font-size:10px;color:#475569">
-        ${cfg.endereco || ''}${cfg.cnpj ? `${cfg.endereco ? ' — ' : ''}CNPJ: ${cfg.cnpj}` : ''}
+        ${esc(cfg.endereco || '')}${cfg.cnpj ? `${cfg.endereco ? ' — ' : ''}CNPJ: ${esc(cfg.cnpj)}` : ''}
       </div>
     </div>
 
@@ -239,7 +268,7 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
       ${secHeader('Informações de Diagnósticos')}
       <div style="border:1px solid #cbd5e1;border-top:0;padding:8px 10px;font-size:10px;line-height:1.6;color:#334155">
         ${os.descricaoProblema ? os.descricaoProblema : ''}
-        ${os.diagnostico ? `<br><strong>Diagnóstico:</strong> ${os.diagnostico}` : ''}
+        ${os.diagnostico ? `<br><strong>Diagnóstico:</strong> ${esc(os.diagnostico)}` : ''}
       </div>
     </div>` : ''}
 
@@ -284,8 +313,8 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
           <th style="text-align:right;padding:5px 8px;font-size:9px;color:#64748b;font-weight:600;width:90px">SUBTOTAL</th>
         </tr>
         ${itens.map(it => {
-          const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
-          return `<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:5px 8px">${it.descricao}</td><td style="padding:5px 8px;text-align:center">${it.quantidade}</td><td style="padding:5px 8px;text-align:right">${fmt(pNum(it.valorUnitario))}</td><td style="padding:5px 8px;text-align:right;font-weight:700">${fmt(sub)}</td></tr>`
+          const sub = pNum(it.valorUnitario) * qtd(it.quantidade) - pNum(it.desconto)
+          return `<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:5px 8px">${esc(it.descricao)}</td><td style="padding:5px 8px;text-align:center">${it.quantidade}</td><td style="padding:5px 8px;text-align:right">${fmt(pNum(it.valorUnitario))}</td><td style="padding:5px 8px;text-align:right;font-weight:700">${fmt(sub)}</td></tr>`
         }).join('')}
       </table>
     </div>` : ''}
@@ -298,7 +327,7 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
       <div style="border-left:2px solid #e2e8f0;padding-left:24px"><div style="font-size:9px;color:#64748b;font-weight:600">VALOR TOTAL</div><div style="font-size:20px;font-weight:900;color:#1e293b">${fmt(total)}</div></div>
     </div>
 
-    ${os.observacoes ? `<div style="font-size:10px;color:#475569;margin-bottom:12px;border-left:3px solid #1e293b;padding-left:8px"><strong>Observações:</strong> ${os.observacoes}</div>` : ''}
+    ${os.observacoes ? `<div style="font-size:10px;color:#475569;margin-bottom:12px;border-left:3px solid #1e293b;padding-left:8px"><strong>Observações:</strong> ${esc(os.observacoes)}</div>` : ''}
 
     <!-- GARANTIA -->
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:8px 12px;margin-bottom:12px;text-align:center">
@@ -356,9 +385,9 @@ function gerarA4Comp(os, cliente, veiculo, mecanico, total, cfg) {
   const body = `
     <div class="header">
       <div class="empresa">
-        <h1>${cfg.nome || 'Oficina'}</h1>
-        ${cfg.cnpj ? `<p>CNPJ: ${cfg.cnpj}</p>` : ''}
-        ${cfg.telefone ? `<p>Tel: ${cfg.telefone}</p>` : ''}
+        <h1>${esc(cfg.nome || 'Oficina')}</h1>
+        ${cfg.cnpj ? `<p>CNPJ: ${esc(cfg.cnpj)}</p>` : ''}
+        ${cfg.telefone ? `<p>Tel: ${esc(cfg.telefone)}</p>` : ''}
       </div>
       <div class="os-box">
         <div class="os-num">OS ${os.id}</div>
@@ -370,19 +399,19 @@ function gerarA4Comp(os, cliente, veiculo, mecanico, total, cfg) {
     <div class="info-row">
       <div class="col">
         <div class="col-title">Cliente</div>
-        <div class="kv"><span class="k">Nome</span><span class="v">${cliente?.nome || '—'}</span></div>
-        <div class="kv"><span class="k">Tel</span><span class="v">${cliente?.telefone || '—'}</span></div>
+        <div class="kv"><span class="k">Nome</span><span class="v">${esc(cliente?.nome || '—')}</span></div>
+        <div class="kv"><span class="k">Tel</span><span class="v">${esc(cliente?.telefone || '—')}</span></div>
       </div>
       <div class="col">
         <div class="col-title">Veículo</div>
-        <div class="kv"><span class="k">Modelo</span><span class="v">${veiculo ? veiculo.modelo : '—'}</span></div>
-        <div class="kv"><span class="k">Placa</span><span class="v">${veiculo?.placa || '—'}</span></div>
+        <div class="kv"><span class="k">Modelo</span><span class="v">${esc(nomeModelo(veiculo, os)) || '—'}</span></div>
+        <div class="kv"><span class="k">Placa</span><span class="v">${esc(veiculo?.placa || '—')}</span></div>
         <div class="kv"><span class="k">KM</span><span class="v">${os.kmEntrada || '—'}</span></div>
       </div>
-      ${mecanico ? `<div class="col" style="flex:0.5"><div class="col-title">Mecânico</div><div class="v">${mecanico.nome}</div></div>` : ''}
+      ${nomeMecanico(mecanico, os) ? `<div class="col" style="flex:0.5"><div class="col-title">Mecânico</div><div class="v">${esc(nomeMecanico(mecanico, os))}</div></div>` : ''}
     </div>
 
-    ${os.descricaoProblema ? `<div style="border:1px solid #e5e7eb;border-radius:6px;padding:7px 10px;margin-bottom:8px;font-size:10px"><strong>Problema:</strong> ${os.descricaoProblema}</div>` : ''}
+    ${os.descricaoProblema ? `<div style="border:1px solid #e5e7eb;border-radius:6px;padding:7px 10px;margin-bottom:8px;font-size:10px"><strong>Problema:</strong> ${esc(os.descricaoProblema)}</div>` : ''}
 
     <table>
       <thead>
@@ -406,7 +435,7 @@ function gerarA4Comp(os, cliente, veiculo, mecanico, total, cfg) {
       <span style="font-size:10px;font-weight:700;color:#15803d">✓ Garantia de 90 dias</span>
       <span style="font-size:9px;color:#166534"> nos serviços realizados (CDC art. 26)</span>
     </div>
-    <div class="footer">${cfg.nome || 'Oficina'} • ${new Date().toLocaleDateString('pt-BR')}</div>
+    <div class="footer">${esc(cfg.nome || 'Oficina')} • ${new Date().toLocaleDateString('pt-BR')}</div>
   `
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>OS ${os.id}</title><style>${css}</style></head><body>${body}</body></html>`
 }
@@ -442,9 +471,9 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
   const body = `
     <div class="header">
       <div class="empresa">
-        <h1>${cfg.nome || 'Oficina'}</h1>
-        ${cfg.cnpj ? `<p>CNPJ: ${cfg.cnpj}</p>` : ''}
-        ${cfg.telefone ? `<p>Tel: ${cfg.telefone}</p>` : ''}
+        <h1>${esc(cfg.nome || 'Oficina')}</h1>
+        ${cfg.cnpj ? `<p>CNPJ: ${esc(cfg.cnpj)}</p>` : ''}
+        ${cfg.telefone ? `<p>Tel: ${esc(cfg.telefone)}</p>` : ''}
       </div>
       <div>
         <div class="os-num">OS ${os.id}</div>
@@ -456,13 +485,13 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
     <div class="info">
       <div class="col">
         <div class="col-title">Cliente</div>
-        <div class="kv"><span class="k">Nome</span><span class="v">${cliente?.nome || '—'}</span></div>
-        <div class="kv"><span class="k">Tel</span><span class="v">${cliente?.telefone || '—'}</span></div>
+        <div class="kv"><span class="k">Nome</span><span class="v">${esc(cliente?.nome || '—')}</span></div>
+        <div class="kv"><span class="k">Tel</span><span class="v">${esc(cliente?.telefone || '—')}</span></div>
       </div>
       <div class="col">
         <div class="col-title">Veículo</div>
-        <div class="kv"><span class="k">Modelo</span><span class="v">${veiculo ? veiculo.modelo : '—'}</span></div>
-        <div class="kv"><span class="k">Placa</span><span class="v">${veiculo?.placa || '—'}</span></div>
+        <div class="kv"><span class="k">Modelo</span><span class="v">${esc(nomeModelo(veiculo, os)) || '—'}</span></div>
+        <div class="kv"><span class="k">Placa</span><span class="v">${esc(veiculo?.placa || '—')}</span></div>
         <div class="kv"><span class="k">KM</span><span class="v">${os.kmEntrada || '—'}</span></div>
       </div>
     </div>
@@ -479,8 +508,8 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
         ${(os.itens || []).length === 0
           ? '<tr><td colspan="3" style="text-align:center;color:#aaa">Nenhum item</td></tr>'
           : (os.itens || []).map(it => {
-              const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto)
-              return `<tr><td>${it.descricao}</td><td style="text-align:center">${it.quantidade}</td><td style="text-align:right">${fmt(sub)}</td></tr>`
+              const sub = pNum(it.valorUnitario) * qtd(it.quantidade) - pNum(it.desconto)
+              return `<tr><td>${esc(it.descricao)}</td><td style="text-align:center">${it.quantidade}</td><td style="text-align:right">${fmt(sub)}</td></tr>`
             }).join('')}
       </tbody>
     </table>
@@ -495,7 +524,7 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
       <span style="font-size:9px;font-weight:700;color:#15803d">✓ Garantia de 90 dias</span>
       <span style="font-size:8px;color:#166534"> nos serviços realizados (CDC art. 26)</span>
     </div>
-    <div class="footer">${cfg.nome || 'Oficina'} • ${new Date().toLocaleDateString('pt-BR')}</div>
+    <div class="footer">${esc(cfg.nome || 'Oficina')} • ${new Date().toLocaleDateString('pt-BR')}</div>
   `
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>OS ${os.id}</title><style>${css}</style></head><body>${body}</body></html>`
 }
@@ -523,10 +552,10 @@ function gerarRecibo(venda, cfg) {
   ).join('')
 
   const body = `
-    <div class="c b">${cfg.nome || 'Oficina'}</div>
-    ${cfg.cnpj ? `<div class="c">CNPJ: ${cfg.cnpj}</div>` : ''}
-    ${cfg.telefone ? `<div class="c">Tel: ${cfg.telefone}</div>` : ''}
-    ${cfg.endereco ? `<div class="c" style="font-size:10px">${cfg.endereco}</div>` : ''}
+    <div class="c b">${esc(cfg.nome || 'Oficina')}</div>
+    ${cfg.cnpj ? `<div class="c">CNPJ: ${esc(cfg.cnpj)}</div>` : ''}
+    ${cfg.telefone ? `<div class="c">Tel: ${esc(cfg.telefone)}</div>` : ''}
+    ${cfg.endereco ? `<div class="c" style="font-size:10px">${esc(cfg.endereco)}</div>` : ''}
     <hr class="hr">
     <div class="c b">RECIBO DE VENDA</div>
     <div class="row"><span>Nº:</span><span class="b">${venda.numero || ''}</span></div>
@@ -542,7 +571,7 @@ function gerarRecibo(venda, cfg) {
     <div style="margin:3px 0">${pagHtml || '<div style="color:#aaa">Nenhum</div>'}</div>
     <hr class="hr">
     <div class="c" style="margin-top:8px">Obrigado pela preferência!</div>
-    <div class="c" style="font-size:9px;margin-top:2px">${cfg.nome || ''}</div>
+    <div class="c" style="font-size:9px;margin-top:2px">${esc(cfg.nome || '')}</div>
     <br><br>
   `
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Recibo ${venda.numero}</title><style>${css}</style></head><body>${body}</body></html>`
@@ -554,8 +583,8 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
   const itens = orc.itens || []
   const servicos = itens.filter(i => i.tipo === 'Serviço' || i.tipo === 'servico')
   const pecas    = itens.filter(i => i.tipo !== 'Serviço' && i.tipo !== 'servico')
-  const totalSrv = servicos.reduce((s, i) => s + pNum(i.valorUnitario) * (Number(i.quantidade) || 1) - pNum(i.desconto || 0), 0)
-  const totalPec = pecas.reduce((s, i) => s + pNum(i.valorUnitario) * (Number(i.quantidade) || 1) - pNum(i.desconto || 0), 0)
+  const totalSrv = servicos.reduce((s, i) => s + pNum(i.valorUnitario) * qtd(i.quantidade) - pNum(i.desconto || 0), 0)
+  const totalPec = pecas.reduce((s, i) => s + pNum(i.valorUnitario) * qtd(i.quantidade) - pNum(i.desconto || 0), 0)
   const total = totalSrv + totalPec
 
   const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -569,20 +598,20 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
   `
 
   const rowServico = (it, idx) => {
-    const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto || 0)
+    const sub = pNum(it.valorUnitario) * qtd(it.quantidade) - pNum(it.desconto || 0)
     return `<tr style="border-bottom:1px solid #f1f5f9">
       <td style="padding:6px 8px;vertical-align:top">
-        <span style="font-weight:700;color:#1e293b">${String.fromCharCode(65 + idx)}1</span> — ${it.descricao}
-        ${Number(it.quantidade) > 1 ? `<span style="font-size:9px;color:#64748b"> (${it.quantidade}x)</span>` : ''}
+        <span style="font-weight:700;color:#1e293b">${String.fromCharCode(65 + idx)}1</span> — ${esc(it.descricao)}
+        ${qtd(it.quantidade) > 1 ? `<span style="font-size:9px;color:#64748b"> (${it.quantidade}x)</span>` : ''}
       </td>
       <td style="padding:6px 8px;text-align:right;white-space:nowrap;font-weight:700;vertical-align:top">${fmt(sub)}</td>
     </tr>`
   }
 
   const rowPeca = (it, idx) => {
-    const sub = pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto || 0)
+    const sub = pNum(it.valorUnitario) * qtd(it.quantidade) - pNum(it.desconto || 0)
     return `<tr style="border-bottom:1px solid #f1f5f9">
-      <td style="padding:5px 8px"><span style="font-weight:700;color:#64748b">P${idx + 1}</span> — ${it.descricao}</td>
+      <td style="padding:5px 8px"><span style="font-weight:700;color:#64748b">P${idx + 1}</span> — ${esc(it.descricao)}</td>
       <td style="padding:5px 8px;text-align:center">${it.quantidade}</td>
       <td style="padding:5px 8px;text-align:right">UN</td>
       <td style="padding:5px 8px;text-align:right">${fmt(pNum(it.valorUnitario))}</td>
@@ -598,12 +627,12 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
   const body = `
     <!-- CABEÇALHO -->
     <div style="padding-bottom:10px;border-bottom:3px solid #1e293b;margin-bottom:10px">
-      <div style="font-size:20px;font-weight:900;color:#1e293b;letter-spacing:-0.5px">${cfg.nome || 'Oficina'}</div>
+      <div style="font-size:20px;font-weight:900;color:#1e293b;letter-spacing:-0.5px">${esc(cfg.nome || 'Oficina')}</div>
       <div style="font-size:10px;color:#475569;margin-top:2px">
         ${[cfg.telefone, cfg.email].filter(Boolean).join(' / ')}
       </div>
       <div style="font-size:10px;color:#475569">
-        ${cfg.endereco || ''}${cfg.cnpj ? `${cfg.endereco ? ' — ' : ''}CNPJ: ${cfg.cnpj}` : ''}
+        ${esc(cfg.endereco || '')}${cfg.cnpj ? `${cfg.endereco ? ' — ' : ''}CNPJ: ${esc(cfg.cnpj)}` : ''}
       </div>
     </div>
 

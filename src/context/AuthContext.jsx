@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect } from 'react'
 export const MODELOS = {
   admin: {
     label: 'Administrador',
-    menus: ['patio','patio-limpeza','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','gastos','configuracoes'],
+    menus: ['patio','patio-limpeza','conferir-os','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','gastos','configuracoes'],
     verPrecos: true,
     verFinanceiro: true,
     editarConfigs: true,
@@ -12,7 +12,7 @@ export const MODELOS = {
   },
   reparador: {
     label: 'Reparador',
-    menus: ['patio','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','ordens-servico','clientes','veiculos','estoque','insumos','produtividade'],
+    menus: ['patio','conferir-os','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','ordens-servico','clientes','veiculos','estoque','insumos','produtividade'],
     verPrecos: false,
     verFinanceiro: false,
     editarConfigs: false,
@@ -46,16 +46,35 @@ const MENUS_UNIVERSAIS = ['patio']
 
 // Migração automática: menus que devem existir para cada perfil
 const MENUS_OBRIGATORIOS = {
-  admin:     ['patio-limpeza','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar'],
-  reparador: ['checklist-novo','checklist-fotos','checklist-diagnostico'],
+  admin:     ['patio-limpeza','conferir-os','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar'],
+  // O reparador confere o próprio serviço antes de liberar, então precisa de
+  // conferir-os e do menu Meus Serviços (checklist-gerenciar).
+  reparador: ['conferir-os','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar'],
   recepcao:  ['checklist-novo','checklist-gerenciar'],
 }
+
+// Menus que o fluxo de trabalho exige junto: quem já tem um deles precisa dos
+// outros para conseguir concluir o serviço. Vale para qualquer perfil — a
+// equipe toda usa 'personalizado', que não é coberto por MENUS_OBRIGATORIOS.
+const MENUS_DEPENDENTES = [
+  // Quem diagnostica também executa o reparo (Meus Serviços) e confere antes de liberar
+  { se: 'checklist-diagnostico', entao: ['checklist-gerenciar', 'conferir-os'] },
+  // Quem mexe na OS precisa poder conferir para conseguir entregar o veículo
+  { se: 'ordens-servico',        entao: ['conferir-os'] },
+]
 
 // Garante que os menus universais/obrigatórios existam nas permissões.
 // Retorna o MESMO objeto se nada faltar (para comparação por identidade).
 function garantirMenus(perfil, permissoes) {
   const menus = permissoes?.menus || []
-  const obrig = [...new Set([...MENUS_UNIVERSAIS, ...(MENUS_OBRIGATORIOS[perfil] || [])])]
+  const dependentes = MENUS_DEPENDENTES
+    .filter(r => menus.includes(r.se))
+    .flatMap(r => r.entao)
+  const obrig = [...new Set([
+    ...MENUS_UNIVERSAIS,
+    ...(MENUS_OBRIGATORIOS[perfil] || []),
+    ...dependentes,
+  ])]
   const faltam = obrig.filter(m => !menus.includes(m))
   if (faltam.length === 0) return permissoes
   return { ...permissoes, menus: [...faltam, ...menus] }
@@ -116,8 +135,15 @@ export function AuthProvider({ children }) {
     setCurrentUser(atualizado)
   }
 
+  // Flags soltas nas permissões (não são menus, então temPermissao não as enxerga)
+  const podeVerPrecos     = !!currentUser?.permissoes?.verPrecos
+  const podeVerFinanceiro = !!currentUser?.permissoes?.verFinanceiro
+
   return (
-    <AuthContext.Provider value={{ currentUser, login, logout, temPermissao, refreshPermissoes, MODELOS }}>
+    <AuthContext.Provider value={{
+      currentUser, login, logout, temPermissao, refreshPermissoes, MODELOS,
+      podeVerPrecos, podeVerFinanceiro,
+    }}>
       {children}
     </AuthContext.Provider>
   )

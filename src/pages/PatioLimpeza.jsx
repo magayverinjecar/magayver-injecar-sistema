@@ -28,13 +28,16 @@ const STATUS_CORES = {
   'Diagnóstico': 'bg-blue-100 text-blue-700',
   'Aguardando Aprovação': 'bg-purple-100 text-purple-700',
   'Aguardando Peça': 'bg-red-100 text-red-700',
+  'Recepção': 'bg-blue-100 text-blue-700',
+  'Em Diagnóstico': 'bg-indigo-100 text-indigo-700',
+  'Rejeitada': 'bg-red-100 text-red-700',
 }
 
 export default function PatioLimpeza() {
   const navigate = useNavigate()
   const {
     ordens, setOrdens, checklists, setChecklists,
-    getCliente, getVeiculo, totalOrdem,
+    getCliente, getVeiculo, totalOrdem, entregarOrdem,
     financeiro, setFinanceiro, setCaixaTurno,
   } = useApp()
 
@@ -43,7 +46,7 @@ export default function PatioLimpeza() {
   const [processados, setProcessados] = useState(new Set())
 
   const osParadas = useMemo(() => {
-    const statusAtivos = ['Concluída', 'Em Execução', 'Em Andamento', 'Aberta', 'Aprovada', 'Diagnóstico', 'Aguardando Aprovação', 'Aguardando Peça']
+    const statusAtivos = ['Concluída', 'Em Execução', 'Em Andamento', 'Aberta', 'Aprovada', 'Diagnóstico', 'Aguardando Aprovação', 'Aguardando Peça', 'Recepção', 'Em Diagnóstico', 'Rejeitada']
     return ordens
       .filter(o => statusAtivos.includes(o.status))
       .filter(o => !(o.status === 'Concluída' && o.pago))
@@ -87,13 +90,14 @@ export default function PatioLimpeza() {
     const cli = getCliente(os.clienteId)
 
     if (acao === 'pagou_retirou') {
-      setOrdens(prev => prev.map(o => {
-        if (o.id !== os.id) return o
-        const hist = [{ id: gerarId(), texto: 'Status alterado para "Concluída"', data: agora }, ...(o.historico || [])]
-        return { ...o, status: 'Concluída', pago: true, dataConclusao: o.dataConclusao || hoje, historico: hist }
-      }))
-      if (!financeiro.find(f => f.osId === os.id)) {
-        setFinanceiro(fp => [{ id: gerarId(), data: hoje, descricao: `${os.id} - ${cli?.nome || 'Cliente'}`, tipo: 'receita', valor: os.valor.toFixed(2).replace('.', ','), osId: os.id }, ...fp])
+      if (os.valor > 0) {
+        entregarOrdem(os.id, [{ forma: 'Dinheiro', valor: os.valor }], cli?.nome || 'Cliente')
+      } else {
+        setOrdens(prev => prev.map(o => {
+          if (o.id !== os.id) return o
+          const hist = [{ id: gerarId(), texto: 'Veículo entregue (valor zero)', data: agora }, ...(o.historico || [])]
+          return { ...o, status: 'Entregue', pago: true, dataConclusao: o.dataConclusao || hoje, historico: hist, etapaEm: Date.now() }
+        }))
       }
     } else if (acao === 'retirou_sem_pagar') {
       setOrdens(prev => prev.map(o => {

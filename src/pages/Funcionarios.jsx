@@ -18,6 +18,7 @@ const GRUPOS_MENU = [
     itens: [
       { id: 'dashboard', label: 'Início / Painel' },
       { id: 'patio-limpeza', label: 'Limpeza do Pátio' },
+      { id: 'conferir-os', label: 'Conferir e liberar veículo' },
       { id: 'agenda', label: 'Agendamento' },
       { id: 'assistente-financeiro', label: 'Assistente Financeiro' },
     ],

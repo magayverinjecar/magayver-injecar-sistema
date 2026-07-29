@@ -26,7 +26,7 @@ const DIAGNOSTICO_ITENS = [
 export default function ChecklistDiagnosticoDetalhe() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { checklists, setChecklists, novaOrdem } = useApp()
+  const { checklists, setChecklists, novaOrdem, encontrarOSDaFicha } = useApp()
   const { currentUser } = useAuth()
 
   const ck = checklists.find(c => String(c.id) === id)
@@ -94,8 +94,14 @@ export default function ChecklistDiagnosticoDetalhe() {
   }
 
   function abrirOS() {
-    // O id da OS começa com '#'; encodeURIComponent evita que vire âncora na URL
-    if (ck.osId) { navigate(`/ordens-servico/${encodeURIComponent(ck.osId)}`); return }
+    // Esta ficha pode já ter virado OS na migração. Criar outra duplicaria o
+    // carro no quadro e dividiria estoque e financeiro entre as duas.
+    const existente = encontrarOSDaFicha(ck)
+    if (existente) {
+      if (!ck.osId) setChecklists(prev => prev.map(c => c.id === ck.id ? { ...c, osId: existente } : c))
+      navigate(`/ordens-servico/${encodeURIComponent(existente)}`)
+      return
+    }
     // novaOrdem retorna o id da OS (string), não um objeto
     const osId = novaOrdem({
       clienteId: ck.clienteId,

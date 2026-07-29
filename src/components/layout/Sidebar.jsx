@@ -18,12 +18,17 @@ const grupos = [
     ],
   },
   {
-    titulo: 'CHECKLIST',
+    titulo: 'RECEPÇÃO',
     items: [
-      { to: '/checklist/novo', icon: Plus, label: 'Nova Entrada', permissao: 'checklist-novo' },
-      { to: '/checklist/fotos', icon: Camera, label: 'Fotos e Vistoria', permissao: 'checklist-fotos' },
-      { to: '/checklist/diagnostico', icon: ClipboardCheck, label: 'Realizar Diagnóstico', permissao: 'checklist-diagnostico' },
-      { to: '/checklist/gerenciar', icon: FolderOpen, label: 'Gerenciar Fichas', permissao: 'checklist-gerenciar' },
+      { to: '/nova-entrada', icon: Plus, label: 'Nova Entrada', permissao: 'checklist-novo' },
+    ],
+  },
+  {
+    titulo: 'OFICINA',
+    items: [
+      { to: '/oficina/meus-servicos', icon: Wrench, label: 'Meus Serviços', permissao: 'checklist-gerenciar' },
+      { to: '/oficina/diagnostico', icon: ClipboardCheck, label: 'Realizar Diagnóstico', permissao: 'checklist-diagnostico' },
+      { to: '/oficina/fotos', icon: Camera, label: 'Fotos e Vistoria', permissao: 'checklist-fotos' },
     ],
   },
   {

@@ -67,7 +67,10 @@ function PainelAssinatura({ onSave, onClear }) {
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="relative w-full bg-white rounded-xl overflow-hidden border-2 border-dashed border-slate-400 shadow-inner">
+      {/* Branco fixo: no modo escuro a classe bg-white vira #1e293b, a mesma cor
+          do traço — o cliente assinaria sem enxergar o que está desenhando. */}
+      <div style={{ backgroundColor: '#ffffff' }}
+        className="relative w-full rounded-xl overflow-hidden border-2 border-dashed border-slate-400 shadow-inner">
         <canvas
           ref={canvasRef}
           width={600}
@@ -88,6 +91,30 @@ function PainelAssinatura({ onSave, onClear }) {
       <p className="text-[11px] text-slate-400">Desenhe sua assinatura na área acima</p>
     </div>
   )
+}
+
+// A OS guarda só os ids do cliente e do veículo. Sem completar daqui, o
+// telefone chegava vazio na conferência — e telefone vazio deixava qualquer
+// pessoa com o link abrir e assinar no lugar do cliente.
+async function completarDaOS(os) {
+  const [cli, vei] = await Promise.all([
+    os.clienteId != null
+      ? supabase.from('clientes').select('data').eq('id', String(os.clienteId)).maybeSingle()
+      : Promise.resolve({ data: null }),
+    os.veiculoId != null
+      ? supabase.from('veiculos').select('data').eq('id', String(os.veiculoId)).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+  const cliente = cli?.data?.data || null
+  const veiculo = vei?.data?.data || null
+  const modelo = [veiculo?.marca, veiculo?.modelo].filter(Boolean).join(' ').trim()
+  return {
+    ...os,
+    clienteNome: os.clienteNome || cliente?.nome || '',
+    clienteTelefone: os.clienteTelefone || cliente?.telefone || cliente?.celular || '',
+    veiculoModelo: os.veiculoModelo || modelo || veiculo?.modelo || '',
+    veiculoPlaca: os.veiculoPlaca || veiculo?.placa || '',
+  }
 }
 
 // ─── Página principal ────────────────────────────────────────────────────────
@@ -112,10 +139,18 @@ export default function ClienteAssinatura() {
   useEffect(() => {
     async function carregar() {
       if (!id) { setErro('Link inválido ou expirado.'); setCarregando(false); return }
-      const { data, error } = await supabase
-        .from('checklists').select('id, data').eq('id', id)
+      // Tenta buscar na tabela ordens primeiro (novo fluxo), depois checklists (legado)
+      const { data: osData } = await supabase.from('ordens').select('id, data').eq('id', id)
+      if (osData?.length) {
+        const os = await completarDaOS({ id: osData[0].id, ...osData[0].data })
+        setChecklist(os)
+        if (os.assinatura) setSucesso(true)
+        setCarregando(false)
+        return
+      }
+      const { data, error } = await supabase.from('checklists').select('id, data').eq('id', id)
       if (error || !data?.length) {
-        setErro('Checklist não encontrado. Peça à oficina um link atualizado.')
+        setErro('Registro não encontrado. Peça à oficina um link atualizado.')
         setCarregando(false)
         return
       }
@@ -152,16 +187,24 @@ export default function ClienteAssinatura() {
     setEnviando(true)
     setErroEnvio('')
     try {
-      // Recarrega dados mais recentes para não sobrescrever campos adicionados após o carregamento inicial
-      const { data: frescos, error: erroFetch } = await supabase
-        .from('checklists').select('id, data').eq('id', String(checklist.id))
-      if (erroFetch) throw erroFetch
-      const baseData = frescos?.[0]?.data || {}
-      const dataAtualizado = { ...baseData, assinatura, assinaturaTempo: Date.now() }
-      const { error } = await supabase
-        .from('checklists')
-        .upsert({ id: String(checklist.id), data: dataAtualizado })
-      if (error) throw error
+      const ckId = String(checklist.id)
+      // Tenta salvar na tabela ordens primeiro (novo fluxo)
+      const { data: osRow } = await supabase.from('ordens').select('id, data').eq('id', ckId)
+      if (osRow?.length) {
+        const baseData = osRow[0].data || {}
+        const dataAtualizado = { ...baseData, assinatura, assinaturaTempo: Date.now() }
+        const { error } = await supabase.from('ordens').upsert({ id: ckId, data: dataAtualizado })
+        if (error) throw error
+      } else {
+        // Fallback: salva na tabela checklists (legado)
+        const { data: frescos, error: erroFetch } = await supabase
+          .from('checklists').select('id, data').eq('id', ckId)
+        if (erroFetch) throw erroFetch
+        const baseData = frescos?.[0]?.data || {}
+        const dataAtualizado = { ...baseData, assinatura, assinaturaTempo: Date.now() }
+        const { error } = await supabase.from('checklists').upsert({ id: ckId, data: dataAtualizado })
+        if (error) throw error
+      }
       setSucesso(true)
     } catch (err) {
       console.error(err)

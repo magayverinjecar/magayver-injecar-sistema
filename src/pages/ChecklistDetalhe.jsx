@@ -78,7 +78,7 @@ function Secao({ icone: Icon, titulo, cor = 'text-slate-500', badge, children })
 export default function ChecklistDetalhe() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { checklists, setChecklists, novaOrdem } = useApp()
+  const { checklists, setChecklists, novaOrdem, encontrarOSDaFicha } = useApp()
   const { currentUser } = useAuth()
 
   const ck = checklists.find(c => String(c.id) === id)
@@ -162,6 +162,15 @@ export default function ChecklistDetalhe() {
   }
 
   function criarOS() {
+    // A ficha pode já ter virado OS na migração — abrir a existente em vez de
+    // criar uma segunda para o mesmo carro.
+    const existente = encontrarOSDaFicha(ck)
+    if (existente) {
+      salvar('Diagnóstico concluído')
+      if (!ck.osId) setChecklists(prev => prev.map(c => c.id === ck.id ? { ...c, osId: existente } : c))
+      navigate(`/ordens-servico/${encodeURIComponent(existente)}`)
+      return
+    }
     salvar('Diagnóstico concluído')
     const problemas = diagnostico
       .filter(d => d.status !== 'normal' || d.value)

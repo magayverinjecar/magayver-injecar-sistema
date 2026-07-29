@@ -14,7 +14,7 @@ const PERFIL_COR = {
 const PERFIL_LABEL = { admin: 'Administrador', reparador: 'Reparador', recepcao: 'Recepção', personalizado: 'Personalizado' }
 
 export default function PinLogin() {
-  const { funcionarios } = useApp()
+  const { funcionarios, carregando } = useApp()
   const { login } = useAuth()
   const { dark, toggle } = useTheme()
   const navigate = useNavigate()
@@ -110,7 +110,13 @@ export default function PinLogin() {
         <div className="w-full max-w-md">
           <p className={`text-center text-sm mb-6 ${txtSub}`}>Quem está usando o sistema?</p>
 
-          {funcionariosComSenha.length === 0 ? (
+          {carregando ? (
+            /* Enquanto os funcionários não chegam, não oferecer o acesso admin sem PIN */
+            <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
+              <div className="w-8 h-8 mx-auto border-4 border-slate-200 border-t-primary-500 rounded-full animate-spin" />
+              <p className={txtSub}>Carregando usuários...</p>
+            </div>
+          ) : funcionariosComSenha.length === 0 ? (
             <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
               <p className={txtSub}>Nenhum funcionário com senha configurada.</p>
               <button

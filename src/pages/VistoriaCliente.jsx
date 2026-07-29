@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
+import { fotosDaEntrada, fotosDoReparo } from '../utils/vistoria'
 import {
   Car, User, Clock, Camera, CheckCircle2, AlertTriangle,
-  X, ChevronLeft, ChevronRight, ZoomIn, Phone, Loader2
+  X, ChevronLeft, ChevronRight, ZoomIn, Phone, Loader2, Wrench
 } from 'lucide-react'
 
 function row2item(row) {
@@ -12,10 +13,41 @@ function row2item(row) {
   return { id, ...row.data }
 }
 
+// Aceita as chaves gravadas pela OS (ok/atencao/problema) e as do checklist
+// legado (ok/warning/issue) — um item marcado em qualquer um dos fluxos aparece aqui.
 const STATUS_BADGE = {
-  ok:      { label: 'OK',       cls: 'bg-green-100 text-green-700 border-green-200' },
-  warning: { label: 'Atenção',  cls: 'bg-amber-100 text-amber-700 border-amber-200' },
-  issue:   { label: 'Problema', cls: 'bg-red-100 text-red-700 border-red-200' },
+  ok:       { label: 'OK',       cls: 'bg-green-100 text-green-700 border-green-200' },
+  atencao:  { label: 'Atenção',  cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+  problema: { label: 'Problema', cls: 'bg-red-100 text-red-700 border-red-200' },
+  warning:  { label: 'Atenção',  cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+  issue:    { label: 'Problema', cls: 'bg-red-100 text-red-700 border-red-200' },
+}
+
+const ATENCAO = ['atencao', 'warning']
+const PROBLEMA = ['problema', 'issue']
+
+// A ficha legada guardava nome, telefone e veículo dentro dela mesma; a OS só
+// guarda os ids. Sem buscar nas tabelas, o cliente via "—" no lugar do carro e
+// o telefone vinha vazio — e telefone vazio libera a página para qualquer um.
+async function completarDaOS(os) {
+  const [cli, vei] = await Promise.all([
+    os.clienteId != null
+      ? supabase.from('clientes').select('data').eq('id', String(os.clienteId)).maybeSingle()
+      : Promise.resolve({ data: null }),
+    os.veiculoId != null
+      ? supabase.from('veiculos').select('data').eq('id', String(os.veiculoId)).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+  const cliente = cli?.data?.data || null
+  const veiculo = vei?.data?.data || null
+  const modelo = [veiculo?.marca, veiculo?.modelo].filter(Boolean).join(' ').trim()
+  return {
+    ...os,
+    clienteNome: os.clienteNome || cliente?.nome || '',
+    clienteTelefone: os.clienteTelefone || cliente?.telefone || cliente?.celular || '',
+    veiculoModelo: os.veiculoModelo || modelo || veiculo?.modelo || '',
+    veiculoPlaca: os.veiculoPlaca || veiculo?.placa || '',
+  }
 }
 
 export default function VistoriaCliente() {
@@ -35,8 +67,14 @@ export default function VistoriaCliente() {
   useEffect(() => {
     async function carregar() {
       if (!id) { setErro('Link inválido.'); setCarregando(false); return }
-      const { data, error } = await supabase
-        .from('checklists').select('id, data').eq('id', id)
+      // Tenta buscar na tabela ordens primeiro (novo fluxo), depois checklists (legado)
+      const { data: osData } = await supabase.from('ordens').select('id, data').eq('id', id)
+      if (osData?.length) {
+        setCk(await completarDaOS(row2item(osData[0])))
+        setCarregando(false)
+        return
+      }
+      const { data, error } = await supabase.from('checklists').select('id, data').eq('id', id)
       if (error || !data?.length) {
         setErro('Vistoria não encontrada. Peça à oficina um novo link.')
         setCarregando(false)
@@ -69,13 +107,23 @@ export default function VistoriaCliente() {
     }
   }
 
-  const fotos = ck?.fotos || []
+  // As fotos ficam num array só, separadas pelo momento em que foram tiradas.
+  // O cliente vê a chegada do veículo e o serviço executado em blocos distintos.
+  const fotos = fotosDaEntrada(ck?.fotos)
+  const fotosReparo = fotosDoReparo(ck?.fotos)
   const inspecao = ck?.inspecaoVisual || []
 
+  // A navegação acontece dentro do bloco de onde a foto veio: entrada não
+  // atravessa para reparo e vice-versa.
+  function listaDaFoto(f) {
+    return fotosReparo.some(x => x.id === f?.id) ? fotosReparo : fotos
+  }
+
   function navegarFoto(direcao) {
-    const idx = fotos.findIndex(f => f.id === fotoAmpliada.id)
+    const lista = listaDaFoto(fotoAmpliada)
+    const idx = lista.findIndex(f => f.id === fotoAmpliada.id)
     const novo = idx + direcao
-    if (novo >= 0 && novo < fotos.length) setFotoAmpliada(fotos[novo])
+    if (novo >= 0 && novo < lista.length) setFotoAmpliada(lista[novo])
   }
 
   // ── Loading ──
@@ -164,24 +212,28 @@ export default function VistoriaCliente() {
   return (
     <div className="min-h-screen bg-slate-100">
       {/* Lightbox */}
-      {fotoAmpliada && (
+      {fotoAmpliada && (() => {
+        const lista = listaDaFoto(fotoAmpliada)
+        const pos = lista.findIndex(f => f.id === fotoAmpliada.id)
+        return (
         <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center" onClick={() => setFotoAmpliada(null)}>
           <button onClick={() => setFotoAmpliada(null)} className="absolute top-4 right-4 z-10 p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"><X size={24} /></button>
-          {fotos.findIndex(f => f.id === fotoAmpliada.id) > 0 && (
+          {pos > 0 && (
             <button onClick={e => { e.stopPropagation(); navegarFoto(-1) }} className="absolute left-4 p-3 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"><ChevronLeft size={28} /></button>
           )}
           <img src={fotoAmpliada.url || fotoAmpliada.dataUrl} alt="Foto ampliada" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
-          {fotos.findIndex(f => f.id === fotoAmpliada.id) < fotos.length - 1 && (
+          {pos < lista.length - 1 && (
             <button onClick={e => { e.stopPropagation(); navegarFoto(1) }} className="absolute right-4 p-3 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"><ChevronRight size={28} /></button>
           )}
           <div className="absolute bottom-4 flex items-center gap-3 text-white/70 text-sm bg-black/50 px-4 py-1.5 rounded-full">
             <span className="font-medium">{fotoAmpliada.categoria}</span>
             {fotoAmpliada.timestamp && <><span>·</span><span>{fotoAmpliada.timestamp}</span></>}
             <span>·</span>
-            <span>{fotos.findIndex(f => f.id === fotoAmpliada.id) + 1} / {fotos.length}</span>
+            <span>{pos + 1} / {lista.length}</span>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* Header da oficina */}
       <div className="bg-slate-900 text-white px-4 py-4 flex items-center gap-3">
@@ -229,7 +281,7 @@ export default function VistoriaCliente() {
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
               <Camera size={14} className="text-cyan-500" />
-              <h2 className="text-sm font-semibold text-slate-700">Fotos do Veículo</h2>
+              <h2 className="text-sm font-semibold text-slate-700">Como o veículo chegou</h2>
               <span className="ml-auto text-xs text-slate-400">{fotos.length} foto(s)</span>
             </div>
             <div className="p-5">
@@ -253,7 +305,36 @@ export default function VistoriaCliente() {
           </div>
         )}
 
-        {fotos.length === 0 && (
+        {/* Serviço executado — peça velha, peça nova, antes e depois */}
+        {fotosReparo.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-5 py-3 bg-orange-50 border-b border-orange-100 flex items-center gap-2">
+              <Wrench size={14} className="text-orange-500" />
+              <h2 className="text-sm font-semibold text-slate-700">Serviço executado</h2>
+              <span className="ml-auto text-xs text-slate-400">{fotosReparo.length} foto(s)</span>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {fotosReparo.map((foto, idx) => (
+                  <div key={foto.id || idx} className="relative group aspect-video bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm cursor-zoom-in"
+                    onClick={() => setFotoAmpliada(foto)}>
+                    <img src={foto.url || foto.dataUrl} alt={foto.categoria} className="w-full h-full object-cover" />
+                    <div className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded backdrop-blur-sm pointer-events-none">
+                      {foto.categoria}
+                    </div>
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="p-2 bg-white/20 backdrop-blur-sm text-white rounded-full shadow-lg">
+                        <ZoomIn size={18} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {fotos.length === 0 && fotosReparo.length === 0 && (
           <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">
             Nenhuma foto registrada nesta vistoria.
           </div>
@@ -276,8 +357,8 @@ export default function VistoriaCliente() {
                     {badge ? (
                       <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border flex-shrink-0 ${badge.cls}`}>
                         {item.status === 'ok' && <CheckCircle2 size={11} />}
-                        {item.status === 'warning' && <AlertTriangle size={11} />}
-                        {item.status === 'issue' && <X size={11} />}
+                        {ATENCAO.includes(item.status) && <AlertTriangle size={11} />}
+                        {PROBLEMA.includes(item.status) && <X size={11} />}
                         {badge.label}
                       </span>
                     ) : (

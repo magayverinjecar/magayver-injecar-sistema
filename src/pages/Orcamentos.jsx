@@ -290,22 +290,33 @@ export default function Orcamentos() {
       desconto: i.desconto || '0',
     }))
 
+    // As peças precisam sair do estoque — novaOrdem só desconta o que vem em `pecas`
+    const pecasOS = itensOS
+      .filter(i => i.tipo === 'peca' && i.produtoId)
+      .map(i => ({ estoqueId: i.produtoId, qtd: i.quantidade }))
+
     const osId = novaOrdem({
       clienteId: orc.clienteId ? Number(orc.clienteId) : null,
       veiculoId: veiculo?.id || null,
       descricaoProblema: orc.observacoes || `Convertido do Orçamento ${orc.numero}`,
-      status: 'Aberta',
+      status: 'Recepção',
       itens: itensOS,
+      pecas: pecasOS,
+      orcamentoId: orc.id,
+      orcamentoNumero: orc.numero,
     })
-    mudarStatus(orc.id, 'Convertido')
+    // Guarda o vínculo nos dois sentidos para dar rastreabilidade
+    setOrcamentos(prev => prev.map(o => o.id === orc.id
+      ? { ...o, status: 'Convertido', osId, convertidoEm: new Date().toLocaleString('pt-BR') }
+      : o))
     navigate(`/ordens-servico/${encodeURIComponent(osId)}`)
   }
 
   function enviarWhatsapp() {
-    const linhas = itens.map(i => `• ${i.descricao} (${i.quantidade}x) - ${fmt(parseNum(i.valorUnitario) * parseNum(i.quantidade) - parseNum(i.desconto))}`).join('%0A')
-    const texto = `*Orçamento - Magayver Injecar*%0A%0ACliente: ${dados.nome}%0AVeículo: ${dados.veiculo} ${dados.placa}%0A%0A${linhas}%0A%0A*Total: ${fmt(totalGeral)}*%0AValidade: ${validade}`
+    const linhas = itens.map(i => `• ${i.descricao} (${i.quantidade}x) - ${fmt(parseNum(i.valorUnitario) * parseNum(i.quantidade) - parseNum(i.desconto))}`).join('\n')
+    const texto = `*Orçamento - Magayver Injecar*\n\nCliente: ${dados.nome}\nVeículo: ${dados.veiculo} ${dados.placa}\n\n${linhas}\n\n*Total: ${fmt(totalGeral)}*\nValidade: ${validade}`
     const tel = dados.telefone.replace(/\D/g, '')
-    window.open(`https://wa.me/55${tel}?text=${texto}`, '_blank')
+    window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
   return (

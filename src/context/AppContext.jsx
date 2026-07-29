@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase'
+import { useAuth } from './AuthContext'
 import gerarId from '../utils/id'
 
 const AppContext = createContext(null)
@@ -18,12 +19,19 @@ function item2row(item) {
   return { id: String(id), data }
 }
 
+// Rascunhos gravados pelo fluxo de Nova Entrada (para gerar o link de assinatura)
+// não são OS reais — ficam fora do estado do app para não poluir quadro e relatórios.
+function ehRascunho(o) {
+  return o?.rascunho === true || String(o?.id || '').startsWith('DRAFT-')
+}
+
 // Carrega tabela inteira — retorna null em caso de erro para que o chamador
 // possa distinguir "tabela vazia" (array []) de "falha de rede" (null).
 async function loadTable(tableName) {
   const { data, error } = await supabase.from(tableName).select('id, data').order('id', { ascending: false })
   if (error) { console.error(`Erro ao carregar ${tableName}:`, error); return null }
-  return (data || []).map(row2item)
+  const itens = (data || []).map(row2item)
+  return tableName === 'ordens' ? itens.filter(o => !ehRascunho(o)) : itens
 }
 
 // Aplica diff entre prev e next na tabela Supabase
@@ -51,7 +59,11 @@ async function supabaseDiff(tableName, prev, next) {
 }
 
 export function AppProvider({ children }) {
+  const { currentUser } = useAuth()
   const [carregando, setCarregando] = useState(true)
+  // Saúde da conexão — o Modo TV depende disso para não exibir dados velhos calado
+  const [realtimeOk, setRealtimeOk] = useState(false)
+  const [ultimaSync, setUltimaSync] = useState(Date.now())
 
   const [clientes, _setClientes] = useState([])
   const [veiculos, _setVeiculos] = useState([])
@@ -121,6 +133,18 @@ export function AppProvider({ children }) {
     const data = await loadTable(table)
     if (data === null) return
     aplicarTabela[table]?.(data)
+    setUltimaSync(Date.now())
+  }
+
+  // Releitura sob demanda — o Modo TV usa como rede de segurança caso o Realtime caia.
+  // Devolve true se conseguiu falar com o servidor.
+  async function sincronizarOrdens() {
+    const data = await loadTable('ordens')
+    if (data === null) return false
+    if (pendingWrites.current['ordens'] > 0) return true
+    aplicarTabela.ordens(data)
+    setUltimaSync(Date.now())
+    return true
   }
 
   function marcarGravando(table) {
@@ -178,6 +202,95 @@ export function AppProvider({ children }) {
       _setFornecedores(r.current.fornecedores)
       _setCaixaHistorico(r.current.caixaHistorico)
 
+      // Migração Opção C: incorpora dados de checklists existentes nas OS (roda 1x)
+      if (!localStorage.getItem('migracao-opcao-c-done') && checklistsData?.length) {
+        const ordensMap = new Map((ordensData || []).map(o => [String(o.id), o]))
+        const idsMigrados = new Set()
+        const novasOrdens = []
+        // ficha.id → id da OS criada, para gravar o vínculo de volta e evitar
+        // que a ficha continue "órfã" e gere uma segunda OS depois
+        const vinculos = new Map()
+        for (const ck of checklistsData) {
+          const camposMigrar = {
+            luzesPainel: ck.luzesPainel || [],
+            relatoCliente: ck.relatoCliente || '',
+            assinatura: ck.assinatura || '',
+            assinaturaTempo: ck.assinaturaTempo || null,
+            atendente: ck.atendente || '',
+            ultimaRevisao: ck.ultimaRevisao || '',
+            numCondutores: ck.numCondutores || '',
+            combustivel: ck.combustivel || '',
+            inspecaoVisual: ck.inspecaoVisual || [],
+            diagnosticoItens: ck.diagnostico || [],
+            falhasScanner: ck.falhasScanner || '',
+            observacoesTecnicas: ck.observacoesTecnicas || '',
+            tecnicoId: ck.tecnicoId || null,
+            tecnicoNome: ck.tecnicoNome || '',
+            diagnosticadoEm: ck.diagnosticadoEm || '',
+            fotos: ck.fotos || [],
+          }
+          if (ck.osId && ordensMap.has(String(ck.osId))) {
+            // Cenário A: checklist COM OS vinculada — copiar campos para a OS.
+            // Cria um objeto novo (sem mutar o original) para que o diff detecte a mudança.
+            const os = ordensMap.get(String(ck.osId))
+            const patch = {}
+            Object.entries(camposMigrar).forEach(([k, v]) => {
+              const vazio = !os[k] || (Array.isArray(os[k]) && os[k].length === 0)
+              if (v && vazio) patch[k] = v
+            })
+            if (Object.keys(patch).length > 0) {
+              ordensMap.set(String(ck.osId), { ...os, ...patch })
+              idsMigrados.add(String(ck.osId))
+            }
+          } else if (!ck.osId) {
+            // Cenário B/C: checklist SEM OS — criar nova OS
+            const statusMap = { 'Aguardando diagnóstico': 'Recepção', 'Em diagnóstico': 'Em Diagnóstico', 'Diagnóstico concluído': 'Aguardando Aprovação' }
+            const novoStatus = statusMap[ck.status] || 'Recepção'
+            vinculos.set(ck.id, 'MIG-' + ck.id)
+            novasOrdens.push({
+              id: 'MIG-' + ck.id,
+              clienteId: ck.clienteId,
+              veiculoId: ck.veiculoId,
+              clienteNome: ck.clienteNome || '',
+              veiculoPlaca: ck.veiculoPlaca || '',
+              veiculoModelo: ck.veiculoModelo || '',
+              kmEntrada: ck.kmEntrada || '',
+              descricaoProblema: ck.relatoCliente || '',
+              status: novoStatus,
+              data: ck.criadoEm || new Date().toLocaleDateString('pt-BR'),
+              dataEntrada: ck.criadoEm || new Date().toLocaleDateString('pt-BR'),
+              etapaEm: Date.now(),
+              itens: [],
+              historico: [{ id: gerarId(), texto: 'OS criada via migração do checklist ' + ck.id, data: new Date().toLocaleString('pt-BR') }],
+              ...camposMigrar,
+            })
+          }
+        }
+        if (novasOrdens.length > 0 || idsMigrados.size > 0) {
+          const ordensAtualizadas = [...(ordensData || []).map(o => ordensMap.get(String(o.id)) || o), ...novasOrdens]
+          r.current.ordens = ordensAtualizadas
+          _setOrdens(ordensAtualizadas)
+          marcarGravando('ordens')
+          supabaseDiff('ordens', ordensData || [], ordensAtualizadas)
+            .catch(console.error)
+            .finally(() => fimGravando('ordens'))
+        }
+        // Fecha o vínculo nos dois sentidos: sem o osId na ficha, ela continua
+        // parecendo órfã e um clique em "Abrir OS" criaria uma segunda OS.
+        if (vinculos.size > 0) {
+          const checklistsAtualizados = checklistsData.map(c =>
+            vinculos.has(c.id) ? { ...c, osId: vinculos.get(c.id), migradoEm: Date.now() } : c
+          )
+          r.current.checklists = checklistsAtualizados
+          _setChecklists(checklistsAtualizados)
+          marcarGravando('checklists')
+          supabaseDiff('checklists', checklistsData, checklistsAtualizados)
+            .catch(console.error)
+            .finally(() => fimGravando('checklists'))
+        }
+        localStorage.setItem('migracao-opcao-c-done', '1')
+      }
+
       // Libera UI imediatamente — dados principais já estão prontos
       setCarregando(false)
 
@@ -228,7 +341,10 @@ export function AppProvider({ children }) {
       recarregarTabela('configuracoes')
     })
 
-    ch.subscribe()
+    ch.subscribe((status) => {
+      setRealtimeOk(status === 'SUBSCRIBED')
+      if (status === 'SUBSCRIBED') setUltimaSync(Date.now())
+    })
 
     return () => { supabase.removeChannel(ch) }
   }, [])
@@ -315,6 +431,46 @@ export function AppProvider({ children }) {
     return new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
 
+  // Todo evento de histórico passa por aqui, para que sempre fique registrado
+  // QUEM fez a ação — sem isso não há como auditar exclusão, estorno ou reabertura.
+  function evento(texto, extra = {}) {
+    return {
+      id: gerarId(),
+      texto,
+      data: carimboData(),
+      quandoMs: Date.now(),
+      autorId: currentUser?.id ?? null,
+      autorNome: currentUser?.nome || '',
+      ...extra,
+    }
+  }
+
+  // Aplica mudanças numa OS já registrando o histórico. Devolve a OS anterior
+  // (ou null se não achou) para quem precisar do estado antes da mudança.
+  function mudarOrdem(osId, dados, textoHistorico, extraEvento) {
+    const anterior = r.current.ordens.find(x => x.id === osId)
+    if (!anterior) return null
+    const historico = textoHistorico
+      ? [evento(textoHistorico, extraEvento), ...(anterior.historico || [])]
+      : anterior.historico
+    setOrdens(prev => prev.map(x => x.id === osId ? { ...x, ...dados, historico } : x))
+    return anterior
+  }
+
+  const FLUXO = {
+    RECEPCAO: 'Recepção',
+    DIAGNOSTICO: 'Em Diagnóstico',
+    APROVACAO: 'Aguardando Aprovação',
+    REJEITADA: 'Rejeitada',
+    APROVADO: 'Aprovado',
+    PECA: 'Aguardando Peça',
+    EXECUCAO: 'Em Execução',
+    CONFERENCIA: 'Em Conferência',
+    CONCLUIDA: 'Concluída',
+    ENTREGUE: 'Entregue',
+    CANCELADA: 'Cancelada',
+  }
+
   function parseBR(v) {
     if (typeof v === 'number') return v
     const s = (v || '0').toString()
@@ -326,7 +482,7 @@ export function AppProvider({ children }) {
     if (o.itens && o.itens.length > 0) {
       return o.itens.reduce((s, i) => {
         const unitario = parseBR(i.valorUnitario)
-        const qtd = Number(i.quantidade) || 1
+        const qtd = parseBR(i.quantidade) || 1
         const desconto = parseBR(i.desconto)
         return s + (unitario * qtd - desconto)
       }, 0)
@@ -357,12 +513,41 @@ export function AppProvider({ children }) {
       dataEntrada: hoje,
       data: hoje,
       dataConclusao: '',
-      status: dados.status || 'Aberta',
+      status: dados.status || 'Recepção',
       itens: dados.itens || [],
       pecas: dados.pecas || [],
-      fotos: [],
-      historico: [{ id: gerarId(), texto: 'OS criada', data: carimboData() }],
+      fotos: dados.fotos || [],
+      historico: [evento('OS criada')],
       pago: false,
+      etapaEm: Date.now(),
+      // Campos de entrada/vistoria (absorvidos do antigo checklist)
+      luzesPainel: dados.luzesPainel || [],
+      relatoCliente: dados.relatoCliente || '',
+      assinatura: dados.assinatura || '',
+      assinaturaTempo: dados.assinaturaTempo || null,
+      atendente: dados.atendente || '',
+      ultimaRevisao: dados.ultimaRevisao || '',
+      numCondutores: dados.numCondutores || '',
+      combustivel: dados.combustivel || '',
+      inspecaoVisual: dados.inspecaoVisual || [],
+      // Campos de diagnóstico
+      diagnosticoItens: dados.diagnosticoItens || [],
+      falhasScanner: dados.falhasScanner || '',
+      observacoesTecnicas: dados.observacoesTecnicas || '',
+      // Peças que o reparador identificou como necessárias — vira base do orçamento
+      pecasNecessarias: dados.pecasNecessarias || [],
+      tecnicoId: dados.tecnicoId ?? null,
+      tecnicoNome: dados.tecnicoNome || '',
+      diagnosticadoEm: dados.diagnosticadoEm || '',
+      // Rastreabilidade quando a OS nasce de um orçamento avulso
+      orcamentoId: dados.orcamentoId ?? null,
+      orcamentoNumero: dados.orcamentoNumero || '',
+      // Retorno em garantia: aponta para a OS que originou o retorno
+      garantiaDeOsId: dados.garantiaDeOsId ?? null,
+      retornosGarantia: [],
+      // Quem está com o carro nesta etapa (muda a cada etapa do fluxo)
+      responsavelId: dados.responsavelId ?? null,
+      responsavelNome: dados.responsavelNome || '',
     }
     if (nova.pecas && nova.pecas.length > 0) {
       setEstoque(prev => prev.map(item => {
@@ -377,6 +562,29 @@ export function AppProvider({ children }) {
 
   function atualizarOrdem(id, dados) {
     setOrdens(prev => prev.map(o => o.id === id ? { ...o, ...dados } : o))
+  }
+
+  // Antes de criar uma OS a partir de uma ficha antiga, é preciso descobrir se
+  // ela já não virou OS — a migração criou 'MIG-<id>' e, em instalações onde ela
+  // rodou antes desta correção, a ficha ficou sem o vínculo de volta.
+  function encontrarOSDaFicha(ck) {
+    if (!ck) return null
+    if (ck.osId) {
+      const direta = r.current.ordens.find(o => String(o.id) === String(ck.osId))
+      if (direta) return direta.id
+    }
+    const migrada = r.current.ordens.find(o => String(o.id) === 'MIG-' + ck.id)
+    if (migrada) return migrada.id
+    // Última checagem: OS ativa do mesmo veículo, que seria duplicata na prática
+    if (ck.veiculoId) {
+      const ativa = r.current.ordens.find(o =>
+        o.veiculoId === ck.veiculoId &&
+        !['Entregue', 'Cancelada'].includes(o.status) &&
+        !o.retirado
+      )
+      if (ativa) return ativa.id
+    }
+    return null
   }
 
   function adicionarItemOrdem(id, item) {
@@ -404,29 +612,64 @@ export function AppProvider({ children }) {
     setOrdens(prev => prev.map(o => {
       if (o.id !== osId) return o
       const antigo = (o.itens || []).find(i => i.id === itemId)
-      // Ajusta estoque se quantidade mudou em peça vinculada
       if (antigo && antigo.tipo === 'peca' && antigo.produtoId) {
-        const diff = (Number(dados.quantidade) || 1) - (Number(antigo.quantidade) || 1)
-        if (diff !== 0) {
-          setEstoque(ep => ep.map(p => p.id === Number(antigo.produtoId)
-            ? { ...p, estoque: Math.max(0, Number(p.estoque) - diff) } : p))
+        const novoProdutoId = dados.produtoId ?? antigo.produtoId
+        const antigoProdId = Number(antigo.produtoId)
+        const novoProdId = Number(novoProdutoId)
+        if (antigoProdId !== novoProdId) {
+          setEstoque(ep => ep.map(p => {
+            if (p.id === antigoProdId) return { ...p, estoque: Number(p.estoque) + (Number(antigo.quantidade) || 1) }
+            if (p.id === novoProdId) return { ...p, estoque: Math.max(0, Number(p.estoque) - (Number(dados.quantidade) || 1)) }
+            return p
+          }))
+        } else {
+          const diff = (Number(dados.quantidade) || 1) - (Number(antigo.quantidade) || 1)
+          if (diff !== 0) {
+            setEstoque(ep => ep.map(p => p.id === antigoProdId
+              ? { ...p, estoque: Math.max(0, Number(p.estoque) - diff) } : p))
+          }
         }
       }
       return { ...o, itens: (o.itens || []).map(i => i.id === itemId ? { ...i, ...dados } : i) }
     }))
   }
 
+  // Status a partir dos quais sair exige estorno do financeiro/caixa
+  const STATUS_FINALIZADOS = ['Entregue', 'Concluída']
+
   function mudarStatusOrdem(id, novoStatus) {
     const lista = r.current.ordens
     const o = lista.find(x => x.id === id)
     if (!o) return
-    const historico = [{ id: gerarId(), texto: `Status alterado para "${novoStatus}"`, data: carimboData() }, ...(o.historico || [])]
+    if (o.status === novoStatus) return
+
+    // Sair de um status finalizado (ou de OS já paga) reverte o financeiro —
+    // impede que o dropdown burle o fluxo de "Reabrir OS".
+    const saindoDeFinalizado = STATUS_FINALIZADOS.includes(o.status) || o.pago
+    const voltandoParaAtivo = !STATUS_FINALIZADOS.includes(novoStatus) && novoStatus !== 'Cancelada'
+    const precisaEstorno = saindoDeFinalizado && (voltandoParaAtivo || novoStatus === 'Cancelada')
+
+    const eventos = []
+    if (precisaEstorno) eventos.push(evento('Estorno automático (saída de status finalizado)'))
+    eventos.push(evento(`Status alterado para "${novoStatus}"`))
+    const historico = [...eventos, ...(o.historico || [])]
+
     let extra = {}
     if (novoStatus === 'Concluída') {
       const hoje = new Date().toLocaleDateString('pt-BR')
       extra.dataConclusao = o.dataConclusao || hoje
     }
+    if (precisaEstorno) {
+      extra.pago = false
+      extra.dataConclusao = ''
+    }
+
     setOrdens(prev => prev.map(x => x.id === id ? { ...x, status: novoStatus, historico, etapaEm: Date.now(), ...extra } : x))
+
+    if (precisaEstorno) {
+      setFinanceiro(fp => fp.filter(f => f.osId !== id))
+      setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.osId !== id) } : t)
+    }
   }
 
   function adicionarFotoOrdem(id, url) {
@@ -438,25 +681,289 @@ export function AppProvider({ children }) {
   }
 
   function excluirOrdem(id) {
+    const o = r.current.ordens.find(x => x.id === id)
+    if (o) {
+      const pecas = (o.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
+      if (pecas.length > 0) {
+        setEstoque(prev => prev.map(item => {
+          const usada = pecas.find(p => Number(p.produtoId) === item.id)
+          if (usada) return { ...item, estoque: Number(item.estoque) + (Number(usada.quantidade) || 1) }
+          return item
+        }))
+      }
+    }
     setFinanceiro(fp => fp.filter(f => f.osId !== id))
     setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.osId !== id) } : t)
     setOrdens(prev => prev.filter(o => o.id !== id))
   }
 
-  function pagarOrdem(osId) {
+  function pagarOrdem(osId, pagamentos, clienteNome) {
+    if (pagamentos) return entregarOrdem(osId, pagamentos, clienteNome)
     setOrdens(prev => prev.map(o => o.id === osId ? { ...o, pago: true } : o))
   }
 
   function reabrirOrdem(osId) {
     const o = r.current.ordens.find(x => x.id === osId)
     if (!o) return
-    const historico = [{ id: gerarId(), texto: 'OS reaberta (estorno)', data: carimboData() }, ...(o.historico || [])]
-    // Desfaz pagamento e status
-    setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Em Andamento', pago: false, historico } : x))
-    // Remove receita do financeiro gerada ao concluir
+    const historico = [evento('OS reaberta (estorno)'), ...(o.historico || [])]
+    setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Em Execução', pago: false, dataConclusao: '', historico, etapaEm: Date.now() } : x))
     setFinanceiro(fp => fp.filter(f => f.osId !== osId))
-    // Remove venda do caixa (estorno)
     setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.osId !== osId) } : t)
+  }
+
+  function concluirOrdem(osId) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o) return
+    if (o.status === 'Entregue' || o.status === 'Cancelada' || o.status === 'Concluída') return
+    const hoje = new Date().toLocaleDateString('pt-BR')
+    const historico = [evento('Serviço concluído — aguardando retirada'), ...(o.historico || [])]
+    setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Concluída', dataConclusao: hoje, historico, etapaEm: Date.now() } : x))
+  }
+
+  function entregarOrdem(osId, pagamentos, clienteNome) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o) return
+    if (o.status === 'Entregue') return   // evita duplo-clique gerando venda duplicada no caixa
+    const historico = [evento('Veículo entregue e pago'), ...(o.historico || [])]
+    // Guarda como o cliente pagou na própria OS: a venda do caixa some quando o
+    // turno está fechado, e sem isto o recibo reimpresso depois sai sem pagamento.
+    setOrdens(prev => prev.map(x => x.id === osId ? {
+      ...x,
+      status: 'Entregue',
+      pago: true,
+      pagamentos: pagamentos || [],
+      dataEntrega: new Date().toLocaleDateString('pt-BR'),
+      historico,
+      etapaEm: Date.now(),
+    } : x))
+    const total = totalOrdem(o)
+    registrarVendaCaixa({
+      osId,
+      clienteNome: clienteNome || '',
+      itens: o.itens || [],
+      total,
+      pagamentos: pagamentos || [],
+    })
+  }
+
+  function salvarDiagnostico(osId, dados) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o) return
+    const historico = [evento('Diagnóstico atualizado'), ...(o.historico || [])]
+    setOrdens(prev => prev.map(x => x.id === osId ? {
+      ...x,
+      diagnosticoItens: dados.diagnosticoItens ?? x.diagnosticoItens,
+      falhasScanner: dados.falhasScanner ?? x.falhasScanner,
+      observacoesTecnicas: dados.observacoesTecnicas ?? x.observacoesTecnicas,
+      pecasNecessarias: dados.pecasNecessarias ?? x.pecasNecessarias,
+      tecnicoId: dados.tecnicoId ?? x.tecnicoId,
+      tecnicoNome: dados.tecnicoNome ?? x.tecnicoNome,
+      diagnosticadoEm: dados.diagnosticadoEm ?? x.diagnosticadoEm,
+      diagnostico: dados.diagnostico ?? x.diagnostico,
+      historico,
+    } : x))
+  }
+
+  // ─── FLUXO DO PÁTIO ────────────────────────────────────────────────────────
+  // Cada função abaixo é disparada por uma ação real de alguém na oficina.
+  // O status do quadro é consequência do trabalho, não uma tarefa separada.
+
+  function iniciarDiagnostico(osId) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o || o.status === FLUXO.DIAGNOSTICO) return
+    mudarOrdem(osId, {
+      status: FLUXO.DIAGNOSTICO,
+      etapaEm: Date.now(),
+      responsavelId: currentUser?.id ?? null,
+      responsavelNome: currentUser?.nome || '',
+      diagnosticoIniciadoEm: Date.now(),
+    }, `Diagnóstico iniciado por ${currentUser?.nome || 'usuário'}`)
+  }
+
+  function finalizarDiagnostico(osId, dados) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o) return
+    mudarOrdem(osId, {
+      ...dados,
+      status: FLUXO.APROVACAO,
+      etapaEm: Date.now(),
+      tecnicoId: currentUser?.id ?? null,
+      tecnicoNome: currentUser?.nome || '',
+      diagnosticadoEm: carimboData(),
+    }, 'Diagnóstico finalizado — aguardando aprovação do cliente')
+  }
+
+  function aprovarOrcamento(osId) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o) return
+    mudarOrdem(osId, {
+      status: FLUXO.APROVADO,
+      etapaEm: Date.now(),
+      aprovadoEm: Date.now(),
+      // Liberado para qualquer reparador pegar
+      responsavelId: null,
+      responsavelNome: '',
+    }, 'Cliente aprovou o orçamento')
+  }
+
+  function recusarOrcamento(osId, motivo) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o) return
+    mudarOrdem(osId, {
+      status: FLUXO.REJEITADA,
+      etapaEm: Date.now(),
+      motivoRecusa: motivo || '',
+    }, `Cliente recusou o orçamento${motivo ? ` — ${motivo}` : ''}`)
+  }
+
+  // Saída da recusa: o diagnóstico pode ou não ser cobrado, e fica registrado
+  // qual foi a escolha e quem decidiu.
+  function fecharRecusa(osId, { cobrar, pagamentos, valorDiagnostico, clienteNome }) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o || o.status === FLUXO.ENTREGUE) return
+    const texto = cobrar
+      ? `Diagnóstico cobrado e veículo entregue (orçamento recusado)`
+      : `Veículo entregue sem cobrança do diagnóstico (liberado por ${currentUser?.nome || 'usuário'})`
+    mudarOrdem(osId, {
+      status: FLUXO.ENTREGUE,
+      pago: !!cobrar,
+      diagnosticoCobrado: !!cobrar,
+      dataConclusao: o.dataConclusao || new Date().toLocaleDateString('pt-BR'),
+      etapaEm: Date.now(),
+    }, texto)
+    if (cobrar && parseBR(valorDiagnostico) > 0) {
+      registrarVendaCaixa({
+        osId,
+        clienteNome: clienteNome || '',
+        itens: [],
+        total: parseBR(valorDiagnostico),
+        pagamentos: pagamentos || [],
+      })
+    }
+  }
+
+  function iniciarReparo(osId) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o || o.status === FLUXO.EXECUCAO) return
+    mudarOrdem(osId, {
+      status: FLUXO.EXECUCAO,
+      etapaEm: Date.now(),
+      responsavelId: currentUser?.id ?? null,
+      responsavelNome: currentUser?.nome || '',
+      reparoIniciadoEm: o.reparoIniciadoEm || Date.now(),
+    }, `Reparo iniciado por ${currentUser?.nome || 'usuário'}`)
+  }
+
+  function marcarAguardandoPeca(osId, motivo) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o || o.status === FLUXO.PECA) return
+    mudarOrdem(osId, {
+      status: FLUXO.PECA,
+      etapaEm: Date.now(),
+      // Guarda de onde veio para saber a quem devolver quando a peça chegar
+      pecaVoltarPara: o.status === FLUXO.EXECUCAO ? FLUXO.EXECUCAO : FLUXO.APROVADO,
+      motivoPeca: motivo || '',
+    }, `Aguardando peça${motivo ? ` — ${motivo}` : ''}`)
+  }
+
+  function pecaChegou(osId) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o || o.status !== FLUXO.PECA) return
+    // Se alguém já estava com o carro, volta para essa pessoa; senão fica livre.
+    const volta = o.pecaVoltarPara === FLUXO.EXECUCAO && o.responsavelId
+      ? FLUXO.EXECUCAO
+      : FLUXO.APROVADO
+    mudarOrdem(osId, {
+      status: volta,
+      etapaEm: Date.now(),
+      pecaVoltarPara: null,
+      motivoPeca: '',
+    }, 'Peça recebida — serviço liberado')
+  }
+
+  function concluirReparo(osId) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o || o.status === FLUXO.CONFERENCIA) return
+    mudarOrdem(osId, {
+      status: FLUXO.CONFERENCIA,
+      etapaEm: Date.now(),
+      reparoConcluidoEm: Date.now(),
+      reparadorNome: currentUser?.nome || o.responsavelNome || '',
+    }, `Reparo concluído por ${currentUser?.nome || 'usuário'} — aguardando conferência`)
+  }
+
+  // A conferência guarda o TEXTO dos itens, não referências: editar a lista em
+  // Configurações depois não pode alterar o que já foi conferido.
+  function liberarConferencia(osId, itensConferidos) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o) return
+    const registro = {
+      itens: itensConferidos || [],
+      conferidoPorId: currentUser?.id ?? null,
+      conferidoPorNome: currentUser?.nome || '',
+      conferidoEm: carimboData(),
+      aprovado: true,
+    }
+    mudarOrdem(osId, {
+      status: FLUXO.CONCLUIDA,
+      etapaEm: Date.now(),
+      dataConclusao: o.dataConclusao || new Date().toLocaleDateString('pt-BR'),
+      conferencia: registro,
+      conferencias: [...(o.conferencias || []), registro],
+    }, `Conferência aprovada por ${currentUser?.nome || 'usuário'} — liberado para entrega`)
+  }
+
+  function reprovarConferencia(osId, itensConferidos) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o) return
+    const reprovados = (itensConferidos || []).filter(i => i.status === 'problema')
+    const registro = {
+      itens: itensConferidos || [],
+      conferidoPorId: currentUser?.id ?? null,
+      conferidoPorNome: currentUser?.nome || '',
+      conferidoEm: carimboData(),
+      aprovado: false,
+    }
+    const resumo = reprovados.map(i => i.label).join(', ')
+    mudarOrdem(osId, {
+      status: FLUXO.EXECUCAO,
+      etapaEm: Date.now(),
+      conferencia: registro,
+      conferencias: [...(o.conferencias || []), registro],
+    }, `Conferência reprovada por ${currentUser?.nome || 'usuário'}${resumo ? ` — ${resumo}` : ''}`)
+  }
+
+  // Retorno em garantia: OS nova ligada à original, sem cobrança. O financeiro
+  // da OS original permanece intacto — o dinheiro entrou de forma legítima.
+  function criarOSGarantia(osOriginalId, descricao) {
+    const orig = r.current.ordens.find(x => x.id === osOriginalId)
+    if (!orig) return null
+    const novoId = novaOrdem({
+      clienteId: orig.clienteId,
+      veiculoId: orig.veiculoId,
+      kmEntrada: '',
+      descricaoProblema: descricao || `Retorno em garantia da OS ${osOriginalId}`,
+      relatoCliente: descricao || '',
+      status: FLUXO.RECEPCAO,
+      garantiaDeOsId: osOriginalId,
+      atendente: currentUser?.nome || '',
+    })
+    mudarOrdem(osOriginalId, {
+      retornosGarantia: [...(orig.retornosGarantia || []), novoId],
+    }, `Retorno em garantia aberto: OS ${novoId}`)
+    return novoId
+  }
+
+  function salvarVistoria(osId, dados) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o) return
+    const historico = [evento('Vistoria atualizada'), ...(o.historico || [])]
+    setOrdens(prev => prev.map(x => x.id === osId ? {
+      ...x,
+      inspecaoVisual: dados.inspecaoVisual ?? x.inspecaoVisual,
+      fotos: dados.fotos ?? x.fotos,
+      historico,
+    } : x))
   }
 
   // --- FINANCEIRO ---
@@ -585,12 +1092,6 @@ export function AppProvider({ children }) {
 
     setCaixaTurno(t => t ? { ...t, vendas: [novaVenda, ...t.vendas] } : t)
 
-    setEstoque(prev => prev.map(item => {
-      const usada = (venda.itens || []).find(i => i.tipo === 'peca' && Number(i.produtoId) === item.id)
-      if (usada) return { ...item, estoque: Math.max(0, Number(item.estoque) - Number(usada.qtd || 1)) }
-      return item
-    }))
-
     if (recebido > 0) {
       const lanc = {
         descricao: `Venda ${numero} - ${venda.clienteNome || 'Cliente'}`,
@@ -654,9 +1155,16 @@ export function AppProvider({ children }) {
     <AppContext.Provider value={{
       clientes, setClientes,
       veiculos, setVeiculos,
-      ordens, setOrdens, novaOrdem, pagarOrdem, reabrirOrdem,
+      ordens, setOrdens, novaOrdem, pagarOrdem, reabrirOrdem, concluirOrdem, entregarOrdem,
       atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
       adicionarFotoOrdem, removerFotoOrdem, excluirOrdem, subtotalOrdem, totalOrdem,
+      salvarDiagnostico, salvarVistoria, encontrarOSDaFicha,
+      // Fluxo do pátio — o status é consequência destas ações
+      FLUXO,
+      iniciarDiagnostico, finalizarDiagnostico,
+      aprovarOrcamento, recusarOrcamento, fecharRecusa,
+      iniciarReparo, marcarAguardandoPeca, pecaChegou, concluirReparo,
+      liberarConferencia, reprovarConferencia, criarOSGarantia,
       estoque, setEstoque,
       financeiro, setFinanceiro, adicionarLancamento,
       agenda, setAgenda,
@@ -673,6 +1181,7 @@ export function AppProvider({ children }) {
       veiculosPorCliente, ordensPorCliente, ordensPorVeiculo,
       config, setConfig,
       carregando,
+      realtimeOk, ultimaSync, sincronizarOrdens,
     }}>
       {children}
     </AppContext.Provider>

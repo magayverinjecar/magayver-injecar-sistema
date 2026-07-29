@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { AppProvider } from './context/AppContext'
 import { ThemeProvider } from './context/ThemeContext'
 import PinLogin from './pages/PinLogin'
 import Layout from './components/layout/Layout'
@@ -25,6 +26,7 @@ import Funcionarios from './pages/Funcionarios'
 import Produtividade from './pages/Produtividade'
 import Configuracoes from './pages/Configuracoes'
 import AssistenteFinanceiro from './pages/AssistenteFinanceiro'
+import NovaEntrada from './pages/NovaEntrada'
 import ChecklistNovo from './pages/ChecklistNovo'
 import ChecklistFotos from './pages/ChecklistFotos'
 import ChecklistFotosDetalhe from './pages/ChecklistFotosDetalhe'
@@ -36,15 +38,22 @@ import ClienteAssinatura from './pages/ClienteAssinatura'
 import VistoriaCliente from './pages/VistoriaCliente'
 import PatioQuadro from './pages/PatioQuadro'
 import PatioLimpeza from './pages/PatioLimpeza'
+import Conferencia from './pages/Conferencia'
+import OficinaDiagnostico from './pages/OficinaDiagnostico'
+import OficinaDiagnosticoDetalhe from './pages/OficinaDiagnosticoDetalhe'
+import OficinaFotos from './pages/OficinaFotos'
+import VistoriaEntrada from './pages/VistoriaEntrada'
+import FotosReparo from './pages/FotosReparo'
+import MeusServicos from './pages/MeusServicos'
 
 // Candidatas ordenadas por prioridade — primeira com permissão é o destino padrão
 const ROTAS_CANDIDATAS = [
   ['/patio',                  'patio'],
   ['/dashboard',              'dashboard'],
-  ['/checklist/novo',         'checklist-novo'],
-  ['/checklist/gerenciar',    'checklist-gerenciar'],
-  ['/checklist/diagnostico',  'checklist-diagnostico'],
-  ['/checklist/fotos',        'checklist-fotos'],
+  ['/oficina/meus-servicos',  'checklist-gerenciar'],
+  ['/oficina/diagnostico',    'checklist-diagnostico'],
+  ['/oficina/fotos',          'checklist-fotos'],
+  ['/nova-entrada',           'checklist-novo'],
   ['/ordens-servico',         'ordens-servico'],
   ['/orcamentos',             'orcamentos'],
   ['/clientes',               'clientes'],
@@ -77,6 +86,7 @@ export default function App() {
   return (
     <ThemeProvider>
     <AuthProvider>
+    <AppProvider>
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<PinLogin />} />
@@ -86,6 +96,14 @@ export default function App() {
           <Route index element={<PrimeiraRota />} />
           <Route path="patio"               element={<Rota perm="patio"><PatioQuadro /></Rota>} />
           <Route path="patio/limpeza"       element={<Rota perm="patio-limpeza"><PatioLimpeza /></Rota>} />
+          <Route path="conferencia/:id"     element={<Rota perm="conferir-os"><Conferencia /></Rota>} />
+          {/* Área do reparador — mesmas permissões do antigo checklist, dados vindos das OS */}
+          <Route path="oficina/meus-servicos" element={<Rota perm="checklist-gerenciar"><MeusServicos /></Rota>} />
+          <Route path="oficina/diagnostico"      element={<Rota perm="checklist-diagnostico"><OficinaDiagnostico /></Rota>} />
+          <Route path="oficina/diagnostico/:id"  element={<Rota perm="checklist-diagnostico"><OficinaDiagnosticoDetalhe /></Rota>} />
+          <Route path="oficina/fotos"         element={<Rota perm="checklist-fotos"><OficinaFotos /></Rota>} />
+          <Route path="oficina/vistoria/:id"  element={<Rota perm="checklist-fotos"><VistoriaEntrada /></Rota>} />
+          <Route path="oficina/reparo/:id"    element={<Rota perm="checklist-fotos"><FotosReparo /></Rota>} />
           <Route path="dashboard"           element={<Rota perm="dashboard"><Dashboard /></Rota>} />
           <Route path="clientes"            element={<Rota perm="clientes"><Clientes /></Rota>} />
           <Route path="veiculos"            element={<Rota perm="veiculos"><Veiculos /></Rota>} />
@@ -108,6 +126,7 @@ export default function App() {
           <Route path="produtividade"       element={<Rota perm="produtividade"><Produtividade /></Rota>} />
           <Route path="configuracoes"       element={<Rota perm="configuracoes"><Configuracoes /></Rota>} />
           <Route path="assistente-financeiro" element={<Rota perm="assistente-financeiro"><AssistenteFinanceiro /></Rota>} />
+          <Route path="nova-entrada"         element={<Rota perm="checklist-novo"><NovaEntrada /></Rota>} />
           <Route path="checklist"           element={<Navigate to="/checklist/gerenciar" replace />} />
           <Route path="checklist/novo"      element={<Rota perm="checklist-novo"><ChecklistNovo /></Rota>} />
           <Route path="checklist/fotos"     element={<Rota perm="checklist-fotos"><ChecklistFotos /></Rota>} />
@@ -119,6 +138,7 @@ export default function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+    </AppProvider>
     </AuthProvider>
     </ThemeProvider>
   )

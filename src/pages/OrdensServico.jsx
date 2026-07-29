@@ -5,21 +5,28 @@ import { useApp } from '../context/AppContext'
 import Modal from '../components/ui/Modal'
 
 export const STATUS_OS = [
-  'Aberta', 'Diagnóstico', 'Aguardando Aprovação', 'Aprovada', 'Rejeitada',
-  'Em Execução', 'Aguardando Peça', 'Concluída', 'Entregue', 'Cancelada',
+  'Recepção', 'Em Diagnóstico', 'Aguardando Aprovação', 'Rejeitada',
+  'Aprovado', 'Aguardando Peça', 'Em Execução', 'Em Conferência',
+  'Concluída', 'Entregue', 'Cancelada',
 ]
 
 export const statusColor = {
-  'Aberta': 'bg-blue-100 text-blue-700',
-  'Diagnóstico': 'bg-indigo-100 text-indigo-700',
+  'Recepção': 'bg-blue-100 text-blue-700',
+  'Em Diagnóstico': 'bg-indigo-100 text-indigo-700',
   'Aguardando Aprovação': 'bg-yellow-100 text-yellow-700',
-  'Aprovada': 'bg-teal-100 text-teal-700',
   'Rejeitada': 'bg-red-100 text-red-700',
+  'Aprovado': 'bg-lime-100 text-lime-700',
   'Em Execução': 'bg-orange-100 text-orange-700',
   'Aguardando Peça': 'bg-amber-100 text-amber-700',
+  'Em Conferência': 'bg-cyan-100 text-cyan-700',
   'Concluída': 'bg-green-100 text-green-700',
   'Entregue': 'bg-emerald-100 text-emerald-700',
   'Cancelada': 'bg-slate-200 text-slate-600',
+  // Compat: status antigos que podem existir em OS já criadas
+  'Aberta': 'bg-blue-100 text-blue-700',
+  'Diagnóstico': 'bg-indigo-100 text-indigo-700',
+  'Aprovada': 'bg-teal-100 text-teal-700',
+  'Em Andamento': 'bg-orange-100 text-orange-700',
 }
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -98,8 +105,9 @@ export default function OrdensServico() {
     const matchMec = filtroMec === 'Todos' || String(o.mecanicoId) === filtroMec
     return matchBusca && matchStatus && matchMec
   }).sort((a, b) => {
-    const tA = a.historico?.at(-1)?.id || 0
-    const tB = b.historico?.at(-1)?.id || 0
+    // Eventos novos entram no início do histórico — at(0) é o mais recente.
+    const tA = a.etapaEm || a.historico?.at(0)?.id || 0
+    const tB = b.etapaEm || b.historico?.at(0)?.id || 0
     return tB - tA
   })
 
