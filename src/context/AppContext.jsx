@@ -790,6 +790,19 @@ export function AppProvider({ children }) {
     }, `Diagnóstico iniciado por ${currentUser?.nome || 'usuário'}`)
   }
 
+  // Carro que já está em diagnóstico ou execução mas sem responsável — as fichas
+  // que vieram da migração ficaram assim e nenhuma tela conseguia tocar nelas,
+  // porque iniciarDiagnostico/iniciarReparo desistem quando o status já é aquele.
+  // Aqui só assume o dono, sem mexer na etapa em que o carro está.
+  function assumirServico(osId) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o || o.responsavelId != null) return
+    mudarOrdem(osId, {
+      responsavelId: currentUser?.id ?? null,
+      responsavelNome: currentUser?.nome || '',
+    }, `${currentUser?.nome || 'Usuário'} assumiu o veículo`)
+  }
+
   function finalizarDiagnostico(osId, dados) {
     const o = r.current.ordens.find(x => x.id === osId)
     if (!o) return
@@ -1171,7 +1184,7 @@ export function AppProvider({ children }) {
       salvarDiagnostico, salvarVistoria, encontrarOSDaFicha,
       // Fluxo do pátio — o status é consequência destas ações
       FLUXO,
-      iniciarDiagnostico, finalizarDiagnostico,
+      iniciarDiagnostico, finalizarDiagnostico, assumirServico,
       aprovarOrcamento, recusarOrcamento, fecharRecusa,
       iniciarReparo, marcarAguardandoPeca, pecaChegou, concluirReparo,
       liberarConferencia, reprovarConferencia, criarOSGarantia,

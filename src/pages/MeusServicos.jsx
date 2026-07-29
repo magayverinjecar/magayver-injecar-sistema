@@ -19,7 +19,7 @@ function rotuloTempo(ts) {
 export default function MeusServicos() {
   const {
     ordens, getCliente, getVeiculo, carregando,
-    iniciarDiagnostico, iniciarReparo, concluirReparo, marcarAguardandoPeca, pecaChegou,
+    iniciarDiagnostico, iniciarReparo, concluirReparo, marcarAguardandoPeca, pecaChegou, assumirServico,
   } = useApp()
   const { currentUser } = useAuth()
   const navigate = useNavigate()
@@ -49,11 +49,20 @@ export default function MeusServicos() {
 
   const ativas = ordens.filter(o => !o.retirado && !['Entregue', 'Cancelada'].includes(o.status))
 
-  // Carros que estão comigo agora. "Em Conferência" entra aqui porque quem
-  // reparou é quem confere — sem isso o carro sumia da tela dele e travava.
+  // "Em Conferência" conta como trabalho em andamento porque quem reparou é
+  // quem confere — sem isso o carro sumia da tela dele e travava.
+  const EM_TRABALHO = ['Em Diagnóstico', 'Em Execução', 'Em Conferência']
+
   const comigo = ativas
-    .filter(o => o.responsavelId != null && o.responsavelId === meuId)
-    .filter(o => ['Em Diagnóstico', 'Em Execução', 'Em Conferência'].includes(o.status))
+    .filter(o => EM_TRABALHO.includes(o.status) && o.responsavelId != null && o.responsavelId === meuId)
+    .map(enriquecer)
+    .sort(maisRecentePrimeiro)
+
+  // Tudo que está em andamento e não é meu. Inclui de propósito os carros sem
+  // responsável: as fichas antigas vieram da migração em "Em Diagnóstico" sem
+  // dono e não apareciam em tela nenhuma — 25 veículos invisíveis para todos.
+  const emAndamento = ativas
+    .filter(o => EM_TRABALHO.includes(o.status) && o.responsavelId !== meuId)
     .map(enriquecer)
     .sort(maisRecentePrimeiro)
 
@@ -128,10 +137,48 @@ export default function MeusServicos() {
         </span>
       </div>
 
-      {/* ── Livres para pegar ── */}
-      <section className="order-3">
+      {/* ── Em andamento na oficina ── */}
+      <section className={emAndamento.length > 0 ? 'order-3' : 'hidden'}>
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-          Livres para pegar
+          Em andamento na oficina · {emAndamento.length}
+        </h3>
+        <div className="space-y-2">
+          {emAndamento.map(os => {
+            const semDono = os.responsavelId == null
+            return (
+              <div key={os.id} onClick={() => abrir(os)}
+                className={`bg-white border rounded-2xl p-4 cursor-pointer hover:shadow-sm transition-all ${semDono ? 'border-slate-300' : 'border-slate-200'}`}>
+                <Cabecalho os={os} />
+                <p className="mt-2 text-xs flex items-center gap-1.5">
+                  <Wrench size={12} className="text-slate-400 flex-shrink-0" />
+                  {semDono
+                    ? <span className="text-slate-400">Sem responsável · {os.status}</span>
+                    : <span className="text-slate-600">{os.responsavelNome} · {os.status}</span>}
+                </p>
+                {/* Carro em andamento sem dono ficava parado sem ninguém poder
+                    tocar: aqui qualquer reparador consegue assumir. */}
+                {semDono && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      agir(os.id, () => assumirServico(os.id),
+                        `Assumir ${os.placa || os.modelo}?\n\nVai ficar registrado como ${meuNome}.`)
+                    }}
+                    disabled={ocupado === os.id}
+                    className="mt-3 w-full flex items-center justify-center gap-2 border border-blue-200 text-blue-600 hover:bg-blue-50 disabled:opacity-50 text-sm font-semibold py-2.5 rounded-xl transition-colors">
+                    <Play size={15} /> Assumir este veículo
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* ── Livres para pegar ── */}
+      <section className="order-4">
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
+          Livres para pegar · {livres.length}
         </h3>
         {livres.length === 0 ? (
           <p className="text-sm text-slate-400 border-2 border-dashed border-slate-200 rounded-xl py-6 text-center">
@@ -168,7 +215,7 @@ export default function MeusServicos() {
            para achar o serviço que já estava na mão dele. ── */}
       <section className={comigo.length > 0 ? 'order-2' : 'hidden'}>
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-          Comigo agora
+          Comigo agora · {comigo.length}
         </h3>
           <div className="space-y-2">
             {comigo.map(os => {
@@ -237,7 +284,7 @@ export default function MeusServicos() {
 
       {/* ── Esperando peça ── */}
       {esperandoPeca.length > 0 && (
-        <section className="order-4">
+        <section className="order-5">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
             Esperando peça
           </h3>
