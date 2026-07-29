@@ -28,7 +28,12 @@ html.dark .bg-white          { background-color: #1e293b !important; }
 html.dark .bg-slate-50        { background-color: #1e293b !important; }
 html.dark .bg-slate-100       { background-color: #0f172a !important; }
 html.dark .bg-slate-200       { background-color: #334155 !important; }
-html.dark .bg-slate-800       { background-color: #0f172a !important; }
+/* Era #0f172a, a mesma cor do fundo da página: botão e aba escuros sumiam por
+   completo no modo escuro e sobrava só o texto solto na tela. */
+html.dark .bg-slate-800       { background-color: #334155 !important; }
+html.dark .hover\:bg-slate-800:hover { background-color: #475569 !important; }
+html.dark .hover\:bg-slate-900:hover { background-color: #1e293b !important; }
+html.dark .hover\:bg-slate-700:hover { background-color: #475569 !important; }
 html.dark .bg-slate-900       { background-color: #020617 !important; }
 
 /* Borders */

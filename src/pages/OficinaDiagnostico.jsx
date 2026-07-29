@@ -201,12 +201,16 @@ export default function OficinaDiagnostico() {
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {ABAS.map(a => (
+          // Mesmo visual das abas de Serviços: a ativa em laranja se lê nos dois
+          // temas, e a inativa tem borda para não sumir no fundo escuro.
           <button key={a.id} onClick={() => setFiltro(a.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-colors flex-shrink-0 ${
-              filtro === a.id ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap border transition-colors flex-shrink-0 ${
+              filtro === a.id
+                ? 'bg-primary-500 border-primary-500 text-white'
+                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
             }`}>
             {a.label}
-            <span className={`text-xs px-1.5 rounded-full ${filtro === a.id ? 'bg-white/25' : 'bg-white'}`}>{a.n}</span>
+            <span className={`text-xs px-1.5 rounded-full ${filtro === a.id ? 'bg-white/25' : 'bg-slate-100 text-slate-500'}`}>{a.n}</span>
           </button>
         ))}
       </div>
