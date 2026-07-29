@@ -21,9 +21,16 @@ export default function MeusServicos() {
     ordens, getCliente, getVeiculo, carregando,
     iniciarDiagnostico, iniciarReparo, concluirReparo, marcarAguardandoPeca, pecaChegou, assumirServico,
   } = useApp()
-  const { currentUser } = useAuth()
+  const { currentUser, temPermissao } = useAuth()
   const navigate = useNavigate()
   const [ocupado, setOcupado] = useState(null)
+  const [verTodosFinalizados, setVerTodosFinalizados] = useState(false)
+
+  // Só quem tem a tela de fotos liberada vê o atalho — senão o botão levava
+  // direto para a parede de "sem permissão".
+  const podeFotografar = temPermissao('checklist-fotos')
+  const irParaFotos = os => navigate(`/oficina/reparo/${encodeURIComponent(os.id)}`)
+  const quemFez = os => os.reparadorNome || os.responsavelNome || os.tecnicoNome || ''
 
   const meuId = currentUser?.id
   const meuNome = currentUser?.nome || 'você'
@@ -65,6 +72,14 @@ export default function MeusServicos() {
     .filter(o => EM_TRABALHO.includes(o.status) && o.responsavelId !== meuId)
     .map(enriquecer)
     .sort(maisRecentePrimeiro)
+
+  // Serviços já fechados. Servem para consulta e, principalmente, para anexar a
+  // foto da peça velha que alguém esqueceu de tirar antes de entregar o carro.
+  // São mais de cem: mostra as últimas e abre o resto sob demanda.
+  const finalizados = ordens
+    .filter(o => ['Concluída', 'Entregue'].includes(o.status))
+    .map(enriquecer)
+    .sort((a, b) => (b.etapaEm || b.entrouEm) - (a.etapaEm || a.entrouEm))
 
   // Carros parados esperando alguém assumir
   const livres = ativas
@@ -167,6 +182,19 @@ export default function MeusServicos() {
                     disabled={ocupado === os.id}
                     className="mt-3 w-full flex items-center justify-center gap-2 border border-blue-200 text-blue-600 hover:bg-blue-50 disabled:opacity-50 text-sm font-semibold py-2.5 rounded-xl transition-colors">
                     <Play size={15} /> Assumir este veículo
+                  </button>
+                )}
+                {/* Fotografar a peça não é privilégio de quem está com o carro:
+                    quem estiver na bancada na hora precisa conseguir registrar. */}
+                {podeFotografar && (
+                  <button onClick={e => { e.stopPropagation(); irParaFotos(os) }}
+                    className="mt-2 w-full flex items-center justify-center gap-2 border border-orange-200 text-orange-700 hover:bg-orange-50 text-sm font-medium py-2.5 rounded-xl transition-colors">
+                    <Camera size={15} /> Fotos do reparo
+                    {os.fotos?.some(f => f.momento === 'reparo') && (
+                      <span className="text-xs bg-orange-100 px-1.5 rounded-full">
+                        {os.fotos.filter(f => f.momento === 'reparo').length}
+                      </span>
+                    )}
                   </button>
                 )}
               </div>
@@ -309,6 +337,47 @@ export default function MeusServicos() {
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* ── Finalizados ── */}
+      {finalizados.length > 0 && (
+        <section className="order-6">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
+            Finalizados · {finalizados.length}
+          </h3>
+          <div className="space-y-2">
+            {(verTodosFinalizados ? finalizados : finalizados.slice(0, 10)).map(os => {
+              const autor = quemFez(os)
+              const fotosReparo = (os.fotos || []).filter(f => f.momento === 'reparo').length
+              return (
+                <div key={os.id} className="bg-white border border-slate-200 rounded-2xl p-4">
+                  <Cabecalho os={os} />
+                  <p className="mt-2 text-xs flex items-center gap-1.5 flex-wrap">
+                    <span className={`px-2 py-0.5 rounded-full font-medium ${
+                      os.status === 'Entregue' ? 'bg-slate-100 text-slate-600' : 'bg-green-100 text-green-700'
+                    }`}>{os.status}</span>
+                    {autor
+                      ? <span className="text-slate-600 flex items-center gap-1"><Wrench size={11} />{autor}</span>
+                      : <span className="text-slate-400">sem reparador registrado</span>}
+                  </p>
+                  {podeFotografar && (
+                    <button onClick={() => irParaFotos(os)}
+                      className="mt-3 w-full flex items-center justify-center gap-2 border border-orange-200 text-orange-700 hover:bg-orange-50 text-sm font-medium py-2.5 rounded-xl transition-colors">
+                      <Camera size={15} /> Fotos do reparo
+                      {fotosReparo > 0 && <span className="text-xs bg-orange-100 px-1.5 rounded-full">{fotosReparo}</span>}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {finalizados.length > 10 && (
+            <button onClick={() => setVerTodosFinalizados(v => !v)}
+              className="mt-2 w-full border border-slate-200 text-slate-600 text-sm font-medium py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+              {verTodosFinalizados ? 'Mostrar menos' : `Ver todos os ${finalizados.length}`}
+            </button>
+          )}
         </section>
       )}
     </div>
