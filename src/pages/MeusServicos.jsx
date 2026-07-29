@@ -25,6 +25,7 @@ export default function MeusServicos() {
   const navigate = useNavigate()
   const [ocupado, setOcupado] = useState(null)
   const [verTodosFinalizados, setVerTodosFinalizados] = useState(false)
+  const [abaEscolhida, setAbaEscolhida] = useState(null)
 
   // Só quem tem a tela de fotos liberada vê o atalho — senão o botão levava
   // direto para a parede de "sem permissão".
@@ -76,10 +77,12 @@ export default function MeusServicos() {
   // Serviços já fechados. Servem para consulta e, principalmente, para anexar a
   // foto da peça velha que alguém esqueceu de tirar antes de entregar o carro.
   // São mais de cem: mostra as últimas e abre o resto sob demanda.
-  const finalizados = ordens
-    .filter(o => ['Concluída', 'Entregue'].includes(o.status))
-    .map(enriquecer)
-    .sort((a, b) => (b.etapaEm || b.entrouEm) - (a.etapaEm || a.entrouEm))
+  const maisRecenteFechado = (a, b) => (b.etapaEm || b.entrouEm) - (a.etapaEm || a.entrouEm)
+
+  // "Concluída" é carro pronto ainda no pátio, "Entregue" já saiu — separados
+  // porque um ainda ocupa vaga e o outro é só consulta.
+  const prontos = ordens.filter(o => o.status === 'Concluída').map(enriquecer).sort(maisRecenteFechado)
+  const entregues = ordens.filter(o => o.status === 'Entregue').map(enriquecer).sort(maisRecenteFechado)
 
   // Carros parados esperando alguém assumir
   const livres = ativas
@@ -94,6 +97,21 @@ export default function MeusServicos() {
     .filter(o => o.responsavelId == null || o.responsavelId === meuId)
     .map(enriquecer)
     .sort(maisRecentePrimeiro)
+
+  // Empilhar tudo numa página só obrigava a rolar até o fim para achar um carro
+  // finalizado. Cada grupo vira uma aba com a contagem à mostra.
+  const GRUPOS = [
+    { id: 'comigo',   label: 'Comigo',        lista: comigo },
+    { id: 'andamento', label: 'Em andamento', lista: emAndamento },
+    { id: 'livres',   label: 'Livres',        lista: livres },
+    { id: 'peca',     label: 'Esperando peça', lista: esperandoPeca },
+    { id: 'prontos',  label: 'Prontos',       lista: prontos },
+    { id: 'entregues', label: 'Entregues',    lista: entregues },
+  ]
+  // Abre no primeiro grupo que tem carro, para a tela nunca nascer vazia
+  const padrao = (GRUPOS.find(g => g.lista.length > 0) || GRUPOS[0]).id
+  const abaAtual = abaEscolhida ?? padrao
+  const grupo = GRUPOS.find(g => g.id === abaAtual) || GRUPOS[0]
 
   function agir(id, fn, pergunta) {
     if (ocupado) return
@@ -141,8 +159,8 @@ export default function MeusServicos() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-xl mx-auto flex flex-col gap-6">
-      <div className="flex items-center justify-between order-1">
+    <div className="p-4 md:p-6 max-w-xl mx-auto flex flex-col gap-4">
+      <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Serviços</h2>
           <p className="text-sm text-slate-500 mt-0.5">{meuNome}</p>
@@ -152,11 +170,31 @@ export default function MeusServicos() {
         </span>
       </div>
 
+      {/* Menu das abas — rola na horizontal no celular */}
+      <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1">
+        {GRUPOS.map(g => (
+          <button key={g.id} onClick={() => { setAbaEscolhida(g.id); setVerTodosFinalizados(false) }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap flex-shrink-0 border transition-colors ${
+              abaAtual === g.id
+                ? 'bg-primary-500 border-primary-500 text-white'
+                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+            }`}>
+            {g.label}
+            <span className={`text-xs px-1.5 rounded-full ${abaAtual === g.id ? 'bg-white/25' : 'bg-slate-100 text-slate-500'}`}>
+              {g.lista.length}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {grupo.lista.length === 0 && (
+        <p className="text-sm text-slate-400 border-2 border-dashed border-slate-200 rounded-xl py-10 text-center">
+          Nenhum veículo em "{grupo.label}"
+        </p>
+      )}
+
       {/* ── Em andamento na oficina ── */}
-      <section className={emAndamento.length > 0 ? 'order-3' : 'hidden'}>
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-          Em andamento na oficina · {emAndamento.length}
-        </h3>
+      {abaAtual === 'andamento' && (
         <div className="space-y-2">
           {emAndamento.map(os => {
             const semDono = os.responsavelId == null
@@ -201,18 +239,10 @@ export default function MeusServicos() {
             )
           })}
         </div>
-      </section>
+      )}
 
       {/* ── Livres para pegar ── */}
-      <section className="order-4">
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-          Livres para pegar · {livres.length}
-        </h3>
-        {livres.length === 0 ? (
-          <p className="text-sm text-slate-400 border-2 border-dashed border-slate-200 rounded-xl py-6 text-center">
-            Nenhum veículo esperando
-          </p>
-        ) : (
+      {abaAtual === 'livres' && (
           <div className="space-y-2">
             {livres.map(os => {
               const paraDiagnostico = os.status === 'Recepção'
@@ -235,16 +265,10 @@ export default function MeusServicos() {
               )
             })}
           </div>
-        )}
-      </section>
+      )}
 
-      {/* ── Comigo agora — sobe para o topo assim que o reparador pega um
-           carro. Ficava embaixo e ele tinha que rolar toda a lista de livres
-           para achar o serviço que já estava na mão dele. ── */}
-      <section className={comigo.length > 0 ? 'order-2' : 'hidden'}>
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-          Comigo agora · {comigo.length}
-        </h3>
+      {/* ── Comigo agora ── */}
+      {abaAtual === 'comigo' && (
           <div className="space-y-2">
             {comigo.map(os => {
               const emDiagnostico = os.status === 'Em Diagnóstico'
@@ -308,14 +332,10 @@ export default function MeusServicos() {
               )
             })}
           </div>
-      </section>
+      )}
 
       {/* ── Esperando peça ── */}
-      {esperandoPeca.length > 0 && (
-        <section className="order-5">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-            Esperando peça
-          </h3>
+      {abaAtual === 'peca' && (
           <div className="space-y-2">
             {esperandoPeca.map(os => (
               <div key={os.id} onClick={() => abrir(os)}
@@ -337,17 +357,13 @@ export default function MeusServicos() {
               </div>
             ))}
           </div>
-        </section>
       )}
 
-      {/* ── Finalizados ── */}
-      {finalizados.length > 0 && (
-        <section className="order-6">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-            Finalizados · {finalizados.length}
-          </h3>
+      {/* ── Prontos e Entregues: mesma carta, só muda a lista da aba ── */}
+      {(abaAtual === 'prontos' || abaAtual === 'entregues') && (
+        <>
           <div className="space-y-2">
-            {(verTodosFinalizados ? finalizados : finalizados.slice(0, 10)).map(os => {
+            {(verTodosFinalizados ? grupo.lista : grupo.lista.slice(0, 10)).map(os => {
               const autor = quemFez(os)
               const fotosReparo = (os.fotos || []).filter(f => f.momento === 'reparo').length
               return (
@@ -372,13 +388,13 @@ export default function MeusServicos() {
               )
             })}
           </div>
-          {finalizados.length > 10 && (
+          {grupo.lista.length > 10 && (
             <button onClick={() => setVerTodosFinalizados(v => !v)}
-              className="mt-2 w-full border border-slate-200 text-slate-600 text-sm font-medium py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
-              {verTodosFinalizados ? 'Mostrar menos' : `Ver todos os ${finalizados.length}`}
+              className="w-full border border-slate-200 text-slate-600 text-sm font-medium py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+              {verTodosFinalizados ? 'Mostrar menos' : `Ver todos os ${grupo.lista.length}`}
             </button>
           )}
-        </section>
+        </>
       )}
     </div>
   )
