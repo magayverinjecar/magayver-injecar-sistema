@@ -148,11 +148,14 @@ export default function Orcamentos() {
 
   function adicionarItem() {
     if (!item.descricao.trim()) return
+    // Maiúscula só ao adicionar — em caps enquanto digita, o corretor do
+    // navegador pula as palavras achando que é sigla.
+    const pronto = { ...item, descricao: item.descricao.toUpperCase().trim() }
     if (itemEditandoId !== null) {
-      setItens(prev => prev.map(i => i.id === itemEditandoId ? { ...item, id: itemEditandoId } : i))
+      setItens(prev => prev.map(i => i.id === itemEditandoId ? { ...pronto, id: itemEditandoId } : i))
       setItemEditandoId(null)
     } else {
-      setItens(prev => [...prev, { ...item, id: gerarId() }])
+      setItens(prev => [...prev, { ...pronto, id: gerarId() }])
     }
     setItem(VAZIO_ITEM)
     setModalItem(false)
@@ -684,9 +687,10 @@ export default function Orcamentos() {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Descrição *</label>
-                <input value={item.descricao} onChange={e => setItem(it => ({ ...it, descricao: e.target.value.toUpperCase() }))}
+                <input value={item.descricao} onChange={e => setItem(it => ({ ...it, descricao: e.target.value }))}
+                  spellCheck lang="pt-BR"
                   placeholder={modoOrc === 'avulso' ? 'DESCREVA O SERVIÇO OU PEÇA...' : 'DESCRIÇÃO'}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  className="w-full uppercase border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
 
               <div className="grid grid-cols-3 gap-3">

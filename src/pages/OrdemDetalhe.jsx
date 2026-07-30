@@ -1805,7 +1805,7 @@ function ModalAdicionarItem({ servicos, estoque, funcionarios, onClose, onAdd })
       tipo,
       produtoId: tipo === 'peca' ? selId : null,
       servicoId: tipo === 'servico' ? selId : null,
-      descricao,
+      descricao: descricao.toUpperCase(),
       quantidade: qtdPedida,
       valorUnitario,
       desconto,
@@ -1862,7 +1862,7 @@ function ModalAdicionarItem({ servicos, estoque, funcionarios, onClose, onAdd })
           </Campo>
         )}
 
-        <Campo label="Descrição *"><input value={descricao} onChange={e => setDescricao(e.target.value.toUpperCase())} placeholder={modo === 'avulso' ? 'DESCREVA O SERVIÇO OU PEÇA...' : ''} className="inp" /></Campo>
+        <Campo label="Descrição *"><input value={descricao} onChange={e => setDescricao(e.target.value)} spellCheck lang="pt-BR" placeholder={modo === 'avulso' ? 'DESCREVA O SERVIÇO OU PEÇA...' : ''} className="inp uppercase" /></Campo>
         {tipo === 'servico' && (
           <Campo label="Reparador">
             <select value={mecanicoId} onChange={e => setMecanicoId(e.target.value)} className="inp">

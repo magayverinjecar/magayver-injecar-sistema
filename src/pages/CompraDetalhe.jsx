@@ -99,14 +99,16 @@ export default function CompraDetalhe() {
   }
 
   function adicionarItem() {
-    const descricao = cadastrarNova ? novoItemDados.nome : item.descricao
+    // Maiúscula só ao adicionar — em caps enquanto digita, o corretor do
+    // navegador pula as palavras achando que é sigla.
+    const descricao = (cadastrarNova ? novoItemDados.nome : item.descricao).toUpperCase()
     if (!descricao.trim()) return
     const novoItem = {
       ...item,
       descricao,
       codigo: cadastrarNova ? novoItemDados.codigo : item.codigo,
       id: gerarId(),
-      ...(cadastrarNova ? { cadastrarNova: true, novoItemDados: { ...novoItemDados } } : {}),
+      ...(cadastrarNova ? { cadastrarNova: true, novoItemDados: { ...novoItemDados, nome: novoItemDados.nome.toUpperCase() } } : {}),
     }
     const novosItens = [...compra.itens, novoItem]
     const novoTotal = novosItens.reduce((s, it) => s + parseNum(it.valorUnitario) * parseNum(it.quantidade), 0)
@@ -466,9 +468,10 @@ export default function CompraDetalhe() {
                     <label className="block text-xs font-medium text-slate-600 mb-1">Nome da peça *</label>
                     <input
                       value={novoItemDados.nome}
-                      onChange={e => setNovoItemDados(d => ({ ...d, nome: e.target.value.toUpperCase() }))}
+                      onChange={e => setNovoItemDados(d => ({ ...d, nome: e.target.value }))}
+                      spellCheck lang="pt-BR"
                       placeholder="EX: FILTRO DE ÓLEO MANN W713"
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="w-full uppercase border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">

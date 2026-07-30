@@ -22,7 +22,9 @@ export default function Estoque() {
 
   function salvar() {
     if (!form.nome.trim()) return
-    setEstoque(prev => [...prev, { ...form, id: gerarId(), estoque: Number(form.estoque) || 0, minimo: Number(form.minimo) || 0 }])
+    // Maiúscula só ao salvar — em caps enquanto digita, o corretor do navegador
+    // pula as palavras achando que é sigla.
+    setEstoque(prev => [...prev, { ...form, nome: form.nome.toUpperCase().trim(), categoria: (form.categoria || '').toUpperCase(), id: gerarId(), estoque: Number(form.estoque) || 0, minimo: Number(form.minimo) || 0 }])
     setForm(vazio)
     setModal(false)
   }
@@ -34,7 +36,7 @@ export default function Estoque() {
   function salvarEdicao() {
     if (!editando.nome.trim()) return
     setEstoque(prev => prev.map(i => i.id === editando.id
-      ? { ...editando, estoque: Number(editando.estoque) || 0, minimo: Number(editando.minimo) || 0 }
+      ? { ...editando, nome: editando.nome.toUpperCase().trim(), categoria: (editando.categoria || '').toUpperCase(), estoque: Number(editando.estoque) || 0, minimo: Number(editando.minimo) || 0 }
       : i
     ))
     setEditando(null)
@@ -57,12 +59,12 @@ export default function Estoque() {
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Categoria</label>
-          <input value={f.categoria} onChange={e => set(x => ({ ...x, categoria: e.target.value.toUpperCase() }))} placeholder="FILTROS, ÓLEOS..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          <input value={f.categoria} onChange={e => set(x => ({ ...x, categoria: e.target.value }))} spellCheck lang="pt-BR" placeholder="FILTROS, ÓLEOS..." className="w-full uppercase border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
       </div>
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">Nome do Produto *</label>
-        <input value={f.nome} onChange={e => set(x => ({ ...x, nome: e.target.value.toUpperCase() }))} placeholder="EX: FILTRO DE ÓLEO" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+        <input value={f.nome} onChange={e => set(x => ({ ...x, nome: e.target.value }))} spellCheck lang="pt-BR" placeholder="EX: FILTRO DE ÓLEO" className="w-full uppercase border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
