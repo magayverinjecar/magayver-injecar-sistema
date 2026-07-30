@@ -1862,7 +1862,7 @@ function ModalAdicionarItem({ servicos, estoque, funcionarios, onClose, onAdd })
           </Campo>
         )}
 
-        <Campo label="Descrição *"><input value={descricao} onChange={e => setDescricao(e.target.value)} placeholder={modo === 'avulso' ? 'Descreva o serviço ou peça...' : ''} className="inp" /></Campo>
+        <Campo label="Descrição *"><input value={descricao} onChange={e => setDescricao(e.target.value.toUpperCase())} placeholder={modo === 'avulso' ? 'DESCREVA O SERVIÇO OU PEÇA...' : ''} className="inp" /></Campo>
         {tipo === 'servico' && (
           <Campo label="Reparador">
             <select value={mecanicoId} onChange={e => setMecanicoId(e.target.value)} className="inp">

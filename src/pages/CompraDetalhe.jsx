@@ -466,8 +466,8 @@ export default function CompraDetalhe() {
                     <label className="block text-xs font-medium text-slate-600 mb-1">Nome da peça *</label>
                     <input
                       value={novoItemDados.nome}
-                      onChange={e => setNovoItemDados(d => ({ ...d, nome: e.target.value }))}
-                      placeholder="Ex: Filtro de óleo Mann W713"
+                      onChange={e => setNovoItemDados(d => ({ ...d, nome: e.target.value.toUpperCase() }))}
+                      placeholder="EX: FILTRO DE ÓLEO MANN W713"
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
                   </div>

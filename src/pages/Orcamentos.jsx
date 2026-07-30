@@ -684,8 +684,8 @@ export default function Orcamentos() {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Descrição *</label>
-                <input value={item.descricao} onChange={e => setItem(it => ({ ...it, descricao: e.target.value }))}
-                  placeholder={modoOrc === 'avulso' ? 'Descreva o serviço ou peça...' : 'Descrição'}
+                <input value={item.descricao} onChange={e => setItem(it => ({ ...it, descricao: e.target.value.toUpperCase() }))}
+                  placeholder={modoOrc === 'avulso' ? 'DESCREVA O SERVIÇO OU PEÇA...' : 'DESCRIÇÃO'}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
 

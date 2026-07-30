@@ -57,12 +57,12 @@ export default function Estoque() {
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Categoria</label>
-          <input value={f.categoria} onChange={e => set(x => ({ ...x, categoria: e.target.value }))} placeholder="Filtros, Óleos..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          <input value={f.categoria} onChange={e => set(x => ({ ...x, categoria: e.target.value.toUpperCase() }))} placeholder="FILTROS, ÓLEOS..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
       </div>
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">Nome do Produto *</label>
-        <input value={f.nome} onChange={e => set(x => ({ ...x, nome: e.target.value }))} placeholder="Ex: Filtro de Óleo" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+        <input value={f.nome} onChange={e => set(x => ({ ...x, nome: e.target.value.toUpperCase() }))} placeholder="EX: FILTRO DE ÓLEO" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
