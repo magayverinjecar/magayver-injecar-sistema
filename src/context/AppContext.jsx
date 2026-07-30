@@ -768,13 +768,16 @@ export function AppProvider({ children }) {
     const o = r.current.ordens.find(x => x.id === osId)
     if (!o || o.status === 'Entregue') return
     const hoje = new Date().toLocaleDateString('pt-BR')
+    // As fichas migradas vieram sem itens e sem a marca de pagas — o dinheiro
+    // ficou só no sistema antigo. O motivo certo vai para o histórico.
+    const motivo = o.pago ? 'OS já estava paga' : 'sem valor a cobrar no sistema'
     mudarOrdem(osId, {
       status: 'Entregue',
       pago: true,
       dataEntrega: hoje,
       dataConclusao: o.dataConclusao || hoje,
       etapaEm: Date.now(),
-    }, `Entregue sem novo lançamento no caixa — OS já estava paga (liberado por ${currentUser?.nome || 'usuário'})`)
+    }, `Entregue sem lançamento no caixa — ${motivo} (liberado por ${currentUser?.nome || 'usuário'})`)
   }
 
   function salvarDiagnostico(osId, dados) {

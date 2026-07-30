@@ -566,16 +566,20 @@ export default function OrdemDetalhe() {
               <Banknote size={14} />Pagar e entregar
             </button>
           )}
-          {/* OS paga não mostra "Pagar e entregar" (cobraria de novo) e o dropdown
-              não tem "Entregue": as pagas do sistema antigo ficavam presas no
-              "Pronto p/ retirada" para sempre. Esta é a saída — sem tocar no caixa. */}
-          {os.pago && !osFinalizada && (
+          {/* OS que não tem como ser cobrada ficava sem saída para "Entregue":
+              paga esconde o "Pagar e entregar" (cobraria de novo) e sem valor o
+              modal nem abre — caso das fichas migradas, que vieram sem itens e
+              sem a marca de pagas. Esta é a saída, sem tocar no caixa. */}
+          {!osFinalizada && os.status !== 'Rejeitada' && !podeCobrar && (
             <button onClick={() => {
-              if (!confirm(`Esta OS já está paga. Marcar como entregue SEM lançar nada no caixa?\n\nFica registrado no histórico que você liberou.`)) return
+              const pergunta = os.pago
+                ? 'Esta OS já está paga. Marcar como entregue SEM lançar nada no caixa?\n\nFica registrado no histórico que você liberou.'
+                : 'Esta OS não tem valor lançado. Use se o veículo já foi pago e entregue no sistema antigo, ou se não há nada a cobrar.\n\nVira "Entregue" sem lançar nada no caixa, e fica registrado que você liberou. Confirmar?'
+              if (!confirm(pergunta)) return
               comProtecao(() => entregarSemCobrar(os.id))
             }} disabled={processandoAcao}
               className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
-              <CheckCircle2 size={14} />Entregar (já paga)
+              <CheckCircle2 size={14} />{os.pago ? 'Entregar (já paga)' : 'Entregar sem cobrança'}
             </button>
           )}
           {os.status === 'Concluída' && (
