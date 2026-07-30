@@ -48,6 +48,9 @@ export default function Orcamentos() {
     const fromOS = location.state?.fromOS
     if (!fromOS) return
     const { clienteId, veiculoId, itens: itensOS } = fromOS
+    // A OS agora carrega observações e validade — chegam prontos aqui também
+    if (fromOS.observacoes) setObservacoes(fromOS.observacoes)
+    if (fromOS.validade) setValidade(fromOS.validade)
     const cli = clienteId ? clientes.find(c => c.id === Number(clienteId)) : null
     const veic = veiculoId ? veiculos.find(v => v.id === Number(veiculoId)) : null
     if (cli) {

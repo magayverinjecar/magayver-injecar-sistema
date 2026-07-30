@@ -37,6 +37,13 @@ function nomeMecanico(mecanico, os) {
   return mecanico?.nome || os?.reparadorNome || os?.responsavelNome || os?.tecnicoNome || ''
 }
 
+// A validade só vale enquanto a nota funciona como orçamento: depois de paga ou
+// entregue a linha some — o recibo final não pode sair "válido por 7 dias".
+function validadeOrcamento(os) {
+  if (!os?.validadeOrcamento || os.pago || os.status === 'Entregue') return ''
+  return String(os.validadeOrcamento)
+}
+
 function abrirJanela(html, titulo) {
   const w = window.open('', '_blank')
   if (!w) { alert('Permita popups para imprimir.'); return }
@@ -104,6 +111,8 @@ function gerarCupom(os, cliente, veiculo, mecanico, total, cfg, largura, fSize) 
     <hr class="hr">
     ${pNum(os.descontoGeral) > 0 ? `<div class="row"><span>Subtotal:</span><span>${fmt(total + pNum(os.descontoGeral))}</span></div><div class="row" style="color:#b91c1c"><span>Desconto:</span><span>- ${fmt(pNum(os.descontoGeral))}</span></div>` : ''}
     <div class="total"><span>TOTAL:</span><span>${fmt(total)}</span></div>
+    ${os.observacoes ? `<hr class="hr"><div class="b">OBSERVAÇÕES</div><div style="font-size:${fSize === '12px' ? '10px' : '9px'}">${esc(os.observacoes)}</div>` : ''}
+    ${validadeOrcamento(os) ? `<div class="c" style="margin-top:4px;font-size:${fSize === '12px' ? '10px' : '9px'};font-weight:bold">Orçamento válido por ${esc(validadeOrcamento(os))}</div>` : ''}
     <hr class="hr">
     <div class="c" style="margin-top:6px;font-size:${fSize === '12px' ? '10px' : '9px'};font-weight:bold">GARANTIA: 90 DIAS</div>
     <div class="c" style="font-size:${fSize === '12px' ? '9px' : '8px'}">nos serviços realizados (CDC art. 26)</div>
@@ -330,6 +339,7 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
     </div>
 
     ${os.observacoes ? `<div style="font-size:10px;color:#475569;margin-bottom:12px;border-left:3px solid #1e293b;padding-left:8px"><strong>Observações:</strong> ${esc(os.observacoes)}</div>` : ''}
+    ${validadeOrcamento(os) ? `<div style="font-size:10px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:6px 10px;margin-bottom:12px">Este orçamento tem validade de <strong>${esc(validadeOrcamento(os))}</strong> a partir da data de emissão.</div>` : ''}
 
     <!-- GARANTIA -->
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:8px 12px;margin-bottom:12px;text-align:center">
@@ -433,6 +443,9 @@ function gerarA4Comp(os, cliente, veiculo, mecanico, total, cfg) {
       <span class="total-val">${fmt(total)}</span>
     </div>
 
+    ${os.observacoes ? `<div style="font-size:9px;color:#475569;margin-top:8px;border-left:3px solid #1e293b;padding-left:8px"><strong>Observações:</strong> ${esc(os.observacoes)}</div>` : ''}
+    ${validadeOrcamento(os) ? `<div style="font-size:9px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:5px 8px;margin-top:6px">Este orçamento tem validade de <strong>${esc(validadeOrcamento(os))}</strong> a partir da data de emissão.</div>` : ''}
+
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:6px 10px;margin-top:8px;margin-bottom:6px;text-align:center">
       <span style="font-size:10px;font-weight:700;color:#15803d">✓ Garantia de 90 dias</span>
       <span style="font-size:9px;color:#166534"> nos serviços realizados (CDC art. 26)</span>
@@ -521,6 +534,9 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
       <span style="font-size:10px;color:#6b7280">TOTAL</span>
       <span class="total-val">${fmt(total)}</span>
     </div>
+
+    ${os.observacoes ? `<div style="font-size:8px;color:#475569;margin-top:6px;border-left:3px solid #1e293b;padding-left:6px"><strong>Observações:</strong> ${esc(os.observacoes)}</div>` : ''}
+    ${validadeOrcamento(os) ? `<div style="font-size:8px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:4px 6px;margin-top:5px">Este orçamento tem validade de <strong>${esc(validadeOrcamento(os))}</strong> a partir da data de emissão.</div>` : ''}
 
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:5px 8px;margin-top:6px;margin-bottom:5px;text-align:center">
       <span style="font-size:9px;font-weight:700;color:#15803d">✓ Garantia de 90 dias</span>

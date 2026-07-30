@@ -89,6 +89,7 @@ export default function OrdemDetalhe() {
   const [salvandoDiag, setSalvandoDiag] = useState(false)
   const [enviandoFoto, setEnviandoFoto] = useState(false)
   const [descontoLocal, setDescontoLocal] = useState(null)
+  const [obsOrcLocal, setObsOrcLocal] = useState(null)
   const [salvandoVistoria, setSalvandoVistoria] = useState(false)
   const [processandoAcao, setProcessandoAcao] = useState(false)
   const [linkAssinCopiado, setLinkAssinCopiado] = useState(false)
@@ -131,7 +132,10 @@ export default function OrdemDetalhe() {
 
   function gerarOrcamento() {
     // leva os dados da OS para a tela de Orçamento
-    navigate('/orcamentos', { state: { fromOS: { clienteId: os.clienteId, veiculoId: os.veiculoId, itens: os.itens } } })
+    navigate('/orcamentos', { state: { fromOS: {
+      clienteId: os.clienteId, veiculoId: os.veiculoId, itens: os.itens,
+      observacoes: os.observacoes || '', validade: os.validadeOrcamento || '',
+    } } })
   }
 
   function whatsapp() {
@@ -1077,6 +1081,44 @@ export default function OrdemDetalhe() {
             </table>
             </div>
           )}
+        </div>
+
+        {/* Observações e validade do orçamento — mesmos campos da tela de
+            Orçamentos avulsa; saem na impressão. Salvam ao sair do campo. */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+          <h3 className="font-semibold text-slate-800 mb-3">Observações e validade do orçamento</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_170px] gap-3">
+            <label className="block">
+              <span className="text-xs text-slate-500">Observações (saem na impressão)</span>
+              <textarea rows={3}
+                value={obsOrcLocal ?? os.observacoes ?? ''}
+                onChange={e => setObsOrcLocal(e.target.value)}
+                onBlur={() => {
+                  if (obsOrcLocal === null || obsOrcLocal === (os.observacoes || '')) { setObsOrcLocal(null); return }
+                  atualizarOrdem(os.id, { observacoes: obsOrcLocal })
+                  setObsOrcLocal(null)
+                }}
+                disabled={osFinalizada}
+                placeholder="Garantia, condições, prazo..."
+                className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none disabled:bg-slate-50 disabled:text-slate-400" />
+            </label>
+            <label className="block">
+              <span className="text-xs text-slate-500">Validade do orçamento</span>
+              <select value={os.validadeOrcamento || ''}
+                onChange={e => atualizarOrdem(os.id, { validadeOrcamento: e.target.value })}
+                disabled={osFinalizada}
+                className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-400">
+                <option value="">Sem validade</option>
+                <option>7 dias</option>
+                <option>15 dias</option>
+                <option>30 dias</option>
+                <option>60 dias</option>
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1.5 leading-snug">
+                Sai na impressão enquanto a OS não for paga; some no recibo final.
+              </p>
+            </label>
+          </div>
         </div>
         </div>
       )}
