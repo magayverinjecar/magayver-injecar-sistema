@@ -133,7 +133,9 @@ function tabelaCliente(cliente, os) {
     <tr>
       <td style="padding:5px 7px;border-right:1px solid #e2e8f0;font-weight:600">${esc(cliente?.nome || '—')}</td>
       <td style="padding:5px 7px;border-right:1px solid #e2e8f0">${esc(cliente?.telefone || '—')}</td>
-      <td style="padding:5px 7px;border-right:1px solid #e2e8f0">${esc(cliente?.cpf || '—')}</td>
+      <!-- A Nova Entrada grava em cpfCnpj; lendo só "cpf" o documento do cliente
+           nunca saía na nota, mesmo estando cadastrado. -->
+      <td style="padding:5px 7px;border-right:1px solid #e2e8f0">${esc(cliente?.cpfCnpj || cliente?.cpf || '—')}</td>
       <td style="padding:5px 7px">${esc(cliente?.email || '—')}</td>
     </tr>
   </table>

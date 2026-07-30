@@ -60,6 +60,7 @@ export default function OrdemDetalhe() {
   const navigate = useNavigate()
   const {
     ordens, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque,
+    setClientes, setVeiculos,
     atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
     excluirOrdem, subtotalOrdem, totalOrdem, caixaTurno, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
     concluirOrdem, entregarOrdem, salvarDiagnostico, salvarVistoria,
@@ -70,6 +71,7 @@ export default function OrdemDetalhe() {
   const os = ordens.find(o => o.id === osId)
   const [aba, setAba] = useState('Dados')
   const [modalEditar, setModalEditar] = useState(false)
+  const [modalCliente, setModalCliente] = useState(false)
   const [modalItem, setModalItem] = useState(false)
   const [menuImpressao, setMenuImpressao] = useState(false)
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
@@ -430,6 +432,30 @@ export default function OrdemDetalhe() {
     }
   }
 
+  // Grava no cadastro do cliente e do veículo. A OS guarda cópias do nome, do
+  // modelo e da placa (para OS antiga e para o link do cliente): sem atualizar
+  // essas cópias, a tela mostrava o dado corrigido e a nota impressa o antigo.
+  function salvarClienteVeiculo(c, v) {
+    if (os.clienteId != null) {
+      setClientes(prev => prev.map(x => x.id === os.clienteId ? { ...x, ...c } : x))
+    }
+    if (os.veiculoId != null) {
+      setVeiculos(prev => prev.map(x => x.id === os.veiculoId ? { ...x, ...v } : x))
+    }
+    const modeloCompleto = [v.marca, v.modelo].filter(Boolean).join(' ').trim()
+    atualizarOrdem(os.id, {
+      clienteNome: c.nome,
+      clienteTelefone: c.telefone,
+      veiculoModelo: modeloCompleto || v.modelo,
+      veiculoPlaca: v.placa,
+      combustivel: v.combustivel || os.combustivel,
+      historico: [
+        { id: gerarId(), texto: `Dados do cliente/veículo corrigidos por ${currentUser?.nome || 'usuário'}`, data: new Date().toLocaleString('pt-BR') },
+        ...(os.historico || []),
+      ],
+    })
+  }
+
   function confirmarReabrir() {
     reabrirOrdem(os.id)
     setModalReabrir(false)
@@ -626,12 +652,38 @@ export default function OrdemDetalhe() {
               </div>
             )}
           </div>
+          {/* A recepção coleta documento, endereço completo, 2º telefone, e-mail,
+              motor e combustível — nada disso aparecia aqui, e não havia por onde
+              corrigir quando alguém digitava errado na entrada. */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-            <h3 className="font-semibold text-slate-800 mb-4">Cliente / Veículo</h3>
-            <Linha label="Cliente" valor={cliente?.nome || '—'} />
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-800">Cliente / Veículo</h3>
+              <button onClick={() => setModalCliente(true)}
+                className="flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:text-primary-700">
+                <Pencil size={13} />Corrigir dados
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 uppercase tracking-wide font-medium mb-1">Cliente</p>
+            <Linha label="Nome" valor={cliente?.nome || os.clienteNome || '—'} />
+            <Linha label="CPF / CNPJ" valor={cliente?.cpfCnpj || cliente?.cpf || '—'} />
             <Linha label="Telefone" valor={cliente?.telefone || '—'} />
-            <Linha label="Veículo" valor={[veiculo?.placa || os.veiculoPlaca, nomeVeiculo(veiculo, os)].filter(x => x && x !== '—').join(' - ') || '—'} />
-            <Linha label="Ano/Cor" valor={veiculo ? `${veiculo.ano || '—'} / ${veiculo.cor || '—'}` : '—'} />
+            {cliente?.telefone2 && <Linha label="Telefone 2" valor={cliente.telefone2} />}
+            <Linha label="E-mail" valor={cliente?.email || '—'} />
+            <Linha label="Endereço" valor={[cliente?.endereco, cliente?.numero].filter(Boolean).join(', ') || '—'} />
+            <Linha label="Bairro" valor={cliente?.bairro || '—'} />
+            <Linha label="Cidade / UF" valor={cliente?.cidadeEstado || '—'} />
+            <Linha label="CEP" valor={cliente?.cep || '—'} />
+
+            <p className="text-xs text-slate-400 uppercase tracking-wide font-medium mt-4 mb-1 pt-3 border-t border-slate-50">Veículo</p>
+            <Linha label="Placa" valor={veiculo?.placa || os.veiculoPlaca || '—'} />
+            <Linha label="Marca / Modelo" valor={nomeVeiculo(veiculo, os)} />
+            <Linha label="Ano" valor={veiculo?.ano || '—'} />
+            <Linha label="Cor" valor={veiculo?.cor || '—'} />
+            <Linha label="Motor" valor={veiculo?.motor || '—'} />
+            <Linha label="Combustível" valor={veiculo?.combustivel || os.combustivel || '—'} />
+            {os.ultimaRevisao && <Linha label="Última revisão" valor={os.ultimaRevisao} />}
+            {os.numCondutores && <Linha label="Nº de condutores" valor={os.numCondutores} />}
           </div>
 
           {/* A conferência de entrega era gravada e nunca lida: não havia como
@@ -1185,6 +1237,11 @@ export default function OrdemDetalhe() {
       )}
 
       {modalEditar && <ModalEditar os={os} funcionarios={funcionarios} onClose={() => setModalEditar(false)} onSalvar={d => { atualizarOrdem(os.id, d); setModalEditar(false) }} />}
+      {modalCliente && (
+        <ModalEditarClienteVeiculo cliente={cliente} veiculo={veiculo} os={os}
+          onClose={() => setModalCliente(false)}
+          onSalvar={(c, v) => { salvarClienteVeiculo(c, v); setModalCliente(false) }} />
+      )}
       {modalItem && <ModalAdicionarItem servicos={servicos} estoque={estoque} funcionarios={funcionarios} onClose={() => setModalItem(false)} onAdd={item => { adicionarItemOrdem(os.id, item); setModalItem(false) }} />}
 
       {/* Modal Finalizar OS */}
@@ -1502,6 +1559,72 @@ function Linha({ label, valor }) {
       <span className="text-sm text-slate-400">{label}</span>
       <span className="text-sm font-medium text-slate-700 text-right">{valor}</span>
     </div>
+  )
+}
+
+// Corrige o cadastro do cliente e do veículo sem sair da OS. Grava nas tabelas
+// de origem, então a correção vale para todas as outras OS do mesmo cliente.
+function ModalEditarClienteVeiculo({ cliente, veiculo, os, onClose, onSalvar }) {
+  const [c, setC] = useState({
+    nome: cliente?.nome || os.clienteNome || '', cpfCnpj: cliente?.cpfCnpj || cliente?.cpf || '',
+    telefone: cliente?.telefone || '', telefone2: cliente?.telefone2 || '',
+    email: cliente?.email || '', cep: cliente?.cep || '', endereco: cliente?.endereco || '',
+    numero: cliente?.numero || '', bairro: cliente?.bairro || '', cidadeEstado: cliente?.cidadeEstado || '',
+  })
+  const [v, setV] = useState({
+    placa: veiculo?.placa || os.veiculoPlaca || '', marca: veiculo?.marca || '',
+    modelo: veiculo?.modelo || '', ano: veiculo?.ano || '', cor: veiculo?.cor || '',
+    motor: veiculo?.motor || '', combustivel: veiculo?.combustivel || os.combustivel || '',
+  })
+  const campo = (label, valor, aoMudar, extra = {}) => (
+    <label className="block">
+      <span className="text-xs text-slate-500">{label}</span>
+      <input value={valor} onChange={e => aoMudar(e.target.value)} {...extra}
+        className="w-full mt-0.5 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+    </label>
+  )
+  return (
+    <ModalBase title="Corrigir dados do cliente e do veículo" onClose={onClose}>
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Cliente</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">{campo('Nome completo', c.nome, x => setC({ ...c, nome: x }))}</div>
+            {campo('CPF / CNPJ', c.cpfCnpj, x => setC({ ...c, cpfCnpj: x }))}
+            {campo('Telefone', c.telefone, x => setC({ ...c, telefone: x }))}
+            {campo('Telefone 2', c.telefone2, x => setC({ ...c, telefone2: x }))}
+            {campo('CEP', c.cep, x => setC({ ...c, cep: x }))}
+            <div className="col-span-2">{campo('E-mail', c.email, x => setC({ ...c, email: x }), { type: 'email' })}</div>
+            <div className="col-span-2">{campo('Logradouro', c.endereco, x => setC({ ...c, endereco: x }))}</div>
+            {campo('Número', c.numero, x => setC({ ...c, numero: x }))}
+            {campo('Bairro', c.bairro, x => setC({ ...c, bairro: x }))}
+            <div className="col-span-2">{campo('Cidade / UF', c.cidadeEstado, x => setC({ ...c, cidadeEstado: x }))}</div>
+          </div>
+        </div>
+        <div className="pt-3 border-t border-slate-100">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Veículo</p>
+          <div className="grid grid-cols-2 gap-3">
+            {campo('Placa', v.placa, x => setV({ ...v, placa: x.toUpperCase() }))}
+            {campo('Marca', v.marca, x => setV({ ...v, marca: x }))}
+            {campo('Modelo', v.modelo, x => setV({ ...v, modelo: x }))}
+            {campo('Ano', v.ano, x => setV({ ...v, ano: x }))}
+            {campo('Cor', v.cor, x => setV({ ...v, cor: x }))}
+            {campo('Motor', v.motor, x => setV({ ...v, motor: x }))}
+            <div className="col-span-2">{campo('Combustível', v.combustivel, x => setV({ ...v, combustivel: x }))}</div>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2">
+          A correção vale para o cadastro, então aparece também nas outras OS deste cliente.
+        </p>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 border border-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+          <button onClick={() => onSalvar(c, v)} disabled={!c.nome.trim()}
+            className="flex-1 bg-primary-500 hover:bg-primary-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">
+            Salvar correção
+          </button>
+        </div>
+      </div>
+    </ModalBase>
   )
 }
 
