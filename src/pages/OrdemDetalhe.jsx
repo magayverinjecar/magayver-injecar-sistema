@@ -64,7 +64,7 @@ export default function OrdemDetalhe() {
     atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
     excluirOrdem, subtotalOrdem, totalOrdem, caixaTurno, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
     concluirOrdem, entregarOrdem, salvarDiagnostico, salvarVistoria,
-    aprovarOrcamento, recusarOrcamento, fecharRecusa, concluirReparo,
+    aprovarOrcamento, recusarOrcamento, fecharRecusa, concluirReparo, entregarSemCobrar,
   } = useApp()
   const { currentUser, temPermissao } = useAuth()
 
@@ -564,6 +564,18 @@ export default function OrdemDetalhe() {
           {podeCobrar && (
             <button onClick={() => { setPgtos([{ id: 1, forma: 'PIX', valor: total.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }]); setModalFinalizar(true) }} disabled={processandoAcao} className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
               <Banknote size={14} />Pagar e entregar
+            </button>
+          )}
+          {/* OS paga não mostra "Pagar e entregar" (cobraria de novo) e o dropdown
+              não tem "Entregue": as pagas do sistema antigo ficavam presas no
+              "Pronto p/ retirada" para sempre. Esta é a saída — sem tocar no caixa. */}
+          {os.pago && !osFinalizada && (
+            <button onClick={() => {
+              if (!confirm(`Esta OS já está paga. Marcar como entregue SEM lançar nada no caixa?\n\nFica registrado no histórico que você liberou.`)) return
+              comProtecao(() => entregarSemCobrar(os.id))
+            }} disabled={processandoAcao}
+              className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
+              <CheckCircle2 size={14} />Entregar (já paga)
             </button>
           )}
           {os.status === 'Concluída' && (
@@ -1385,6 +1397,17 @@ export default function OrdemDetalhe() {
                     Abrir o caixa agora
                   </button>
                 )}
+
+                {/* OS fechada na versão antiga: o dinheiro já entrou lá. Cobrar de
+                    novo aqui dobraria a receita do dia. */}
+                <button type="button" onClick={() => {
+                  if (!confirm('Usar só se este veículo JÁ FOI PAGO no sistema antigo.\n\nA OS vira "Entregue" sem lançar nada no caixa nem no financeiro, e fica registrado que você liberou. Confirmar?')) return
+                  setModalFinalizar(false)
+                  comProtecao(() => entregarSemCobrar(os.id))
+                }}
+                  className="w-full text-center text-xs text-slate-500 hover:text-slate-700 underline underline-offset-2 pt-1">
+                  Já foi paga no sistema antigo — entregar sem lançar no caixa
+                </button>
               </div>
             </div>
           </div>

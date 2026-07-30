@@ -409,14 +409,19 @@ export function AppProvider({ children }) {
   }
 
   // --- HELPERS ---
+  // Sequencial a partir do maior número existente: a próxima OS é sempre a
+  // anterior + 1. Os números antigos eram sorteados e ninguém conseguia saber
+  // qual OS veio antes de qual só de olhar o número.
   function gerarNumeroOS() {
-    const existentes = new Set(r.current.ordens.map(o => o.id))
-    for (let i = 0; i < 20; i++) {
-      const n = '#' + Math.floor(10000 + Math.random() * 89999)
-      if (!existentes.has(n)) return n
+    let max = 0
+    for (const o of r.current.ordens) {
+      const m = String(o.id || '').match(/^#(\d+)$/)
+      if (m) max = Math.max(max, Number(m[1]))
     }
-    const nums = r.current.ordens.map(o => parseInt((o.id || '').replace('#', '')) || 0)
-    return '#' + ((Math.max(0, ...nums)) + 1)
+    let n = max + 1
+    const existentes = new Set(r.current.ordens.map(o => String(o.id)))
+    while (existentes.has('#' + n)) n++
+    return '#' + n
   }
   function gerarNumeroChecklist() {
     const existentes = new Set(r.current.checklists.map(c => c.numero))
@@ -754,6 +759,22 @@ export function AppProvider({ children }) {
       total,
       pagamentos: pagamentos || [],
     })
+  }
+
+  // Saída para OS que já foi paga (no sistema antigo ou aqui): marca como
+  // entregue SEM passar pelo caixa — entregarOrdem lançaria a venda de novo e
+  // o dinheiro entraria em dobro. Não mexe em financeiro nem em estoque.
+  function entregarSemCobrar(osId) {
+    const o = r.current.ordens.find(x => x.id === osId)
+    if (!o || o.status === 'Entregue') return
+    const hoje = new Date().toLocaleDateString('pt-BR')
+    mudarOrdem(osId, {
+      status: 'Entregue',
+      pago: true,
+      dataEntrega: hoje,
+      dataConclusao: o.dataConclusao || hoje,
+      etapaEm: Date.now(),
+    }, `Entregue sem novo lançamento no caixa — OS já estava paga (liberado por ${currentUser?.nome || 'usuário'})`)
   }
 
   function salvarDiagnostico(osId, dados) {
@@ -1178,7 +1199,7 @@ export function AppProvider({ children }) {
     <AppContext.Provider value={{
       clientes, setClientes,
       veiculos, setVeiculos,
-      ordens, setOrdens, novaOrdem, pagarOrdem, reabrirOrdem, concluirOrdem, entregarOrdem,
+      ordens, setOrdens, novaOrdem, pagarOrdem, reabrirOrdem, concluirOrdem, entregarOrdem, entregarSemCobrar,
       atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
       adicionarFotoOrdem, removerFotoOrdem, excluirOrdem, subtotalOrdem, totalOrdem,
       salvarDiagnostico, salvarVistoria, encontrarOSDaFicha,
