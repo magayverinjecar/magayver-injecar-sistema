@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Camera, Trash2, CheckCircle2, AlertTriangle,
   Save, User, Clock, Car, X, ZoomIn, ChevronLeft, ChevronRight,
-  MessageCircle, Copy, Check, Stethoscope, Wrench,
+  MessageCircle, Copy, Check, Stethoscope, Wrench, ImagePlus,
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { nomeVeiculo } from '../utils/datas'
@@ -92,6 +92,7 @@ export default function VistoriaEntrada() {
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
   const [confirmarExcluir, setConfirmarExcluir] = useState(null)
   const inputRef = useRef(null)
+  const inputGaleriaRef = useRef(null)
 
   if (carregando) return (
     <div className="p-6 flex flex-col items-center justify-center min-h-64 gap-3 text-slate-400">
@@ -133,6 +134,13 @@ export default function VistoriaEntrada() {
   function abrirUpload(cat) {
     setCategoriaAtual(cat)
     setTimeout(() => inputRef.current?.click(), 10)
+  }
+
+  // Sem o capture, o celular abre o seletor com a galeria — o campo da câmera
+  // pula direto para ela e não deixava buscar uma foto já tirada.
+  function abrirGaleria(cat) {
+    setCategoriaAtual(cat)
+    setTimeout(() => inputGaleriaRef.current?.click(), 10)
   }
 
   async function handleFile(e) {
@@ -274,6 +282,7 @@ export default function VistoriaEntrada() {
       )}
 
       <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={handleFile} className="hidden" />
+      <input ref={inputGaleriaRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
 
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
@@ -328,23 +337,29 @@ export default function VistoriaEntrada() {
                   ))}
 
                   {(cat === 'Outros' || lista.length === 0) && (
-                    <button onClick={() => abrirUpload(cat)} disabled={uploading === cat}
-                      className={`w-full aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all ${
-                        uploading === cat
-                          ? 'border-cyan-400 bg-cyan-50'
-                          : 'border-slate-200 hover:border-cyan-400 hover:bg-cyan-50 text-slate-400 hover:text-cyan-600'
-                      }`}>
+                    <div className={`w-full aspect-video rounded-xl border-2 border-dashed flex transition-all ${
+                      uploading === cat
+                        ? 'border-cyan-400 bg-cyan-50 items-center justify-center'
+                        : 'border-slate-200'
+                    }`}>
                       {uploading === cat ? (
                         <span className="text-xs font-bold text-cyan-600 uppercase">Processando...</span>
                       ) : (
                         <>
-                          <Camera size={22} />
-                          <span className="text-[11px] font-bold uppercase">
-                            {lista.length > 0 ? 'Adicionar Mais' : 'Adicionar Foto'}
-                          </span>
+                          <button onClick={() => abrirUpload(cat)}
+                            className="flex-1 flex flex-col items-center justify-center gap-1.5 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-l-[10px] transition-colors">
+                            <Camera size={20} />
+                            <span className="text-[10px] font-bold uppercase">Tirar foto</span>
+                          </button>
+                          <div className="w-px bg-slate-200 my-2" />
+                          <button onClick={() => abrirGaleria(cat)}
+                            className="flex-1 flex flex-col items-center justify-center gap-1.5 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-r-[10px] transition-colors">
+                            <ImagePlus size={20} />
+                            <span className="text-[10px] font-bold uppercase">Galeria</span>
+                          </button>
                         </>
                       )}
-                    </button>
+                    </div>
                   )}
                 </div>
               </div>

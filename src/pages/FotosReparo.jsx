@@ -32,6 +32,7 @@ export default function FotosReparo() {
   const [salvo, setSalvo] = useState(false)
   const [linkCopiado, setLinkCopiado] = useState(false)
   const inputRef = useRef(null)
+  const inputGaleriaRef = useRef(null)
 
   if (carregando) return (
     <div className="p-6 flex flex-col items-center justify-center min-h-64 gap-3 text-slate-400">
@@ -202,9 +203,17 @@ export default function FotosReparo() {
             className="flex-1 flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-300 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors">
             {enviando
               ? <><Loader2 size={16} className="animate-spin" /> Enviando...</>
-              : <><ImagePlus size={16} /> Tirar / escolher foto</>}
+              : <><Camera size={16} /> Tirar foto</>}
+          </button>
+          {/* Sem o capture, o celular abre o seletor com a galeria — o campo da
+              câmera pula direto para ela e não deixava buscar foto já tirada. */}
+          <button onClick={() => inputGaleriaRef.current?.click()} disabled={enviando}
+            className="flex items-center justify-center gap-2 border border-orange-300 text-orange-700 hover:bg-orange-50 disabled:opacity-50 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors">
+            <ImagePlus size={16} /> Galeria
           </button>
           <input ref={inputRef} type="file" accept="image/*" multiple capture="environment"
+            onChange={adicionar} className="hidden" />
+          <input ref={inputGaleriaRef} type="file" accept="image/*" multiple
             onChange={adicionar} className="hidden" />
         </div>
 

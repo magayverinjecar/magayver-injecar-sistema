@@ -355,12 +355,13 @@ export default function ChecklistFotosDetalhe() {
         </div>
       </div>
 
-      {/* Input de arquivo oculto — 1 por vez, igual ao original */}
+      {/* Input de arquivo oculto — 1 por vez, igual ao original. Sem o capture
+          o celular mostra o menu com câmera E galeria — com ele, pulava direto
+          para a câmera. */}
       <input
         ref={inputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={handleFile}
         className="hidden"
       />

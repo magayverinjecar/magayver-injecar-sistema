@@ -358,8 +358,10 @@ export default function ChecklistDetalhe() {
                 className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
                 <ImagePlus size={15} /> Adicionar Foto
               </button>
+              {/* Sem o capture o celular mostra o menu com câmera E galeria —
+                  com ele, pulava direto para a câmera. */}
               <input ref={inputFotoRef} type="file" accept="image/*" multiple
-                onChange={adicionarFoto} className="hidden" capture="environment" />
+                onChange={adicionarFoto} className="hidden" />
             </div>
           )}
 

@@ -98,6 +98,7 @@ export default function OrdemDetalhe() {
   const [valorDiagnostico, setValorDiagnostico] = useState('')
   const [formaDiag, setFormaDiag] = useState('PIX')
   const inputFotoRef = useRef(null)
+  const inputGaleriaRef = useRef(null)
 
   // Rascunho em memória: enquanto qualquer um destes não for null, existe trabalho
   // digitado que ainda não foi para o banco. Fica antes do return de "OS não
@@ -1165,10 +1166,18 @@ export default function OrdemDetalhe() {
                   className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
                   {enviandoFoto
                     ? <><Loader2 size={15} className="animate-spin" /> Enviando...</>
-                    : <><ImagePlus size={15} /> Adicionar Foto</>}
+                    : <><Camera size={15} /> Tirar foto</>}
+                </button>
+                {/* Sem o capture, o celular abre o seletor com a galeria — o campo
+                    da câmera pula direto para ela e não deixava buscar foto já tirada. */}
+                <button onClick={() => inputGaleriaRef.current?.click()} disabled={enviandoFoto}
+                  className="flex items-center gap-2 border border-cyan-300 text-cyan-700 hover:bg-cyan-50 disabled:opacity-50 px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
+                  <ImagePlus size={15} /> Galeria
                 </button>
                 <input ref={inputFotoRef} type="file" accept="image/*" multiple
                   onChange={adicionarFotoOS} className="hidden" capture="environment" />
+                <input ref={inputGaleriaRef} type="file" accept="image/*" multiple
+                  onChange={adicionarFotoOS} className="hidden" />
               </div>
 
               {fotosOS.length === 0 ? (
