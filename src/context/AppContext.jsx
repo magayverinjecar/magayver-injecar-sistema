@@ -34,28 +34,52 @@ async function loadTable(tableName) {
   return tableName === 'ordens' ? itens.filter(o => !ehRascunho(o)) : itens
 }
 
-// Aplica diff entre prev e next na tabela Supabase
-async function supabaseDiff(tableName, prev, next) {
-  const prevMap = new Map(prev.map(i => [String(i.id), i]))
-  const nextMap = new Map(next.map(i => [String(i.id), i]))
+// ── Mescla de OS: gravar sem apagar o trabalho dos outros ────────────────────
+// O upsert grava a linha inteira ("a OS é esta foto"). Se outro navegador
+// gravou primeiro, a foto local está velha e a gravação cega apagaria o item
+// dele — era assim que peças sumiam do orçamento. Antes de gravar, o app relê
+// a linha no banco e junta os dois lados.
+// Exportadas para teste — são funções puras.
 
-  const toUpsert = []
-  for (const [id, item] of nextMap) {
-    if (!prevMap.has(id) || JSON.stringify(prevMap.get(id)) !== JSON.stringify(item)) {
-      toUpsert.push(item2row(item))
-    }
+// União de arrays com id (itens, fotos, histórico): sobrevive o que o remoto
+// tem + o que ESTE navegador adicionou/editou; o que este navegador removeu
+// sai; o que OUTRO removeu não é ressuscitado.
+export function unirPorId(remoto, prevLoc, nextLoc) {
+  const rem = remoto || [], pv = prevLoc || [], nx = nextLoc || []
+  const prevIds = new Set(pv.map(x => String(x?.id)))
+  const nextMap = new Map(nx.map(x => [String(x?.id), x]))
+  const saida = []
+  const noRemoto = new Set()
+  for (const it of rem) {
+    const k = String(it?.id)
+    noRemoto.add(k)
+    if (prevIds.has(k) && !nextMap.has(k)) continue        // este navegador removeu
+    saida.push(nextMap.has(k) ? nextMap.get(k) : it)       // editado aqui, ou intacto
   }
-  if (toUpsert.length > 0) {
-    const { error } = await supabase.from(tableName).upsert(toUpsert)
-    if (error) console.error(`Erro ao upsert em ${tableName}:`, error)
+  for (const it of nx) {
+    const k = String(it?.id)
+    if (noRemoto.has(k)) continue
+    if (prevIds.has(k)) continue                           // outro removeu — não ressuscita
+    saida.push(it)                                         // acréscimo deste navegador
   }
+  return saida
+}
 
-  for (const id of prevMap.keys()) {
-    if (!nextMap.has(id)) {
-      const { error } = await supabase.from(tableName).delete().eq('id', id)
-      if (error) console.error(`Erro ao deletar de ${tableName}:`, error)
-    }
+// Campos simples: vale o valor de quem mexeu. Se ESTE navegador alterou o
+// campo (prev ≠ next), o valor dele vai; senão fica o que está no banco.
+export function mesclarOrdem(prevRow, nextRow, remotoData) {
+  const prev = prevRow || {}, next = nextRow || {}, rem = remotoData || {}
+  const saida = { ...rem }
+  for (const k of new Set([...Object.keys(next), ...Object.keys(prev)])) {
+    if (k === 'id' || k === 'itens' || k === 'fotos' || k === 'historico') continue
+    const mudouAqui = JSON.stringify(prev[k]) !== JSON.stringify(next[k])
+    if (mudouAqui || !(k in rem)) saida[k] = next[k]
   }
+  saida.itens = unirPorId(rem.itens, prev.itens, next.itens)
+  saida.fotos = unirPorId(rem.fotos, prev.fotos, next.fotos)
+  saida.historico = unirPorId(rem.historico, prev.historico, next.historico)
+    .sort((a, b) => (b.quandoMs || 0) - (a.quandoMs || 0))
+  return saida
 }
 
 export function AppProvider({ children }) {
@@ -133,7 +157,7 @@ export function AppProvider({ children }) {
     const data = await loadTable(table)
     if (data === null) return
     aplicarTabela[table]?.(data)
-    setUltimaSync(Date.now())
+    marcarSync()
   }
 
   // Releitura sob demanda — o Modo TV usa como rede de segurança caso o Realtime caia.
@@ -143,7 +167,7 @@ export function AppProvider({ children }) {
     if (data === null) return false
     if (pendingWrites.current['ordens'] > 0) return true
     aplicarTabela.ordens(data)
-    setUltimaSync(Date.now())
+    marcarSync()
     return true
   }
 
@@ -156,6 +180,130 @@ export function AppProvider({ children }) {
     if (pendingWrites.current[table] === 0 && reloadPendente.current[table]) {
       reloadPendente.current[table] = false
       recarregarTabela(table)
+    }
+  }
+
+  // ── Gravação: mescla + retentativa + fila de falhas ────────────────────────
+  const [gravacaoPendente, setGravacaoPendente] = useState(0)
+  const filaFalhas = useRef([])      // gravações que falharam mesmo após retentativas
+  const drenandoFila = useRef(false)
+  const filasEscrita = useRef({})    // serializa as gravações por tabela
+  const ultimaSyncRef = useRef(Date.now())
+  const jaConectou = useRef(false)
+
+  function marcarSync() {
+    ultimaSyncRef.current = Date.now()
+    setUltimaSync(Date.now())
+  }
+
+  // Antes, uma falha de rede só ia para o console: a tela mostrava o item como
+  // salvo e ele nunca tinha chegado ao banco. Agora tenta 3 vezes e, se não
+  // der, entra na fila e o aviso vermelho aparece.
+  async function gravarComRetry(tabela, rows) {
+    for (let t = 0; t < 3; t++) {
+      try {
+        const { error } = await supabase.from(tabela).upsert(rows)
+        if (!error) return true
+        if (t === 2) console.error(`[${tabela}] upsert falhou após 3 tentativas:`, error)
+      } catch (e) { if (t === 2) console.error(`[${tabela}] upsert exceção:`, e) }
+      if (t < 2) await new Promise(r => setTimeout(r, 700 * (t + 1)))
+    }
+    return false
+  }
+
+  async function apagarComRetry(tabela, id) {
+    for (let t = 0; t < 3; t++) {
+      try {
+        const { error } = await supabase.from(tabela).delete().eq('id', id)
+        if (!error) return true
+        if (t === 2) console.error(`[${tabela}] delete falhou após 3 tentativas:`, error)
+      } catch (e) { if (t === 2) console.error(`[${tabela}] delete exceção:`, e) }
+      if (t < 2) await new Promise(r => setTimeout(r, 700 * (t + 1)))
+    }
+    return false
+  }
+
+  function registrarFalha(pendencia) {
+    filaFalhas.current.push(pendencia)
+    setGravacaoPendente(filaFalhas.current.length)
+  }
+
+  async function tentarFila() {
+    if (drenandoFila.current || filaFalhas.current.length === 0) return
+    drenandoFila.current = true
+    const pendentes = filaFalhas.current.splice(0)
+    for (const p of pendentes) {
+      try {
+        const { error } = p.delId
+          ? await supabase.from(p.tabela).delete().eq('id', p.delId)
+          : await supabase.from(p.tabela).upsert(p.rows)
+        if (error) filaFalhas.current.push(p)
+      } catch { filaFalhas.current.push(p) }
+    }
+    setGravacaoPendente(filaFalhas.current.length)
+    drenandoFila.current = false
+  }
+
+  // Duas gravações rápidas do MESMO navegador não podem correr em paralelo:
+  // a segunda releria o banco antes de a primeira terminar e a mescla
+  // descartaria o que a primeira acabou de adicionar.
+  function encadearEscrita(tabela, tarefa) {
+    const anterior = filasEscrita.current[tabela] || Promise.resolve()
+    const proxima = anterior.then(tarefa, tarefa)
+    filasEscrita.current[tabela] = proxima.catch(() => {})
+    return proxima
+  }
+
+  function supabaseDiff(tableName, prev, next) {
+    return encadearEscrita(tableName, () => executarDiff(tableName, prev, next))
+  }
+
+  async function executarDiff(tableName, prev, next) {
+    const prevMap = new Map(prev.map(i => [String(i.id), i]))
+    const nextMap = new Map(next.map(i => [String(i.id), i]))
+
+    const paraGravar = []
+    for (const [id, item] of nextMap) {
+      if (!prevMap.has(id) || JSON.stringify(prevMap.get(id)) !== JSON.stringify(item)) {
+        paraGravar.push(item)
+      }
+    }
+    if (paraGravar.length > 0) {
+      let rows
+      if (tableName === 'ordens') {
+        // Relê a linha atual e mescla: o que outro navegador gravou nesse meio
+        // tempo sobrevive junto com o que este navegador está gravando agora.
+        rows = await Promise.all(paraGravar.map(async item => {
+          const id = String(item.id)
+          try {
+            const { data: rem } = await supabase.from('ordens').select('data').eq('id', id).maybeSingle()
+            if (rem?.data) return { id, data: mesclarOrdem(prevMap.get(id), item, rem.data) }
+          } catch { /* sem rede agora — grava a foto local; a retentativa cuida */ }
+          return item2row(item)
+        }))
+      } else {
+        rows = paraGravar.map(item2row)
+      }
+      const ok = await gravarComRetry(tableName, rows)
+      if (!ok) registrarFalha({ tabela: tableName, rows })
+    }
+
+    for (const id of prevMap.keys()) {
+      if (!nextMap.has(id)) {
+        const ok = await apagarComRetry(tableName, id)
+        if (!ok) registrarFalha({ tabela: tableName, delId: id })
+      }
+    }
+  }
+
+  // Tela que passou tempo em segundo plano (celular no bolso) fica congelada no
+  // passado: o realtime não reenvia o que se perdeu. Ao acordar ou reconectar,
+  // esvazia a fila de falhas e relê tudo.
+  async function ressincronizar() {
+    await tentarFila()
+    const tabelas = [...Object.keys(aplicarTabela), 'caixa_turno', 'configuracoes']
+    for (const t of tabelas) {
+      try { await recarregarTabela(t) } catch (e) { console.error(`[ressync ${t}]`, e) }
     }
   }
 
@@ -343,10 +491,36 @@ export function AppProvider({ children }) {
 
     ch.subscribe((status) => {
       setRealtimeOk(status === 'SUBSCRIBED')
-      if (status === 'SUBSCRIBED') setUltimaSync(Date.now())
+      if (status === 'SUBSCRIBED') {
+        marcarSync()
+        // Reconexão (não a primeira): os eventos perdidos durante a queda não
+        // são reenviados — sem reler tudo, a tela seguiria congelada no passado.
+        if (jaConectou.current) ressincronizar()
+        jaConectou.current = true
+      }
     })
 
     return () => { supabase.removeChannel(ch) }
+  }, [])
+
+  // Acordou (aba voltou do segundo plano / internet voltou) → esvazia a fila de
+  // falhas e, se está sem sincronizar há mais de 30s, relê tudo antes que
+  // alguém grave por cima com uma tela velha.
+  useEffect(() => {
+    const aoAcordar = () => {
+      if (document.visibilityState === 'hidden') return
+      const dessincronizado = Date.now() - ultimaSyncRef.current > 30000
+      if (!dessincronizado && filaFalhas.current.length === 0) return
+      ressincronizar()
+    }
+    document.addEventListener('visibilitychange', aoAcordar)
+    window.addEventListener('online', aoAcordar)
+    const timer = setInterval(() => { if (filaFalhas.current.length > 0) tentarFila() }, 30000)
+    return () => {
+      document.removeEventListener('visibilitychange', aoAcordar)
+      window.removeEventListener('online', aoAcordar)
+      clearInterval(timer)
+    }
   }, [])
 
   // Factory de setter com atualização otimista + persistência Supabase
@@ -386,12 +560,12 @@ export function AppProvider({ children }) {
     const done = () => fimGravando('caixa_turno')
     if (next === null) {
       supabase.from('caixa_turno').delete().eq('id', 'caixa-turno')
-        .then(({ error }) => { if (error) console.error('[caixa_turno] Erro ao deletar:', error) })
+        .then(({ error }) => { if (error) { console.error('[caixa_turno] Erro ao deletar:', error); registrarFalha({ tabela: 'caixa_turno', delId: 'caixa-turno' }) } })
         .finally(done)
     } else {
       const { id: _id, ...data } = next
       supabase.from('caixa_turno').upsert({ id: 'caixa-turno', data })
-        .then(({ error }) => { if (error) console.error('[caixa_turno] Erro ao salvar:', error) })
+        .then(({ error }) => { if (error) { console.error('[caixa_turno] Erro ao salvar:', error); registrarFalha({ tabela: 'caixa_turno', rows: [{ id: 'caixa-turno', data }] }) } })
         .finally(done)
     }
   }
@@ -1230,6 +1404,14 @@ export function AppProvider({ children }) {
       carregando,
       realtimeOk, ultimaSync, sincronizarOrdens,
     }}>
+      {/* Falha de gravação não pode ser silenciosa: antes, o erro ia só para o
+          console e a pessoa fechava a tela achando que estava salvo. */}
+      {gravacaoPendente > 0 && (
+        <div className="fixed top-0 inset-x-0 z-[9999] bg-red-600 text-white text-sm font-semibold text-center py-2.5 px-4 shadow-lg">
+          ⚠ {gravacaoPendente === 1 ? 'Uma alteração ainda NÃO foi salva' : `${gravacaoPendente} alterações ainda NÃO foram salvas`} no
+          servidor — verifique a internet. Vou tentar de novo sozinho; não feche esta tela.
+        </div>
+      )}
       {children}
     </AppContext.Provider>
   )
