@@ -44,6 +44,19 @@ function validadeOrcamento(os) {
   return String(os.validadeOrcamento)
 }
 
+// Texto fixo de Configurações (diária de pátio): sai sozinho em todo orçamento
+// para ninguém precisar digitar a cada OS. Some no recibo de OS paga/entregue.
+function politicaPatioTexto(os, cfg) {
+  const texto = (cfg?.politicaPatio || '').trim()
+  if (!texto || os?.pago || os?.status === 'Entregue') return ''
+  return texto
+}
+function politicaPatio(os, cfg) {
+  const texto = politicaPatioTexto(os, cfg)
+  if (!texto) return ''
+  return `<div style="font-size:9px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:6px 10px;margin-bottom:10px;white-space:pre-line">${esc(texto)}</div>`
+}
+
 function abrirJanela(html, titulo) {
   const w = window.open('', '_blank')
   if (!w) { alert('Permita popups para imprimir.'); return }
@@ -113,6 +126,7 @@ function gerarCupom(os, cliente, veiculo, mecanico, total, cfg, largura, fSize) 
     <div class="total"><span>TOTAL:</span><span>${fmt(total)}</span></div>
     ${os.observacoes ? `<hr class="hr"><div class="b">OBSERVAÇÕES</div><div style="font-size:${fSize === '12px' ? '10px' : '9px'}">${esc(os.observacoes)}</div>` : ''}
     ${validadeOrcamento(os) ? `<div class="c" style="margin-top:4px;font-size:${fSize === '12px' ? '10px' : '9px'};font-weight:bold">Orçamento válido por ${esc(validadeOrcamento(os))}</div>` : ''}
+    ${politicaPatioTexto(os, cfg) ? `<hr class="hr"><div style="font-size:${fSize === '12px' ? '9px' : '8px'};white-space:pre-line">${esc(politicaPatioTexto(os, cfg))}</div>` : ''}
     <hr class="hr">
     <div class="c" style="margin-top:6px;font-size:${fSize === '12px' ? '10px' : '9px'};font-weight:bold">GARANTIA: 90 DIAS</div>
     <div class="c" style="font-size:${fSize === '12px' ? '9px' : '8px'}">nos serviços realizados (CDC art. 26)</div>
@@ -340,6 +354,7 @@ function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
 
     ${os.observacoes ? `<div style="font-size:10px;color:#475569;margin-bottom:12px;border-left:3px solid #1e293b;padding-left:8px"><strong>Observações:</strong> ${esc(os.observacoes)}</div>` : ''}
     ${validadeOrcamento(os) ? `<div style="font-size:10px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:6px 10px;margin-bottom:12px">Este orçamento tem validade de <strong>${esc(validadeOrcamento(os))}</strong> a partir da data de emissão.</div>` : ''}
+    ${politicaPatio(os, cfg)}
 
     <!-- GARANTIA -->
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:8px 12px;margin-bottom:12px;text-align:center">
@@ -445,6 +460,7 @@ function gerarA4Comp(os, cliente, veiculo, mecanico, total, cfg) {
 
     ${os.observacoes ? `<div style="font-size:9px;color:#475569;margin-top:8px;border-left:3px solid #1e293b;padding-left:8px"><strong>Observações:</strong> ${esc(os.observacoes)}</div>` : ''}
     ${validadeOrcamento(os) ? `<div style="font-size:9px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:5px 8px;margin-top:6px">Este orçamento tem validade de <strong>${esc(validadeOrcamento(os))}</strong> a partir da data de emissão.</div>` : ''}
+    ${politicaPatio(os, cfg) ? `<div style="margin-top:6px">${politicaPatio(os, cfg)}</div>` : ''}
 
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:6px 10px;margin-top:8px;margin-bottom:6px;text-align:center">
       <span style="font-size:10px;font-weight:700;color:#15803d">✓ Garantia de 90 dias</span>
@@ -537,6 +553,7 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
 
     ${os.observacoes ? `<div style="font-size:8px;color:#475569;margin-top:6px;border-left:3px solid #1e293b;padding-left:6px"><strong>Observações:</strong> ${esc(os.observacoes)}</div>` : ''}
     ${validadeOrcamento(os) ? `<div style="font-size:8px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:4px 6px;margin-top:5px">Este orçamento tem validade de <strong>${esc(validadeOrcamento(os))}</strong> a partir da data de emissão.</div>` : ''}
+    ${politicaPatio(os, cfg) ? `<div style="margin-top:5px">${politicaPatio(os, cfg)}</div>` : ''}
 
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:5px 8px;margin-top:6px;margin-bottom:5px;text-align:center">
       <span style="font-size:9px;font-weight:700;color:#15803d">✓ Garantia de 90 dias</span>
@@ -711,6 +728,7 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
 
     <!-- OBSERVAÇÕES E VALIDADE -->
     ${obsBlock}
+    ${(cfg?.politicaPatio || '').trim() ? `<div style="font-size:9px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:6px 10px;margin-bottom:10px;white-space:pre-line">${esc(cfg.politicaPatio.trim())}</div>` : ''}
 
     <div style="font-size:10px;color:#475569;margin-bottom:16px;text-align:center">
       Este orçamento tem validade de <strong>${validadeTexto}</strong> a partir da data de emissão.

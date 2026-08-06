@@ -11,6 +11,7 @@ const DEFAULTS = {
   endereco: '',
   email: '',
   responsavel: 'Magayver Torres',
+  politicaPatio: '',
 }
 
 export default function Configuracoes() {
@@ -67,6 +68,16 @@ export default function Configuracoes() {
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Endereço</label>
             <input value={form.endereco} onChange={e => setForm(f => ({ ...f, endereco: e.target.value }))} placeholder="Rua, número, bairro, cidade" className={inp} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Política de pátio (sai sozinha na impressão do orçamento)</label>
+            <textarea rows={4} value={form.politicaPatio || ''} onChange={e => setForm(f => ({ ...f, politicaPatio: e.target.value }))}
+              spellCheck lang="pt-BR"
+              placeholder="Ex: Após 24 horas do comunicado, será cobrada diária de pátio de R$ 35,00..."
+              className={inp + ' resize-none'} />
+            <p className="text-xs text-slate-400 mt-1">
+              Aparece em todo orçamento impresso (avulso e da OS) sem precisar digitar. Some no recibo de OS paga e entregue. Deixe vazio para não imprimir.
+            </p>
           </div>
           <button onClick={salvar} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
             <Save size={15} />
