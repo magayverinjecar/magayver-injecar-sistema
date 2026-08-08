@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Camera, ImagePlus, Trash2, Loader2, Car, User, Wrench,
-  X, ZoomIn, ChevronLeft, ChevronRight, Save, CheckCircle2, Copy, Check, MessageCircle,
+  X, ZoomIn, ChevronLeft, ChevronRight, Save, CheckCircle2, Copy, Check,
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { nomeVeiculo } from '../utils/datas'
@@ -106,17 +106,9 @@ export default function FotosReparo() {
     })
   }
 
-  // Mesmo link da vistoria: o cliente abre e vê a chegada do veículo e o
-  // serviço executado em blocos separados.
-  function enviarLink() {
-    const url = linkVistoria(os.id)
-    const tel = (cliente?.telefone || '').replace(/\D/g, '')
-    const texto = `*Magayver Injecar*\nOlá ${cliente?.nome || ''}! Seguem as fotos do serviço executado no seu ${modelo}${placa ? ` (${placa})` : ''}, incluindo as peças substituídas.\n\nPara acessar, informe o número cadastrado:\n${url}`
-    const href = tel
-      ? `https://wa.me/55${tel}?text=${encodeURIComponent(texto)}`
-      : `https://wa.me/?text=${encodeURIComponent(texto)}`
-    window.open(href, '_blank')
-  }
+  // O envio por WhatsApp saiu desta tela: abria a conversa com o número do
+  // cliente no aparelho de qualquer reparador. Quem envia é a recepção, pelo
+  // "Enviar fotos" da OS. Aqui fica só o "Copiar Link".
 
   function concluir() {
     salvarVistoria(os.id, { fotos: todas, inspecaoVisual: os.inspecaoVisual || [] })
@@ -170,12 +162,6 @@ export default function FotosReparo() {
             }`}>
             {linkCopiado ? <Check size={15} className="text-green-500" /> : <Copy size={15} />}
             <span className="hidden sm:inline">{linkCopiado ? 'Copiado!' : 'Copiar Link'}</span>
-          </button>
-          <button onClick={enviarLink} disabled={doReparo.length === 0}
-            title={doReparo.length === 0 ? 'Tire ao menos uma foto antes de enviar' : 'Enviar as fotos ao cliente'}
-            className="flex items-center gap-2 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
-            <MessageCircle size={15} />
-            <span className="hidden sm:inline">Enviar Link</span>
           </button>
         </div>
       </div>

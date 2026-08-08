@@ -134,7 +134,9 @@ export default function App() {
           <Route path="checklist/diagnostico"     element={<Rota perm="checklist-diagnostico"><ChecklistDiagnostico /></Rota>} />
           <Route path="checklist/diagnostico/:id" element={<Rota perm="checklist-diagnostico"><ChecklistDiagnosticoDetalhe /></Rota>} />
           <Route path="checklist/gerenciar" element={<Rota perm="checklist-gerenciar"><ChecklistGerenciar /></Rota>} />
-          <Route path="checklist/:id"       element={<ChecklistDetalhe />} />
+          {/* Estava sem trava: qualquer logado abria por URL e via os dois
+              telefones do cliente. Mesma permissão da lista que leva até ela. */}
+          <Route path="checklist/:id"       element={<Rota perm="checklist-gerenciar"><ChecklistDetalhe /></Rota>} />
         </Route>
       </Routes>
     </BrowserRouter>

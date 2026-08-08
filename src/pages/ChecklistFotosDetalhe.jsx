@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import gerarId from '../utils/id'
 import {
   ArrowLeft, Camera, Trash2, CheckCircle2, AlertTriangle,
-  Save, User, Clock, Car, X, ZoomIn, ChevronLeft, ChevronRight, MessageCircle, Copy, Check
+  Save, User, Clock, Car, X, ZoomIn, ChevronLeft, ChevronRight, Copy, Check
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { uploadFoto } from '../supabase'
@@ -335,23 +335,8 @@ export default function ChecklistFotosDetalhe() {
             {linkCopiado ? <Check size={15} className="text-green-500" /> : <Copy size={15} />}
             <span className="hidden sm:inline">{linkCopiado ? 'Copiado!' : 'Copiar Link'}</span>
           </button>
-
-          {/* WhatsApp */}
-          <button
-            onClick={() => {
-              const url = `${window.location.origin}/vistoria/${ck.id}`
-              const tel = (ck.clienteTelefone || '').replace(/\D/g, '')
-              const texto = `*Magayver Injecar*\nOlá ${ck.clienteNome || ''}! Segue o link para visualizar as fotos e a vistoria do seu veículo ${ck.veiculoModelo || ''} (${ck.veiculoPlaca || ''}).\n\nPara acessar, informe o número cadastrado:\n${url}`
-              const href = tel
-                ? `https://wa.me/55${tel}?text=${encodeURIComponent(texto)}`
-                : `https://wa.me/?text=${encodeURIComponent(texto)}`
-              window.open(href, '_blank')
-            }}
-            className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
-          >
-            <MessageCircle size={15} />
-            <span className="hidden sm:inline">Enviar Link</span>
-          </button>
+          {/* O envio por WhatsApp saiu: abria a conversa com o número do cliente
+              no aparelho de qualquer reparador. Quem envia é a recepção, pela OS. */}
         </div>
       </div>
 

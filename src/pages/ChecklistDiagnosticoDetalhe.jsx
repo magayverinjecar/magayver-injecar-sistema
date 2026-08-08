@@ -138,7 +138,7 @@ export default function ChecklistDiagnosticoDetalhe() {
           </h2>
           <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5 flex-wrap">
             <span className="flex items-center gap-1"><User size={11} /> {ck.clienteNome}</span>
-            {ck.clienteTelefone && <span>{ck.clienteTelefone}</span>}
+            {/* Sem telefone aqui: contato com cliente é papel da recepção */}
             <span className="flex items-center gap-1"><Clock size={11} /> {ck.criadoEm}</span>
           </div>
         </div>

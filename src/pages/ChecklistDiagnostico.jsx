@@ -58,13 +58,8 @@ export default function ChecklistDiagnostico() {
             <span className="font-medium text-slate-700 flex items-center gap-1">
               <User size={12} className="text-slate-400" /> {ck.clienteNome || '—'}
             </span>
-            {ck.clienteTelefone && (
-              <a href={`https://wa.me/55${ck.clienteTelefone.replace(/\D/g,'')}`}
-                onClick={e => e.stopPropagation()} target="_blank" rel="noopener noreferrer"
-                className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-0.5 rounded transition-colors">
-                WhatsApp
-              </a>
-            )}
+            {/* WhatsApp saiu do card: todo reparador via a fila e abria a conversa
+                com o número do cliente. Contato é papel da recepção, pela OS. */}
           </div>
 
           {/* Meta info */}

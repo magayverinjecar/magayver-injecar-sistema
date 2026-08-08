@@ -148,7 +148,8 @@ export default function OficinaDiagnosticoDetalhe() {
           </h2>
           <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5 flex-wrap">
             <span className="flex items-center gap-1"><User size={11} /> {cliente?.nome || os.clienteNome || '—'}</span>
-            {cliente?.telefone && <span>{cliente.telefone}</span>}
+            {/* Sem telefone aqui: o reparador não liga para cliente — contato é papel
+                da recepção, que vê o número na OS e no cadastro. */}
             <span className="flex items-center gap-1"><Clock size={11} /> {os.dataEntrada || os.data}</span>
           </div>
         </div>
