@@ -25,6 +25,41 @@ function ehRascunho(o) {
   return o?.rascunho === true || String(o?.id || '').startsWith('DRAFT-')
 }
 
+// ── Realtime cirúrgico ────────────────────────────────────────────────────────
+// O aviso do banco já traz a linha que mudou. Antes o app jogava isso fora e
+// rebaixava a tabela INTEIRA (ordens = ~3 MB) em todos os aparelhos a cada
+// gravação de qualquer pessoa — foi o que estourou a cota de tráfego. Aplica
+// só a linha; qualquer coisa fora do esperado devolve { fallback: true } e o
+// chamador recarrega a tabela como sempre fez.
+// Exportada para teste — função pura.
+export function aplicarEventoNaLista(lista, payload, tabela) {
+  const atual = Array.isArray(lista) ? lista : []
+  const tipo = payload?.eventType
+  if (tipo === 'DELETE') {
+    const id = payload?.old?.id
+    if (id == null) return { fallback: true }
+    const nova = atual.filter(x => String(x.id) !== String(id))
+    return { mudou: nova.length !== atual.length, lista: nova }
+  }
+  if (tipo === 'INSERT' || tipo === 'UPDATE') {
+    const linha = payload?.new
+    // Linha muito grande pode chegar sem o corpo — recarrega em vez de adivinhar
+    if (!linha || linha.id == null || typeof linha.data !== 'object' || linha.data === null) return { fallback: true }
+    const item = row2item({ id: linha.id, data: linha.data })
+    if (tabela === 'ordens' && ehRascunho(item)) {
+      // Rascunho de link não entra no estado; se uma linha real virou rascunho, sai
+      const nova = atual.filter(x => String(x.id) !== String(item.id))
+      return { mudou: nova.length !== atual.length, lista: nova }
+    }
+    const existe = atual.some(x => String(x.id) === String(item.id))
+    const nova = existe
+      ? atual.map(x => String(x.id) === String(item.id) ? item : x)
+      : [item, ...atual]
+    return { mudou: true, lista: nova }
+  }
+  return { fallback: true }
+}
+
 // Carrega tabela inteira — retorna null em caso de erro para que o chamador
 // possa distinguir "tabela vazia" (array []) de "falha de rede" (null).
 async function loadTable(tableName) {
@@ -119,6 +154,7 @@ export function AppProvider({ children }) {
   // em andamento e ADIAMOS o recarregamento até todas terminarem.
   const pendingWrites = useRef({})   // { [tabela]: nº de gravações em andamento }
   const reloadPendente = useRef({})  // { [tabela]: true } → recarregar quando terminarem
+  const eventosAdiados = useRef({})  // { [tabela]: [payloads] } chegados durante gravação local
 
   // Aplica dados recarregados no estado (ref + setState) por tabela
   const aplicarTabela = {
@@ -135,6 +171,37 @@ export function AppProvider({ children }) {
     compras:         (d) => { r.current.compras         = d; _setCompras(d) },
     fornecedores:    (d) => { r.current.fornecedores    = d; _setFornecedores(d) },
     caixa_historico: (d) => { r.current.caixaHistorico  = d; _setCaixaHistorico(d) },
+  }
+
+  // Nome da tabela → chave do estado em r.current (para o realtime cirúrgico ler)
+  const refDaTabela = {
+    clientes: 'clientes', veiculos: 'veiculos', ordens: 'ordens', estoque: 'estoque',
+    financeiro: 'financeiro', agenda: 'agenda', funcionarios: 'funcionarios',
+    servicos: 'servicos', checklists: 'checklists', orcamentos: 'orcamentos',
+    compras: 'compras', fornecedores: 'fornecedores', caixa_historico: 'caixaHistorico',
+  }
+
+  // Evento do realtime: aplica só a linha alterada. Durante gravação local o
+  // evento vai para a fila e é aplicado ao terminar — o eco da própria gravação
+  // traz a linha já mesclada do banco, então o estado local converge sem
+  // precisar rebaixar a tabela inteira (era isso que custava ~3 MB por evento).
+  function receberEvento(table, payload) {
+    if (pendingWrites.current[table] > 0) {
+      const fila = eventosAdiados.current[table] || (eventosAdiados.current[table] = [])
+      fila.push(payload)
+      if (fila.length > 30) { fila.length = 0; reloadPendente.current[table] = true }
+      return
+    }
+    aplicarEventoAgora(table, payload)
+  }
+
+  function aplicarEventoAgora(table, payload) {
+    const ref = refDaTabela[table]
+    if (!ref) { recarregarTabela(table); return }
+    const resultado = aplicarEventoNaLista(r.current[ref], payload, table)
+    if (resultado.fallback) { recarregarTabela(table); return }
+    if (resultado.mudou) aplicarTabela[table](resultado.lista)
+    marcarSync()
   }
 
   // Recarrega uma tabela do Supabase — MAS só se não houver gravação local em
@@ -176,8 +243,15 @@ export function AppProvider({ children }) {
   }
   function fimGravando(table) {
     pendingWrites.current[table] = Math.max(0, (pendingWrites.current[table] || 0) - 1)
-    // Última gravação terminou e havia um recarregamento adiado → executa agora
-    if (pendingWrites.current[table] === 0 && reloadPendente.current[table]) {
+    if (pendingWrites.current[table] > 0) return
+    // Última gravação terminou: aplica os eventos que chegaram no meio (inclui
+    // o eco da própria gravação, já mesclado pelo banco)…
+    const fila = eventosAdiados.current[table]
+    if (fila && fila.length > 0) {
+      for (const p of fila.splice(0)) aplicarEventoAgora(table, p)
+    }
+    // …e, se algo pediu recarga completa, ela corrige qualquer resto
+    if (reloadPendente.current[table]) {
       reloadPendente.current[table] = false
       recarregarTabela(table)
     }
@@ -470,14 +544,15 @@ export function AppProvider({ children }) {
   }, [])
 
   // Sincronização em tempo real via Supabase Realtime.
-  // Cada evento passa por recarregarTabela(), que ignora o "eco" das nossas próprias
-  // gravações enquanto elas estão em andamento (evita sobrescrever estado local).
+  // O evento traz a linha alterada e só ela é aplicada (realtime cirúrgico) —
+  // rebaixar a tabela inteira a cada evento foi o que estourou a cota de
+  // tráfego. Eventos durante gravação local vão para a fila (ver receberEvento).
   useEffect(() => {
     const ch = supabase.channel('app-realtime')
 
     for (const table of Object.keys(aplicarTabela)) {
-      ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
-        recarregarTabela(table)
+      ch.on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+        receberEvento(table, payload)
       })
     }
 
