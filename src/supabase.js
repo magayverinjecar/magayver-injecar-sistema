@@ -13,11 +13,20 @@ function caminhoSeguro(caminho) {
 }
 
 // Faz upload de um Blob para o bucket 'fotos' e retorna URL pública
-export async function uploadFoto(blob, caminho) {
+export async function uploadFoto(blob, caminho, contentType = 'image/jpeg') {
   const { data, error } = await supabase.storage
     .from('Fotos')
-    .upload(caminhoSeguro(caminho), blob, { contentType: 'image/jpeg', upsert: true })
+    .upload(caminhoSeguro(caminho), blob, { contentType, upsert: true })
   if (error) throw error
   const { data: urlData } = supabase.storage.from('Fotos').getPublicUrl(data.path)
   return urlData.publicUrl
+}
+
+// A rubrica do cliente vira arquivo no Storage. Guardá-la em base64 dentro da
+// linha da OS inflava a tabela toda (~3 MB) e cada sincronização rebaixava
+// todas as rubricas de novo. Quem chamar deve cair no base64 se isto falhar —
+// a assinatura nunca pode se perder por causa de otimização.
+export async function uploadAssinatura(dataUrl, chave) {
+  const blob = await (await fetch(dataUrl)).blob()
+  return uploadFoto(blob, `fotos/assinaturas/${chave}.png`, 'image/png')
 }

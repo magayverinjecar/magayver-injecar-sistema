@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
-import { supabase } from '../supabase'
+import { supabase, uploadAssinatura } from '../supabase'
 
 const DASHBOARD_LIGHTS = [
   'Injeção (Check Engine)', 'Bateria / Alternador', 'Pressão de Óleo',
@@ -380,6 +380,12 @@ export default function NovaEntrada() {
       } catch (e) {
         console.error('[finalizar] não consegui ler o rascunho do link:', e)
       }
+    }
+    // Rubrica desenhada aqui na recepção vira arquivo no Storage (a do link já
+    // chega como URL). Se o upload falhar, segue embutida — nunca se perde.
+    if (assinaturaFinal && String(assinaturaFinal).startsWith('data:')) {
+      try { assinaturaFinal = await uploadAssinatura(assinaturaFinal, `entrada-${Date.now()}`) }
+      catch (e) { console.error('[assinatura] upload falhou, salvando embutida:', e) }
     }
 
     let cId = clienteId

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { supabase } from '../supabase'
+import { supabase, uploadAssinatura } from '../supabase'
 import { CheckCircle, AlertTriangle, Phone, Eraser, Loader2 } from 'lucide-react'
 
 // ─── Canvas de assinatura (igual ao PainelAssinatura do ChecklistNovo) ──────
@@ -196,11 +196,18 @@ export default function ClienteAssinatura() {
     setErroEnvio('')
     try {
       const ckId = String(checklist.id)
+      // A rubrica vira arquivo no Storage e a linha guarda só a URL — o base64
+      // embutido inflava a tabela. Se o upload falhar, salva embutida como
+      // antes: a assinatura do cliente nunca se perde por causa de otimização.
+      let assinaturaFinal = assinatura
+      try {
+        assinaturaFinal = await uploadAssinatura(assinatura, `${ckId.replace(/[^A-Za-z0-9_-]/g, '-')}-${Date.now()}`)
+      } catch (e) { console.error('[assinatura] upload falhou, salvando embutida:', e) }
       // Tenta salvar na tabela ordens primeiro (novo fluxo)
       const { data: osRow } = await supabase.from('ordens').select('id, data').eq('id', ckId)
       if (osRow?.length) {
         const baseData = osRow[0].data || {}
-        const dataAtualizado = { ...baseData, assinatura, assinaturaTempo: Date.now() }
+        const dataAtualizado = { ...baseData, assinatura: assinaturaFinal, assinaturaTempo: Date.now() }
         const { error } = await supabase.from('ordens').upsert({ id: ckId, data: dataAtualizado })
         if (error) throw error
       } else {
@@ -209,7 +216,7 @@ export default function ClienteAssinatura() {
           .from('checklists').select('id, data').eq('id', ckId)
         if (erroFetch) throw erroFetch
         const baseData = frescos?.[0]?.data || {}
-        const dataAtualizado = { ...baseData, assinatura, assinaturaTempo: Date.now() }
+        const dataAtualizado = { ...baseData, assinatura: assinaturaFinal, assinaturaTempo: Date.now() }
         const { error } = await supabase.from('checklists').upsert({ id: ckId, data: dataAtualizado })
         if (error) throw error
       }
