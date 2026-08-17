@@ -1,13 +1,18 @@
 import { useState } from 'react'
-import { Search, Plus, AlertTriangle, Trash2, Pencil } from 'lucide-react'
+import { Search, Plus, AlertTriangle, Trash2, Pencil, Package, Boxes } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
 import Modal from '../components/ui/Modal'
+import AbaKits from '../components/AbaKits'
+import { kitsDoConfig } from '../utils/kits'
 
 const vazio = { codigo: '', nome: '', categoria: '', estoque: '', minimo: '', precoCusto: '', preco: '' }
 
 export default function Estoque() {
-  const { estoque, setEstoque } = useApp()
+  const { estoque, setEstoque, config } = useApp()
+  // Kits ficam nesta tela, e não em Configurações: quem monta kit é quem mexe
+  // em estoque — as peças e as referências estão aqui.
+  const [aba, setAba] = useState('pecas')
   const [busca, setBusca] = useState('')
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(vazio)
@@ -89,8 +94,29 @@ export default function Estoque() {
     </div>
   )
 
+  const qtdKits = kitsDoConfig(config).length
+
   return (
     <div className="space-y-4">
+      {/* Abas: "Peças" é a tela de sempre, intocada. "Kits" é o cadastro do
+          molde de revisão. */}
+      <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
+        <button onClick={() => setAba('pecas')}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === 'pecas' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          <Boxes size={14} />Peças
+        </button>
+        <button onClick={() => setAba('kits')}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === 'kits' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          <Package size={14} />Kits
+          {qtdKits > 0 && (
+            <span className="text-[10px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">{qtdKits}</span>
+          )}
+        </button>
+      </div>
+
+      {aba === 'kits' && <AbaKits />}
+
+      {aba === 'pecas' && (<>
       <div className="flex items-center justify-between">
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -158,6 +184,7 @@ export default function Estoque() {
         </table>
         {filtrados.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum item encontrado.</p>}
       </div>
+      </>)}
 
       {/* Modal Nova Peça */}
       {modal && (

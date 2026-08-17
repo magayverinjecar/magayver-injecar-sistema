@@ -38,7 +38,7 @@ export default function PatioLimpeza() {
   const {
     ordens, setOrdens, checklists, setChecklists,
     getCliente, getVeiculo, totalOrdem, entregarOrdem,
-    financeiro, setFinanceiro, setCaixaTurno,
+    financeiro, setFinanceiro, setCaixaTurno, caixaTurno,
   } = useApp()
 
   const [filtro, setFiltro] = useState('todos')
@@ -91,6 +91,14 @@ export default function PatioLimpeza() {
 
     if (acao === 'pagou_retirou') {
       if (os.valor > 0) {
+        // Sem caixa aberto o dinheiro entra pela metade: a receita vai para o
+        // Financeiro, mas a venda é descartada e o turno nunca fecha. A tela de
+        // cobrança da OS já barrava isso; aqui não barrava.
+        if (!caixaTurno) {
+          alert('Abra o caixa antes de entregar cobrando.\n\nSem turno aberto o valor não entra no caixa do dia e o fechamento não bate.')
+          setProcessados(prev => { const n = new Set(prev); n.delete(os.id); return n })
+          return
+        }
         entregarOrdem(os.id, [{ forma: 'Dinheiro', valor: os.valor }], cli?.nome || 'Cliente')
       } else {
         setOrdens(prev => prev.map(o => {

@@ -4,6 +4,10 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
 import { imprimirOrcamento } from '../utils/print'
+import { parseValorBR } from '../utils/numero'
+import PainelAdicionarItem from '../components/PainelAdicionarItem'
+import SeletorKit from '../components/SeletorKit'
+import { avisoDeFalta, pecaSemEstoque } from '../utils/kits'
 
 const statusColor = {
   Pendente: 'bg-yellow-100 text-yellow-700',
@@ -15,11 +19,8 @@ const statusColor = {
 const VAZIO_CLIENTE = { clienteId: '', nome: '', telefone: '', veiculo: '', placa: '', km: '' }
 const VAZIO_ITEM = { tipo: 'Serviço', refId: '', descricao: '', quantidade: '1', valorUnitario: '', desconto: '0' }
 
-function parseNum(v) {
-  if (typeof v === 'number') return v; const s = (v || '0').toString()
-  if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0
-  return parseFloat(s) || 0
-}
+// Parser único em utils/numero.js — a cópia local lia "1.500" como 1,5.
+const parseNum = parseValorBR
 const fmt = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function Orcamentos() {
@@ -35,10 +36,14 @@ export default function Orcamentos() {
   const [itens, setItens] = useState([])
   const [observacoes, setObservacoes] = useState('')
   const [validade, setValidade] = useState('7 dias')
+  // O popup agora é só para EDITAR um item já lançado. Para lançar item novo
+  // existe o painel embutido — o mesmo da tela da OS.
   const [modalItem, setModalItem] = useState(false)
   const [item, setItem] = useState(VAZIO_ITEM)
   const [itemEditandoId, setItemEditandoId] = useState(null)
-  const [modoOrc, setModoOrc] = useState('cadastrado') // 'cadastrado' | 'avulso'
+  const [painelItem, setPainelItem] = useState(false)
+  const [tipoPainel, setTipoPainel] = useState('servico') // acompanha o painel, para o cadastro rápido
+  const [selecaoPainel, setSelecaoPainel] = useState(null) // item recém-cadastrado que o painel deve selecionar
   const [criarNovo, setCriarNovo] = useState(false)
   const [novoForm, setNovoForm] = useState({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
   const [taxaPct, setTaxaPct] = useState('10')
@@ -122,28 +127,44 @@ export default function Orcamentos() {
   }
 
   // --- itens ---
-  function selecionarServico(id) {
-    if (!id) { setItem(it => ({ ...it, refId: '' })); return }
-    const s = servicos.find(x => x.id === Number(id))
-    if (s) setItem(it => ({ ...it, refId: id, descricao: s.nome, valorUnitario: s.preco }))
-  }
-  function selecionarProduto(id) {
-    if (!id) { setItem(it => ({ ...it, refId: '' })); return }
-    const p = estoque.find(x => x.id === Number(id))
-    if (p) setItem(it => ({ ...it, refId: id, descricao: p.nome, valorUnitario: p.preco }))
+  function abrirEdicaoItem(it) {
+    setItem({ ...it })
+    setItemEditandoId(it.id)
+    setModalItem(true)
   }
 
-  function abrirModalItem(it = null) {
-    if (it) {
-      setItem({ ...it })
-      setItemEditandoId(it.id)
-    } else {
-      setItem(VAZIO_ITEM)
-      setItemEditandoId(null)
+  function fecharEdicaoItem() {
+    setModalItem(false)
+    setItemEditandoId(null)
+    setItem(VAZIO_ITEM)
+  }
+
+  // Vem do painel embutido, no formato da OS ('servico'/'peca'). O orçamento
+  // guarda 'Serviço'/'Peça / Produto' — converter aqui evita mexer no que já
+  // está gravado e no que a conversão em OS espera ler.
+  function adicionarDoPainel(dados) {
+    const ref = dados.servicoId ?? dados.produtoId
+    const novo = {
+      id: gerarId(),
+      tipo: dados.tipo === 'servico' ? 'Serviço' : 'Peça / Produto',
+      refId: ref !== null && ref !== undefined && ref !== '' ? String(ref) : '',
+      descricao: dados.descricao.trim(),
+      quantidade: String(dados.quantidade),
+      valorUnitario: dados.valorUnitario,
+      desconto: dados.desconto,
     }
-    setModoOrc('avulso')
-    setCriarNovo(false)
-    setModalItem(true)
+    // Peça avulsa com custo digitado: o custo viaja junto para a OS não nascer
+    // com margem incompleta.
+    if (dados.custoUnitario) novo.custoUnitario = dados.custoUnitario
+    setItens(prev => [...prev, novo])
+  }
+
+  // Kit: cada item entra pelo MESMO adicionarDoPainel, então a conversão de
+  // tipo e o formato gravado continuam sendo os de sempre. O orçamento avulso
+  // não mexe em estoque — a baixa só acontece quando ele vira OS.
+  function aplicarKit({ itens: doKit, faltando }) {
+    if (faltando.length && !confirm(avisoDeFalta(faltando))) return
+    doKit.forEach(adicionarDoPainel)
   }
 
   function adicionarItem() {
@@ -181,17 +202,19 @@ export default function Orcamentos() {
     })))
   }
 
+  // Cadastro rápido feito de dentro do painel: grava em Serviços/Estoque e
+  // devolve o registro para o painel já selecionar.
   function salvarNovo() {
     if (!novoForm.nome.trim()) return
     const id = gerarId()
-    if (item.tipo === 'Serviço') {
+    if (tipoPainel === 'servico') {
       const novo = { id, nome: novoForm.nome, categoria: novoForm.categoria || '', preco: novoForm.preco || '0', tempo: novoForm.tempo || '' }
       setServicos(prev => [...prev, novo])
-      setItem(it => ({ ...it, refId: String(id), descricao: novo.nome, valorUnitario: novo.preco }))
+      setSelecaoPainel(novo)
     } else {
       const novo = { id, nome: novoForm.nome, codigo: novoForm.codigo || '', categoria: novoForm.categoria || '', precoCusto: novoForm.precoCusto || '', preco: novoForm.preco || '0', estoque: Number(novoForm.estoque) || 0, minimo: Number(novoForm.minimo) || 0 }
       setEstoque(prev => [...prev, novo])
-      setItem(it => ({ ...it, refId: String(id), descricao: novo.nome, valorUnitario: novo.preco }))
+      setSelecaoPainel(novo)
     }
     setNovoForm({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
     setCriarNovo(false)
@@ -300,6 +323,9 @@ export default function Orcamentos() {
       quantidade: Number(i.quantidade) || 1,
       valorUnitario: i.valorUnitario,
       desconto: i.desconto || '0',
+      // Custo de peça avulsa digitado no orçamento viaja junto: sem ele a OS
+      // nasceria com margem incompleta.
+      ...(i.custoUnitario ? { custoUnitario: i.custoUnitario } : {}),
     }))
 
     // As peças precisam sair do estoque — novaOrdem só desconta o que vem em `pecas`
@@ -501,11 +527,74 @@ export default function Orcamentos() {
                     Todos
                   </button>
                 </div>
-                <button onClick={() => abrirModalItem()} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">
-                  <Plus size={15} />Adicionar Item
+                <SeletorKit onAplicar={aplicarKit} titulo="Lança de uma vez as peças e a mão de obra do kit" />
+                <button onClick={() => setPainelItem(v => !v)} aria-expanded={painelItem}
+                  className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">
+                  <Plus size={15} />Adicionar item
                 </button>
               </div>
             </div>
+
+            {/* Painel embutido — mesmo componente da tela da OS */}
+            {painelItem && (
+              <div className="mb-4">
+                <PainelAdicionarItem
+                  servicos={servicos}
+                  estoque={estoque}
+                  mostrarReparador={false}
+                  esconderLista={criarNovo}
+                  selecaoExterna={selecaoPainel}
+                  onTrocarTipo={t => { setTipoPainel(t); setCriarNovo(false); setSelecaoPainel(null) }}
+                  onTrocarModo={() => { setCriarNovo(false); setSelecaoPainel(null) }}
+                  acaoCadastro={
+                    <button type="button" onClick={() => { setCriarNovo(v => !v); setNovoForm({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' }) }}
+                      className="text-xs text-primary-500 hover:text-primary-700 font-medium">
+                      {criarNovo ? '− Fechar' : '+ Criar novo'}
+                    </button>
+                  }
+                  formularioNovo={criarNovo && (
+                    tipoPainel === 'servico' ? (
+                      <div className="mt-1.5 border border-blue-200 rounded-xl p-3 bg-blue-50 space-y-2">
+                        <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Novo Serviço</p>
+                        <input value={novoForm.nome} onChange={e => setNovoForm(f => ({ ...f, nome: e.target.value }))} placeholder="Nome do serviço *" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        <input value={novoForm.categoria} onChange={e => setNovoForm(f => ({ ...f, categoria: e.target.value }))} placeholder="Categoria (Ex: Manutenção)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={novoForm.preco} onChange={e => setNovoForm(f => ({ ...f, preco: e.target.value }))} placeholder="Preço (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                          <input value={novoForm.tempo} onChange={e => setNovoForm(f => ({ ...f, tempo: e.target.value }))} placeholder="Tempo (Ex: 1h30)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        </div>
+                        <button type="button" onClick={salvarNovo} className="w-full bg-blue-500 hover:bg-blue-600 text-white py-1.5 rounded-lg text-sm font-medium transition-colors">Salvar e selecionar</button>
+                      </div>
+                    ) : (
+                      <div className="mt-1.5 border border-orange-200 rounded-xl p-3 bg-orange-50 space-y-2">
+                        <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide">Nova Peça / Produto</p>
+                        <input value={novoForm.nome} onChange={e => setNovoForm(f => ({ ...f, nome: e.target.value }))} placeholder="Nome da peça *" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={novoForm.codigo} onChange={e => setNovoForm(f => ({ ...f, codigo: e.target.value }))} placeholder="Código / Referência" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                          <input value={novoForm.categoria} onChange={e => setNovoForm(f => ({ ...f, categoria: e.target.value }))} placeholder="Categoria" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={novoForm.precoCusto} onChange={e => setNovoForm(f => ({ ...f, precoCusto: e.target.value }))} placeholder="Preço de custo (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                          <input value={novoForm.preco} onChange={e => setNovoForm(f => ({ ...f, preco: e.target.value }))} placeholder="Preço de venda (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-slate-500 mb-1 block">Qtd. inicial</label>
+                            <input type="number" value={novoForm.estoque} onChange={e => setNovoForm(f => ({ ...f, estoque: e.target.value }))} placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-slate-500 mb-1 block">Qtd. mínima</label>
+                            <input type="number" value={novoForm.minimo} onChange={e => setNovoForm(f => ({ ...f, minimo: e.target.value }))} placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                          </div>
+                        </div>
+                        <button type="button" onClick={salvarNovo} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-1.5 rounded-lg text-sm font-medium transition-colors">Salvar e selecionar</button>
+                      </div>
+                    )
+                  )}
+                  onFechar={() => { setPainelItem(false); setCriarNovo(false) }}
+                  onAdd={adicionarDoPainel}
+                />
+              </div>
+            )}
 
             {itens.length === 0 ? (
               <div className="text-center py-10">
@@ -516,19 +605,28 @@ export default function Orcamentos() {
               <div className="space-y-2">
                 {itens.map(it => {
                   const subtotal = parseNum(it.valorUnitario) * parseNum(it.quantidade) - parseNum(it.desconto)
+                  // Peça com a prateleira zerada em vermelho: o orçamento pode
+                  // ser mandado com peça que ainda vai ser comprada, mas nunca
+                  // sem o dono saber. Vale para item de kit e item lançado à mão.
+                  const zerada = it.tipo !== 'Serviço' && pecaSemEstoque(estoque, it.refId)
                   return (
-                    <div key={it.id} className="flex items-center justify-between border border-slate-100 rounded-lg px-4 py-3">
+                    <div key={it.id} className={`flex items-center justify-between border rounded-lg px-4 py-3 ${zerada ? 'border-red-200 bg-red-50' : 'border-slate-100'}`}>
                       <div className="flex items-center gap-3">
                         <span className={`text-xs px-2 py-0.5 rounded font-medium ${it.tipo === 'Serviço' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{it.tipo}</span>
                         <div>
-                          <p className="text-sm font-medium text-slate-800">{it.descricao}</p>
+                          <p className={`text-sm font-medium ${zerada ? 'text-red-700' : 'text-slate-800'}`}>
+                            {it.descricao}
+                            {zerada && (
+                              <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 font-medium whitespace-nowrap">sem estoque</span>
+                            )}
+                          </p>
                           <p className="text-xs text-slate-400">{it.quantidade}x {fmt(parseNum(it.valorUnitario))}{parseNum(it.desconto) > 0 && ` · desc. ${fmt(parseNum(it.desconto))}`}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-slate-700">{fmt(subtotal)}</span>
                         <button onClick={() => aplicarTaxaItemOrc(it.id)} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-300 hover:text-amber-500 text-xs font-bold transition-colors">%</button>
-                        <button onClick={() => abrirModalItem(it)} className="p-1 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400 transition-colors"><Pencil size={14} /></button>
+                        <button onClick={() => abrirEdicaoItem(it)} className="p-1 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400 transition-colors"><Pencil size={14} /></button>
                         <button onClick={() => removerItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
                       </div>
                     </div>
@@ -581,115 +679,33 @@ export default function Orcamentos() {
         </div>
       )}
 
-      {/* === MODAL ADICIONAR ITEM === */}
+      {/* === MODAL EDITAR ITEM ===
+          Lançar item novo é no painel embutido; este popup só corrige um item
+          que já está na lista, igual à tela da OS. */}
       {modalItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => { setModalItem(false); setCriarNovo(false); setModoOrc('cadastrado'); setItemEditandoId(null) }} />
+          <div className="absolute inset-0 bg-black/40" onClick={fecharEdicaoItem} />
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h3 className="font-semibold text-slate-800">{itemEditandoId !== null ? 'Editar Item' : 'Adicionar Item'}</h3>
-              <button onClick={() => { setModalItem(false); setCriarNovo(false); setModoOrc('cadastrado'); setItemEditandoId(null) }} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"><X size={18} /></button>
+              <h3 className="font-semibold text-slate-800">Editar Item</h3>
+              <button onClick={fecharEdicaoItem} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"><X size={18} /></button>
             </div>
 
             <div className="px-5 py-4 space-y-3">
-
-              {/* Toggle Do Cadastro / Avulso */}
-              <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-                <button type="button" onClick={() => { setModoOrc('cadastrado'); setCriarNovo(false); setItem(VAZIO_ITEM) }}
-                  className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${modoOrc === 'cadastrado' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                  Do Cadastro
-                </button>
-                <button type="button" onClick={() => { setModoOrc('avulso'); setCriarNovo(false); setItem(VAZIO_ITEM) }}
-                  className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${modoOrc === 'avulso' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                  Avulso
-                </button>
-              </div>
-
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
-                <select value={item.tipo} onChange={e => { setItem(it => ({ ...VAZIO_ITEM, tipo: e.target.value })); setCriarNovo(false) }}
+                <select value={item.tipo} onChange={e => setItem(() => ({ ...VAZIO_ITEM, tipo: e.target.value }))}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                   <option value="Serviço">🔧 Serviço</option>
                   <option value="Peça / Produto">⚙️ Peça / Produto</option>
                 </select>
               </div>
 
-              {modoOrc === 'cadastrado' && item.tipo === 'Serviço' ? (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-sm font-medium text-slate-700">Serviço cadastrado</label>
-                    <button type="button" onClick={() => { setCriarNovo(v => !v); setNovoForm({ nome: '', preco: '', codigo: '', categoria: '' }) }} className="text-xs text-primary-500 hover:text-primary-700 font-medium">
-                      {criarNovo ? '− Fechar' : '+ Criar novo'}
-                    </button>
-                  </div>
-                  {!criarNovo && (
-                    <select value={item.refId} onChange={e => selecionarServico(e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                      <option value="">Selecione um serviço...</option>
-                      {servicos.map(s => <option key={s.id} value={s.id}>{s.nome} — R$ {s.preco}</option>)}
-                    </select>
-                  )}
-                  {criarNovo && (
-                    <div className="border border-blue-200 rounded-xl p-3 bg-blue-50 space-y-2">
-                      <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Novo Serviço</p>
-                      <input value={novoForm.nome} onChange={e => setNovoForm(f => ({ ...f, nome: e.target.value }))} placeholder="Nome do serviço *" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                      <input value={novoForm.categoria} onChange={e => setNovoForm(f => ({ ...f, categoria: e.target.value }))} placeholder="Categoria (Ex: Manutenção)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input value={novoForm.preco} onChange={e => setNovoForm(f => ({ ...f, preco: e.target.value }))} placeholder="Preço (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                        <input value={novoForm.tempo} onChange={e => setNovoForm(f => ({ ...f, tempo: e.target.value }))} placeholder="Tempo (Ex: 1h30)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                      </div>
-                      <button type="button" onClick={salvarNovo} className="w-full bg-blue-500 hover:bg-blue-600 text-white py-1.5 rounded-lg text-sm font-medium transition-colors">Salvar e selecionar</button>
-                    </div>
-                  )}
-                </div>
-              ) : modoOrc === 'cadastrado' ? (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-sm font-medium text-slate-700">Produto do estoque</label>
-                    <button type="button" onClick={() => { setCriarNovo(v => !v); setNovoForm({ nome: '', preco: '', codigo: '', categoria: '' }) }} className="text-xs text-primary-500 hover:text-primary-700 font-medium">
-                      {criarNovo ? '− Fechar' : '+ Criar novo'}
-                    </button>
-                  </div>
-                  {!criarNovo && (
-                    <select value={item.refId} onChange={e => selecionarProduto(e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                      <option value="">Selecione um produto...</option>
-                      {estoque.map(p => <option key={p.id} value={p.id}>{p.nome} — R$ {p.preco}</option>)}
-                    </select>
-                  )}
-                  {criarNovo && (
-                    <div className="border border-orange-200 rounded-xl p-3 bg-orange-50 space-y-2">
-                      <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide">Nova Peça / Produto</p>
-                      <input value={novoForm.nome} onChange={e => setNovoForm(f => ({ ...f, nome: e.target.value }))} placeholder="Nome da peça *" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input value={novoForm.codigo} onChange={e => setNovoForm(f => ({ ...f, codigo: e.target.value }))} placeholder="Código / Referência" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                        <input value={novoForm.categoria} onChange={e => setNovoForm(f => ({ ...f, categoria: e.target.value }))} placeholder="Categoria" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input value={novoForm.precoCusto} onChange={e => setNovoForm(f => ({ ...f, precoCusto: e.target.value }))} placeholder="Preço de custo (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                        <input value={novoForm.preco} onChange={e => setNovoForm(f => ({ ...f, preco: e.target.value }))} placeholder="Preço de venda (R$)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-xs text-slate-500 mb-1 block">Qtd. inicial</label>
-                          <input type="number" value={novoForm.estoque} onChange={e => setNovoForm(f => ({ ...f, estoque: e.target.value }))} placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                        </div>
-                        <div>
-                          <label className="text-xs text-slate-500 mb-1 block">Qtd. mínima</label>
-                          <input type="number" value={novoForm.minimo} onChange={e => setNovoForm(f => ({ ...f, minimo: e.target.value }))} placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                        </div>
-                      </div>
-                      <button type="button" onClick={salvarNovo} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-1.5 rounded-lg text-sm font-medium transition-colors">Salvar e selecionar</button>
-                    </div>
-                  )}
-                </div>
-              ) : null}
-
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Descrição *</label>
                 <input value={item.descricao} onChange={e => setItem(it => ({ ...it, descricao: e.target.value }))}
                   spellCheck lang="pt-BR"
-                  placeholder={modoOrc === 'avulso' ? 'DESCREVA O SERVIÇO OU PEÇA...' : 'DESCRIÇÃO'}
+                  placeholder="DESCRIÇÃO"
                   className="w-full uppercase border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
 
@@ -697,24 +713,24 @@ export default function Orcamentos() {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Quantidade</label>
                   <input type="number" value={item.quantidade} onChange={e => setItem(it => ({ ...it, quantidade: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Valor Unitário (R$)</label>
                   <input value={item.valorUnitario} onChange={e => setItem(it => ({ ...it, valorUnitario: e.target.value }))}
-                    placeholder="0,00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    placeholder="0,00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Desconto (R$)</label>
                   <input value={item.desconto} onChange={e => setItem(it => ({ ...it, desconto: e.target.value }))}
-                    placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 </div>
               </div>
             </div>
 
             <div className="px-5 py-4">
               <button onClick={adicionarItem} className="w-full bg-primary-500 hover:bg-primary-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
-                {itemEditandoId !== null ? 'Salvar Alterações' : 'Adicionar'}
+                Salvar Alterações
               </button>
             </div>
           </div>

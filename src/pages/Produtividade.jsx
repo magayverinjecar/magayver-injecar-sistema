@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { TrendingUp, Users, FileText, Calendar, ChevronDown, ChevronUp, Wrench, Car } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { parseValorBR } from '../utils/numero'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function pNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
+// Parser unico em utils/numero.js — cada tela tinha a propria copia, e a
+// versao antiga lia "1.500" como 1,5.
+const pNum = parseValorBR
 
 function parseDateBR(str) {
   if (!str) return null

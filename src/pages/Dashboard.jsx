@@ -1,6 +1,7 @@
 import { useApp } from '../context/AppContext'
 import { ClipboardList, Users, DollarSign, Package, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { variacao } from '../utils/periodo'
 
 const statusColor = {
   'Em andamento': 'bg-blue-100 text-blue-700',
@@ -10,18 +11,29 @@ const statusColor = {
 }
 
 export default function Dashboard() {
-  const { clientes, ordens, resumoFinanceiro, estoqueAlerta, agenda, devedores, getCliente, getVeiculo, totalOrdem } = useApp()
+  const { clientes, ordens, resumoFinanceiro, estoqueAlerta, agenda, aReceber, getCliente, getVeiculo, totalOrdem } = useApp()
   const navigate = useNavigate()
 
   const ordensAbertas = ordens.filter(o => o.status !== 'Concluída' && o.status !== 'Cancelada')
   const ordensConcluidas = ordens.filter(o => o.status === 'Concluída')
   const fmt = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  const lucro = resumoFinanceiro.receitas - resumoFinanceiro.despesas
+
+  // Dinheiro do MÊS, não o acumulado de sempre.
+  //
+  // O acumulado só subia e não dizia nada: dava o mesmo número numa semana ruim
+  // e numa boa. O mês é o recorte com que a oficina decide. O detalhe por
+  // período fica no Financeiro.
+  const mes = resumoFinanceiro.mes
+  const lucro = mes.lucro
+  const nomeDoMes = new Date().toLocaleDateString('pt-BR', { month: 'long' })
+  // Compara com o MESMO trecho do mês passado (dia 1 ao 10 contra dia 1 ao 10);
+  // contra o mês inteiro, todo começo de mês pareceria despencar.
+  const variacaoLucro = variacao(lucro, resumoFinanceiro.mesAnterior.lucro)
 
   const stats = [
     { label: 'OS Abertas', value: ordensAbertas.length, icon: ClipboardList, bg: 'bg-blue-50', text: 'text-blue-600', rota: '/ordens-servico' },
     { label: 'Clientes', value: clientes.length, icon: Users, bg: 'bg-green-50', text: 'text-green-600', rota: '/clientes' },
-    { label: 'Faturamento', value: fmt(resumoFinanceiro.receitas), icon: DollarSign, bg: 'bg-primary-50', text: 'text-primary-600', rota: '/financeiro' },
+    { label: 'Faturamento', nota: `em ${nomeDoMes}`, value: fmt(mes.receitas), icon: DollarSign, bg: 'bg-primary-50', text: 'text-primary-600', rota: '/financeiro' },
     { label: 'Estoque Crítico', value: estoqueAlerta.length, icon: Package, bg: 'bg-red-50', text: 'text-red-500', rota: '/estoque' },
   ]
 
@@ -34,11 +46,14 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map(({ label, value, icon: Icon, bg, text, rota }) => (
+        {stats.map(({ label, nota, value, icon: Icon, bg, text, rota }) => (
           <button key={label} onClick={() => navigate(rota)} className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 text-left hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-slate-500 font-medium">{label}</p>
-              <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center`}>
+            <div className="flex items-start justify-between mb-3 gap-2">
+              <div className="min-w-0">
+                <p className="text-sm text-slate-500 font-medium">{label}</p>
+                {nota && <p className="text-[11px] text-slate-400 truncate">{nota}</p>}
+              </div>
+              <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center flex-shrink-0`}>
                 <Icon size={18} className={text} />
               </div>
             </div>
@@ -47,15 +62,21 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Lucro destaque */}
-      <div className={`rounded-xl px-5 py-4 flex items-center justify-between shadow-sm border ${lucro >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
-        <div>
-          <p className="text-sm text-slate-500">Lucro líquido</p>
-          <p className={`text-2xl font-bold ${lucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(lucro)}</p>
+      {/* Lucro do mês */}
+      <div className={`rounded-xl px-5 py-4 flex items-center justify-between gap-3 shadow-sm border ${lucro >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
+        <div className="min-w-0">
+          <p className="text-sm text-slate-500">Lucro líquido — {nomeDoMes}</p>
+          <p className={`text-2xl font-bold tabular-nums ${lucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(lucro)}</p>
+          {variacaoLucro != null && (
+            <p className={`text-xs mt-0.5 ${variacaoLucro >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+              {variacaoLucro >= 0 ? '▲' : '▼'} {Math.abs(variacaoLucro).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%
+              <span className="text-slate-400"> vs mesmo período do mês passado</span>
+            </p>
+          )}
         </div>
-        <div className="text-right text-sm text-slate-500">
-          <p>Receitas: <span className="text-green-600 font-semibold">{fmt(resumoFinanceiro.receitas)}</span></p>
-          <p>Despesas: <span className="text-red-500 font-semibold">{fmt(resumoFinanceiro.despesas)}</span></p>
+        <div className="text-right text-sm text-slate-500 flex-shrink-0">
+          <p>Receitas: <span className="text-green-600 font-semibold tabular-nums">{fmt(mes.receitas)}</span></p>
+          <p>Despesas: <span className="text-red-500 font-semibold tabular-nums">{fmt(mes.despesas)}</span></p>
         </div>
       </div>
 
@@ -131,19 +152,19 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {devedores.length > 0 && (
+              {aReceber.itens.length > 0 && (
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/financeiro')}>
                   <div className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
                     <DollarSign size={16} className="text-orange-500" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-slate-700">{devedores.length} OS a receber</p>
+                    <p className="text-sm font-medium text-slate-700">{aReceber.itens.length} a receber</p>
                     <p className="text-xs text-slate-400">Serviços não pagos</p>
                   </div>
                 </div>
               )}
 
-              {estoqueAlerta.length === 0 && devedores.length === 0 && agendaHoje.length === 0 && (
+              {estoqueAlerta.length === 0 && aReceber.itens.length === 0 && agendaHoje.length === 0 && (
                 <p className="text-xs text-slate-400 text-center py-2">Tudo em ordem!</p>
               )}
             </div>

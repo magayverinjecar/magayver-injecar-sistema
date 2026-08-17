@@ -2,14 +2,10 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { Brain, Send, Bot, User, Sparkles } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
+import { parseValorBR } from '../utils/numero'
 
-function parseVal(v) {
-  if (!v) return 0
-  if (typeof v === 'number') return v
-  const s = v.toString()
-  if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0
-  return parseFloat(s) || 0
-}
+// Parser único em utils/numero.js — a cópia local lia "1.500" como 1,5.
+const parseVal = parseValorBR
 
 function fmt(v) {
   return 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -105,6 +101,10 @@ export default function AssistenteFinanceiro() {
   const dados = useMemo(() => {
     const receitasPorMes = {}, despesasPorMes = {}
     financeiro.forEach(l => {
+      // Boleto ainda não pago não é despesa realizada. Sem este filtro o
+      // Assistente dava um número e o Painel/Financeiro davam outro, porque
+      // só eles descontavam os pendentes.
+      if (l.pendente) return
       const d = brToDate(l.data)
       if (!d) return
       const k = mesAno(d)

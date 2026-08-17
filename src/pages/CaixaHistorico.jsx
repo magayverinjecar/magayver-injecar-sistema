@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, AlertTriangle } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -39,6 +39,10 @@ export default function CaixaHistorico() {
     id: t.id, data: t.dataAbertura, operador: t.operador,
     horaAbertura: t.horaAbertura, horaFechamento: t.horaFechamento,
     status: 'Fechado', saldoInicial: t.saldoInicial, saldoFinal: t.saldoFinal, divergencia: t.divergencia,
+    // Turno fechado pelo modelo novo confere só a gaveta; os antigos somavam
+    // todas as formas num número só. Distinguir evita comparar coisas diferentes.
+    soGaveta: t.conferenciaSeparada === true,
+    banco: t.banco?.total ?? null,
   }))
 
   const turnos = todosTurnos.filter(t => {
@@ -114,7 +118,8 @@ export default function CaixaHistorico() {
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Fechamento</th>
                 <th className="text-center px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Saldo Inicial</th>
-                <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Saldo Final</th>
+                <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Contado</th>
+                <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Banco</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Divergência</th>
               </tr>
             </thead>
@@ -129,7 +134,13 @@ export default function CaixaHistorico() {
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${t.status === 'Aberto' ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-600'}`}>{t.status}</span>
                   </td>
                   <td className="px-5 py-3.5 text-right text-sm text-slate-600">{fmt(t.saldoInicial)}</td>
-                  <td className="px-5 py-3.5 text-right text-sm text-slate-600">{t.saldoFinal != null ? fmt(t.saldoFinal) : '—'}</td>
+                  <td className="px-5 py-3.5 text-right text-sm text-slate-600">
+                    {t.saldoFinal != null ? fmt(t.saldoFinal) : '—'}
+                    {t.soGaveta && <span className="block text-[10px] text-slate-400">só espécie</span>}
+                  </td>
+                  <td className="px-5 py-3.5 text-right text-sm text-slate-600">
+                    {t.banco != null ? fmt(t.banco) : '—'}
+                  </td>
                   <td className="px-5 py-3.5 text-right text-sm">
                     {t.divergencia != null
                       ? <span className={Math.abs(t.divergencia) < 0.01 ? 'text-green-600' : 'text-red-500 font-semibold'}>{fmt(t.divergencia)}</span>

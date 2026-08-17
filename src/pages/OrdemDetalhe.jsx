@@ -5,17 +5,26 @@ import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import gerarId from '../utils/id'
 import { STATUS_OS, statusColor } from './OrdensServico'
-import { imprimirOS } from '../utils/print'
+import { imprimirOS, imprimirOrcamento } from '../utils/print'
 import { nomeVeiculo } from '../utils/datas'
 import { comprimirImagem } from '../utils/imagem'
 import { uploadFoto } from '../supabase'
+import SeletorMaquina from '../components/ui/SeletorMaquina'
+import MargemDaOS from '../components/MargemDaOS'
+import PainelAdicionarItem from '../components/PainelAdicionarItem'
+import SeletorKit from '../components/SeletorKit'
+import { avisoDeFalta, pecaSemEstoque } from '../utils/kits'
+import { maquinaPadrao, ehCartao } from '../utils/cartao'
 import {
   CATEGORIAS_FOTO, STATUS_INSP, normalizarInspecao,
   MOMENTO_ENTRADA, fotosDaEntrada, fotosDoReparo, linkVistoria,
 } from '../utils/vistoria'
+import { parseValorBR } from '../utils/numero'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function pNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
+// Parser unico em utils/numero.js — cada tela tinha a propria copia, e a
+// versao antiga lia "1.500" como 1,5.
+const pNum = parseValorBR
 // Quantidade aceita vírgula ("1,5" litros de óleo) — Number() sozinho devolveria NaN
 function parseQtd(v) { const n = pNum(v); return n > 0 ? n : 1 }
 
@@ -62,9 +71,10 @@ export default function OrdemDetalhe() {
     ordens, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque,
     setClientes, setVeiculos,
     atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
-    excluirOrdem, subtotalOrdem, totalOrdem, caixaTurno, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
+    excluirOrdem, subtotalOrdem, totalOrdem, caixaTurno, caixaCarregado, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
     concluirOrdem, entregarOrdem, salvarDiagnostico, salvarVistoria,
     aprovarOrcamento, recusarOrcamento, fecharRecusa, concluirReparo, entregarSemCobrar,
+    config,
   } = useApp()
   const { currentUser, temPermissao } = useAuth()
 
@@ -72,7 +82,8 @@ export default function OrdemDetalhe() {
   const [aba, setAba] = useState('Dados')
   const [modalEditar, setModalEditar] = useState(false)
   const [modalCliente, setModalCliente] = useState(false)
-  const [modalItem, setModalItem] = useState(false)
+  // Painel de lançar item — embutido no quadro de itens, não é mais popup
+  const [painelItem, setPainelItem] = useState(false)
   const [menuImpressao, setMenuImpressao] = useState(false)
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
   const [modalFinalizar, setModalFinalizar] = useState(false)
@@ -97,6 +108,7 @@ export default function OrdemDetalhe() {
   const [motivoRecusa, setMotivoRecusa] = useState('')
   const [valorDiagnostico, setValorDiagnostico] = useState('')
   const [formaDiag, setFormaDiag] = useState('PIX')
+  const [maquinaDiag, setMaquinaDiag] = useState(null)
   const inputFotoRef = useRef(null)
   const inputGaleriaRef = useRef(null)
 
@@ -131,12 +143,21 @@ export default function OrdemDetalhe() {
   const descGeral = pNum(os.descontoGeral)
   const total = totalOrdem(os)
 
+  // Imprime o orçamento DESTA OS — não cria um orçamento novo.
+  //
+  // Antes o botão levava para a tela de Orçamentos e criava um registro avulso a
+  // partir da OS: os mesmos itens passavam a viver em dois lugares, e aquele
+  // orçamento ficava para sempre "pendente" na taxa de conversão, mesmo depois
+  // de o serviço ser fechado na OS. Orçamento avulso é para quem AINDA não tem
+  // OS; com a OS aberta, o orçamento é só um documento dela.
   function gerarOrcamento() {
-    // leva os dados da OS para a tela de Orçamento
-    navigate('/orcamentos', { state: { fromOS: {
-      clienteId: os.clienteId, veiculoId: os.veiculoId, itens: os.itens,
-      observacoes: os.observacoes || '', validade: os.validadeOrcamento || '',
-    } } })
+    imprimirOrcamento({
+      id: os.id,
+      itens: os.itens || [],
+      observacoes: os.observacoes || '',
+      validade: os.validadeOrcamento || '',
+      descontoGeral: os.descontoGeral || '',
+    }, cliente, veiculo)
   }
 
   function whatsapp() {
@@ -347,6 +368,7 @@ export default function OrdemDetalhe() {
     setMotivoRecusa('')
     setValorDiagnostico('')
     setFormaDiag('PIX')
+    setMaquinaDiag(maquinaPadrao(config)?.id ?? null)
     setModalRecusa(true)
   }
 
@@ -361,7 +383,14 @@ export default function OrdemDetalhe() {
     fecharRecusa(os.id, {
       cobrar,
       valorDiagnostico: cobrar ? valorDiagnostico : 0,
-      pagamentos: cobrar ? [{ forma: formaDiag, valor: String(pNum(valorDiagnostico)) }] : [],
+      pagamentos: cobrar
+        ? [{
+            forma: formaDiag,
+            valor: String(pNum(valorDiagnostico)),
+            // Cobrança do diagnóstico paga no cartão tem taxa como qualquer outra
+            ...(ehCartao(formaDiag) ? { maquinaId: maquinaDiag, parcelas: 1 } : {}),
+          }]
+        : [],
       clienteNome: cliente?.nome || 'Cliente',
     })
     setModalRecusa(false)
@@ -397,7 +426,7 @@ export default function OrdemDetalhe() {
   function addPgto() {
     const soma = pgtos.reduce((s, p) => s + pNum(p.valor), 0)
     const restante = Math.max(0, total - soma)
-    setPgtos(ps => [...ps, { id: gerarId(), forma: 'PIX', valor: restante.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }])
+    setPgtos(ps => [...ps, { id: gerarId(), forma: 'PIX', valor: restante.toFixed(2).replace('.', ','), parcelas: '1' }])
   }
 
   function removePgto(id) {
@@ -405,7 +434,16 @@ export default function OrdemDetalhe() {
   }
 
   function updatePgto(id, field, value) {
-    setPgtos(ps => ps.map(p => p.id === id ? { ...p, [field]: value } : p))
+    setPgtos(ps => ps.map(p => {
+      if (p.id !== id) return p
+      const novo = { ...p, [field]: value }
+      // Trocar para cartão sem máquina escolhida entraria sem taxa e sem aviso.
+      // Com uma máquina só cadastrada, escolher seria digitação à toa.
+      if (field === 'forma' && ehCartao(value) && !novo.maquinaId) {
+        novo.maquinaId = maquinaPadrao(config)?.id ?? null
+      }
+      return novo
+    }))
   }
 
   function confirmarPagarEntregar(comImprimir) {
@@ -415,10 +453,13 @@ export default function OrdemDetalhe() {
       return
     }
     const pagFormatados = pgtos.map(p => {
-      const isC = p.forma === 'Cartão Débito' || p.forma === 'Cartão Crédito'
       const pg = { forma: p.forma, valor: String(pNum(p.valor)) }
-      if (isC) pg.recebimento = p.recebimento
-      if (p.forma === 'Cartão Crédito' && Number(p.parcelas) > 1) pg.parcelas = Number(p.parcelas)
+      // A máquina e as parcelas seguem junto: é delas que saem a taxa, o valor
+      // líquido e a data em que o dinheiro cai. Quem calcula é o AppContext.
+      if (ehCartao(p.forma)) {
+        pg.maquinaId = p.maquinaId ?? null
+        if (p.forma === 'Cartão Crédito') pg.parcelas = Number(p.parcelas) || 1
+      }
       return pg
     })
     entregarOrdem(os.id, pagFormatados, cliente?.nome || 'Cliente')
@@ -478,6 +519,16 @@ export default function OrdemDetalhe() {
     os.itens.forEach(item => {
       editarItemOrdem(os.id, item.id, { valorUnitario: (pNum(item.valorUnitario) * (1 + pct / 100)).toFixed(2).replace('.', ','), quantidade: item.quantidade })
     })
+  }
+
+  // Kit lançado item por item, pelo MESMO caminho do painel de adicionar. É o
+  // que preserva o congelamento do custo da peça e a baixa do estoque — um
+  // atalho que gravasse os itens direto na OS perderia as duas coisas.
+  function aplicarKit({ itens, faltando }) {
+    // Só interrompe quando há o que avisar: peça faltando. Kit completo entra
+    // em um clique, que é o motivo de ele existir.
+    if (faltando.length && !confirm(avisoDeFalta(faltando))) return
+    itens.forEach(item => adicionarItemOrdem(os.id, item))
   }
 
   return (
@@ -567,7 +618,7 @@ export default function OrdemDetalhe() {
             )
           )}
           {podeCobrar && (
-            <button onClick={() => { setPgtos([{ id: 1, forma: 'PIX', valor: total.toFixed(2).replace('.', ','), recebimento: 'na_hora', parcelas: '1' }]); setModalFinalizar(true) }} disabled={processandoAcao} className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
+            <button onClick={() => { setPgtos([{ id: 1, forma: 'PIX', valor: total.toFixed(2).replace('.', ','), parcelas: '1' }]); setModalFinalizar(true) }} disabled={processandoAcao} className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
               <Banknote size={14} />Pagar e entregar
             </button>
           )}
@@ -991,11 +1042,30 @@ export default function OrdemDetalhe() {
                   Todos
                 </button>
               </div>
-              <button onClick={() => setModalItem(true)} disabled={osFinalizada}
+              <SeletorKit onAplicar={aplicarKit} desabilitado={osFinalizada}
+                titulo={osFinalizada ? 'OS finalizada — reabra a OS para alterar os itens' : 'Lança de uma vez as peças e a mão de obra do kit'} />
+              <button onClick={() => setPainelItem(v => !v)} disabled={osFinalizada} aria-expanded={painelItem}
                 title={osFinalizada ? 'OS finalizada — reabra a OS para alterar os itens' : ''}
-                className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"><Plus size={15} />Adicionar</button>
+                className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                <Plus size={15} />Adicionar item
+              </button>
             </div>
           </div>
+
+          {/* Painel embutido: abre aqui mesmo e continua aberto entre um item e
+              outro — um orçamento real tem vários. */}
+          {painelItem && !osFinalizada && (
+            <div className="mb-4">
+              <PainelAdicionarItem
+                servicos={servicos}
+                estoque={estoque}
+                funcionarios={funcionarios}
+                onFechar={() => setPainelItem(false)}
+                onAdd={item => adicionarItemOrdem(os.id, item)}
+              />
+            </div>
+          )}
+
           {(!os.itens || os.itens.length === 0) ? (
             <p className="text-center text-sm text-slate-400 py-10">Nenhum item adicionado</p>
           ) : (
@@ -1012,11 +1082,22 @@ export default function OrdemDetalhe() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {os.itens.map(it => (
-                  <tr key={it.id}>
+                {os.itens.map(it => {
+                  // Peça com a prateleira zerada fica em vermelho — vale para
+                  // qualquer item, tenha vindo de kit ou lançado na mão. É o que
+                  // evita mandar o orçamento sem perceber que falta peça.
+                  // Valor derivado: entrou a peça em Compras, o vermelho some.
+                  const zerada = it.tipo === 'peca' && pecaSemEstoque(estoque, it.produtoId)
+                  return (
+                  <tr key={it.id} className={zerada ? 'bg-red-50' : ''}>
                     <td className="py-2.5">
-                      <span className="text-sm text-slate-700">{it.descricao} </span>
+                      <span className={`text-sm ${zerada ? 'text-red-700 font-medium' : 'text-slate-700'}`}>{it.descricao} </span>
                       <span className={`text-xs px-1.5 py-0.5 rounded ${it.tipo === 'servico' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>{it.tipo === 'servico' ? 'serviço' : 'peça'}</span>
+                      {zerada && (
+                        <span className="ml-1 inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 font-medium">
+                          <AlertTriangle size={11} />sem estoque
+                        </span>
+                      )}
                       {it.tipo === 'servico' && it.mecanicoId && (
                         <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">{getFuncionario(it.mecanicoId)?.nome || ''}</span>
                       )}
@@ -1033,7 +1114,8 @@ export default function OrdemDetalhe() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
               <tfoot>
                 {descGeral > 0 && (
@@ -1083,6 +1165,8 @@ export default function OrdemDetalhe() {
             </div>
           )}
         </div>
+
+        <MargemDaOS os={os} total={total} />
 
         {/* Observações e validade do orçamento — mesmos campos da tela de
             Orçamentos avulsa; saem na impressão. Salvam ao sair do campo. */}
@@ -1309,8 +1393,6 @@ export default function OrdemDetalhe() {
           onClose={() => setModalCliente(false)}
           onSalvar={(c, v) => { salvarClienteVeiculo(c, v); setModalCliente(false) }} />
       )}
-      {modalItem && <ModalAdicionarItem servicos={servicos} estoque={estoque} funcionarios={funcionarios} onClose={() => setModalItem(false)} onAdd={item => { adicionarItemOrdem(os.id, item); setModalItem(false) }} />}
-
       {/* Modal Finalizar OS */}
       {modalFinalizar && (() => {
         const somaPgtos = pgtos.reduce((s, p) => s + pNum(p.valor), 0)
@@ -1378,19 +1460,6 @@ export default function OrdemDetalhe() {
                           )}
                         </div>
 
-                        {isC && (
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => updatePgto(pg.id, 'recebimento', 'na_hora')}
-                              className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors ${pg.recebimento === 'na_hora' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                              Na hora
-                            </button>
-                            <button type="button" onClick={() => updatePgto(pg.id, 'recebimento', '1_dia_util')}
-                              className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors ${pg.recebimento === '1_dia_util' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                              1 dia útil
-                            </button>
-                          </div>
-                        )}
-
                         {pg.forma === 'Cartão Crédito' && (
                           <div className="space-y-1">
                             <div className="grid grid-cols-6 gap-1">
@@ -1407,6 +1476,19 @@ export default function OrdemDetalhe() {
                               </p>
                             )}
                           </div>
+                        )}
+
+                        {/* A máquina define o prazo e a taxa. Antes se perguntava
+                            "na hora ou 1 dia útil?" a cada venda — informação que
+                            é da maquininha, e que o sistema gravava sem usar. */}
+                        {isC && (
+                          <SeletorMaquina
+                            forma={pg.forma}
+                            valor={pg.valor}
+                            parcelas={pg.parcelas}
+                            maquinaId={pg.maquinaId}
+                            onSelecionar={id => updatePgto(pg.id, 'maquinaId', id)}
+                          />
                         )}
                       </div>
                     )
@@ -1429,7 +1511,7 @@ export default function OrdemDetalhe() {
 
                 {/* Sem caixa aberto a venda era descartada em silêncio e só o
                     financeiro recebia o valor — o relatório do caixa nunca fechava. */}
-                {!caixaTurno && (
+                {caixaCarregado && !caixaTurno && (
                   <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">
                     <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
                     <span><strong>Caixa fechado.</strong> Abra o caixa antes de receber, senão este valor não entra no relatório do turno.</span>
@@ -1437,16 +1519,16 @@ export default function OrdemDetalhe() {
                 )}
 
                 <div className="flex gap-2 pt-1">
-                  <button type="button" onClick={() => confirmarPagarEntregar(false)} disabled={!valido || !caixaTurno}
+                  <button type="button" onClick={() => confirmarPagarEntregar(false)} disabled={!valido || (caixaCarregado && !caixaTurno)}
                     className="flex-1 border border-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     Confirmar
                   </button>
-                  <button type="button" onClick={() => confirmarPagarEntregar(true)} disabled={!valido || !caixaTurno}
+                  <button type="button" onClick={() => confirmarPagarEntregar(true)} disabled={!valido || (caixaCarregado && !caixaTurno)}
                     className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1.5">
                     <Printer size={15} />Confirmar e Imprimir
                   </button>
                 </div>
-                {!caixaTurno && (
+                {caixaCarregado && !caixaTurno && (
                   <button type="button" onClick={() => navigate('/caixa')}
                     className="w-full bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">
                     Abrir o caixa agora
@@ -1570,6 +1652,17 @@ export default function OrdemDetalhe() {
                       {FORMAS_PGTO.map(f => <option key={f.label} value={f.label}>{f.label}</option>)}
                     </select>
                   </div>
+                  {ehCartao(formaDiag) && (
+                    <div className="mb-2">
+                      <SeletorMaquina
+                        forma={formaDiag}
+                        valor={valorDiagnostico}
+                        parcelas={1}
+                        maquinaId={maquinaDiag}
+                        onSelecionar={setMaquinaDiag}
+                      />
+                    </div>
+                  )}
                   <button type="button" onClick={() => confirmarRecusa(true)} disabled={!caixaTurno}
                     className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">
                     <Banknote size={15} /> Cobrar diagnóstico e entregar
@@ -1585,7 +1678,7 @@ export default function OrdemDetalhe() {
                 </button>
               </div>
 
-              {!caixaTurno && (
+              {caixaCarregado && !caixaTurno && (
                 <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">
                   <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
                   <span><strong>Caixa fechado.</strong> Abra o caixa para cobrar o diagnóstico — "Liberar sem cobrar" continua disponível.</span>
@@ -1767,144 +1860,4 @@ function ModalEditar({ os, funcionarios, onClose, onSalvar }) {
 
 function Campo({ label, children }) {
   return <div><label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>{children}</div>
-}
-
-function ModalAdicionarItem({ servicos, estoque, funcionarios, onClose, onAdd }) {
-  const [modo, setModo] = useState('cadastrado') // 'cadastrado' | 'avulso'
-  const [tipo, setTipo] = useState('servico')
-  const [busca, setBusca] = useState('')
-  const [selId, setSelId] = useState('')
-  const [descricao, setDescricao] = useState('')
-  const [quantidade, setQuantidade] = useState('1')
-  const [valorUnitario, setValorUnitario] = useState('')
-  const [desconto, setDesconto] = useState('0')
-  const [mecanicoId, setMecanicoId] = useState('')
-
-  const lista = tipo === 'servico'
-    ? servicos.filter(s => s.nome.toLowerCase().includes(busca.toLowerCase()))
-    : estoque.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()) || (p.codigo || '').toLowerCase().includes(busca.toLowerCase()))
-
-  function trocarModo(m) {
-    setModo(m)
-    setSelId('')
-    setBusca('')
-    setDescricao('')
-    setValorUnitario('')
-  }
-
-  function selecionar(item) {
-    setSelId(item.id)
-    setDescricao(tipo === 'servico' ? item.nome : `${item.nome}${item.codigo ? ` (${item.codigo})` : ''}`)
-    setValorUnitario(item.preco)
-  }
-
-  // Peça do estoque: quanto existe hoje. Serviço ou peça avulsa não tem limite.
-  const produtoSel = tipo === 'peca' && selId !== ''
-    ? estoque.find(p => p.id === selId)
-    : null
-  const disponivel = produtoSel ? Number(produtoSel.estoque) || 0 : null
-  const qtdPedida = parseQtd(quantidade)
-  const semEstoque = disponivel !== null && qtdPedida > disponivel
-  const semValor = pNum(valorUnitario) <= 0
-
-  function adicionar() {
-    if (!descricao.trim() || semEstoque) return
-    if (semValor && !confirm('Este item está sem valor. Adicionar mesmo assim por R$ 0,00?')) return
-    onAdd({
-      tipo,
-      produtoId: tipo === 'peca' ? selId : null,
-      servicoId: tipo === 'servico' ? selId : null,
-      descricao: descricao.toUpperCase(),
-      quantidade: qtdPedida,
-      valorUnitario,
-      desconto,
-      mecanicoId: tipo === 'servico' && mecanicoId ? Number(mecanicoId) : null,
-    })
-  }
-
-  return (
-    <ModalBase title="Adicionar Item" onClose={onClose}>
-      <div className="space-y-3">
-
-        {/* Toggle Cadastrado / Avulso */}
-        <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-          <button type="button" onClick={() => trocarModo('cadastrado')}
-            className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${modo === 'cadastrado' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-            Do Cadastro
-          </button>
-          <button type="button" onClick={() => trocarModo('avulso')}
-            className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${modo === 'avulso' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-            Avulso
-          </button>
-        </div>
-
-        <Campo label="Tipo">
-          <select value={tipo} onChange={e => { setTipo(e.target.value); setSelId(''); setBusca(''); setDescricao(''); setValorUnitario(''); setMecanicoId('') }} className="inp">
-            <option value="servico">Serviço</option>
-            <option value="peca">Peça</option>
-          </select>
-        </Campo>
-
-        {modo === 'cadastrado' && (
-          <Campo label={tipo === 'servico' ? 'Serviço cadastrado' : 'Produto do estoque'}>
-            <input value={busca} onChange={e => setBusca(e.target.value)} placeholder={tipo === 'servico' ? 'Pesquisar serviço...' : 'Pesquisar produto...'} className="inp mb-1" />
-            <div className="border border-slate-200 rounded-lg max-h-36 overflow-y-auto">
-              {lista.map(item => {
-                const emEstoque = Number(item.estoque) || 0
-                return (
-                  <button key={item.id} onClick={() => selecionar(item)}
-                    className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm transition-colors ${selId === item.id ? 'bg-primary-500 text-white' : 'hover:bg-slate-50 text-slate-700'}`}>
-                    <span className="truncate">{item.nome}{tipo === 'peca' && item.codigo ? ` (${item.codigo})` : ''}</span>
-                    <span className="flex items-center gap-2 flex-shrink-0">
-                      {tipo === 'peca' && (
-                        <span className={`text-xs ${selId === item.id ? 'text-white/80' : emEstoque > 0 ? 'text-slate-400' : 'text-red-500 font-medium'}`}>
-                          {emEstoque > 0 ? `${emEstoque} un.` : 'sem estoque'}
-                        </span>
-                      )}
-                      <span className={selId === item.id ? 'text-white' : 'text-slate-400'}>{fmt(pNum(item.preco))}</span>
-                    </span>
-                  </button>
-                )
-              })}
-              {lista.length === 0 && <p className="text-xs text-slate-400 px-3 py-2">Nada encontrado.</p>}
-            </div>
-          </Campo>
-        )}
-
-        <Campo label="Descrição *"><input value={descricao} onChange={e => setDescricao(e.target.value)} spellCheck lang="pt-BR" placeholder={modo === 'avulso' ? 'DESCREVA O SERVIÇO OU PEÇA...' : ''} className="inp uppercase" /></Campo>
-        {tipo === 'servico' && (
-          <Campo label="Reparador">
-            <select value={mecanicoId} onChange={e => setMecanicoId(e.target.value)} className="inp">
-              <option value="">Sem reparador</option>
-              {(funcionarios || []).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-            </select>
-          </Campo>
-        )}
-        <div className="grid grid-cols-3 gap-3">
-          <Campo label={disponivel !== null ? `Quantidade (${disponivel} disp.)` : 'Quantidade'}>
-            <input type="text" inputMode="decimal" value={quantidade} onChange={e => setQuantidade(e.target.value)}
-              className={`inp ${semEstoque ? 'inp-erro' : ''}`} />
-          </Campo>
-          <Campo label="Valor Unitário"><input value={valorUnitario} onChange={e => setValorUnitario(e.target.value)} placeholder="0,00" className="inp" /></Campo>
-          <Campo label="Desconto (R$)"><input value={desconto} onChange={e => setDesconto(e.target.value)} className="inp" /></Campo>
-        </div>
-
-        {semEstoque && (
-          <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">
-            <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-            <span>
-              Estoque insuficiente: você pediu {qtdPedida} e existem {disponivel}.
-              Registre a entrada em Compras ou lance a peça como <strong>Avulso</strong>.
-            </span>
-          </div>
-        )}
-
-        <button onClick={adicionar} disabled={!descricao.trim() || semEstoque}
-          className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
-          Adicionar
-        </button>
-      </div>
-      <style>{`.inp{width:100%;border:1px solid #e2e8f0;border-radius:0.5rem;padding:0.5rem 0.75rem;font-size:0.875rem;outline:none}.inp:focus{box-shadow:0 0 0 2px #f97316}.inp-erro{border-color:#fca5a5;background:#fef2f2}`}</style>
-    </ModalBase>
-  )
 }

@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Plus, Search, Pencil, Trash2, X, TrendingUp, Zap, Clock, CheckCircle, Repeat, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { Plus, Search, Pencil, Trash2, X, TrendingUp, Zap, Clock, CheckCircle, Repeat, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
+import { parseValorBR } from '../utils/numero'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function parseNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
+// Parser unico em utils/numero.js — cada tela tinha a propria copia, e a
+// versao antiga lia "1.500" como 1,5.
+const parseNum = parseValorBR
 
 const CATEGORIAS = ['Outros', 'Aluguel', 'Água', 'Energia', 'Internet', 'Telefone', 'Salário', 'Impostos', 'Manutenção', 'Marketing']
 const STATUS_COR = {
@@ -14,16 +16,24 @@ const STATUS_COR = {
   Atrasado: 'bg-red-100 text-red-700',
 }
 
-const INICIAL = [
-  { id: 1, descricao: 'Terreno', categoria: 'Outros', tipo: 'Fixo', valor: '4.000,00', vencimento: '16/06/2026', status: 'Pago', recorrente: true, diaRecorrencia: '10', observacoes: '' },
-  { id: 2, descricao: 'Água da empresa', categoria: 'Outros', tipo: 'Fixo', valor: '110,00', vencimento: '16/06/2026', status: 'Atrasado', recorrente: true, diaRecorrencia: '10', observacoes: '' },
-]
+// Gasto "Fixo" nasce recorrente: aluguel, energia e salário se repetem todo mês
+// por definição. Deixar o toggle desmarcado por padrão fazia o custo fixo da
+// oficina somar zero no ponto de equilíbrio — em silêncio, porque tipo e
+// recorrência são dois campos separados e ninguém liga um ao outro na hora.
+const VAZIO = { descricao: '', categoria: 'Outros', tipo: 'Fixo', valor: '', status: 'Pendente', data: '', recorrente: true, observacoes: '' }
 
-const VAZIO = { descricao: '', categoria: 'Outros', tipo: 'Fixo', valor: '', status: 'Pendente', data: '', recorrente: false, observacoes: '' }
+// "16/08/2026" → "2026-08-16", que é o formato que <input type="date"> entende.
+function paraISO(vencimentoBR) {
+  const m = String(vencimentoBR || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
+}
 
 export default function Gastos() {
-  const { adicionarLancamento, setFinanceiro } = useApp()
-  const [gastos, setGastos] = useLocalStorage('gastos', INICIAL)
+  // Os gastos ficavam no localStorage: cada aparelho tinha a própria lista e
+  // limpar o navegador apagava o custo fixo inteiro da oficina. Agora vêm do
+  // banco como todo o resto. A lista também não nasce mais com dados de
+  // exemplo ("Terreno", "Água da empresa") — aquilo era teste e entrava na soma.
+  const { adicionarLancamento, setFinanceiro, gastos, setGastos } = useApp()
   const [busca, setBusca] = useState('')
   const [aba, setAba] = useState('Todos')
   const [modal, setModal] = useState(false)
@@ -43,7 +53,10 @@ export default function Gastos() {
   ]
 
   const filtrados = gastos.filter(g => {
-    const matchBusca = !busca || g.descricao.toLowerCase().includes(busca.toLowerCase()) || g.categoria.toLowerCase().includes(busca.toLowerCase())
+    // Sem as guardas, uma linha migrada sem descrição ou categoria derruba a
+    // tela inteira assim que alguém digita na busca.
+    const alvo = `${g.descricao || ''} ${g.categoria || ''}`.toLowerCase()
+    const matchBusca = !busca || alvo.includes(busca.toLowerCase())
     const matchAba =
       aba === 'Todos' ||
       (aba === 'Fixos' && g.tipo === 'Fixo') ||
@@ -53,24 +66,42 @@ export default function Gastos() {
     return matchBusca && matchAba
   })
 
-  // sincroniza com financeiro: gasto pago vira despesa
+  // Sincroniza com o financeiro: gasto pago vira despesa.
+  //
+  // O lançamento carrega a data do pagamento além do `gastoId`. Sem ela, marcar
+  // o aluguel como Pago de novo no mês seguinte apagava TODOS os lançamentos
+  // daquele gasto, de todos os meses — o histórico de doze aluguéis sumia numa
+  // remarcação. Ver o filtro do desfazer logo abaixo.
   function sincronizarFinanceiro(gasto, antigoStatus) {
     if (gasto.status === 'Pago' && antigoStatus !== 'Pago') {
-      adicionarLancamento({ descricao: `Gasto - ${gasto.descricao}`, tipo: 'despesa', valor: gasto.valor, gastoId: gasto.id })
+      adicionarLancamento({ descricao: `Gasto - ${gasto.descricao}`, tipo: 'despesa', valor: gasto.valor, gastoId: gasto.id, competencia: gasto.vencimento || '' })
     } else if (gasto.status !== 'Pago' && antigoStatus === 'Pago') {
-      setFinanceiro(fp => fp.filter(f => f.gastoId !== gasto.id))
+      // Desfaz só o lançamento DAQUELA competência. Filtrar por `gastoId`
+      // sozinho apagava o histórico inteiro do gasto recorrente.
+      const comp = gasto.vencimento || ''
+      setFinanceiro(fp => fp.filter(f =>
+        f.gastoId !== gasto.id || (f.competencia && f.competencia !== comp)
+      ))
     }
   }
 
   function abrirNovo() { setForm(VAZIO); setEditId(null); setModal(true) }
   function abrirEditar(g) {
-    setForm({ ...VAZIO, ...g, data: '' })
+    // Preenche a data com o vencimento que o gasto já tem. Antes o campo abria
+    // vazio e o salvar recarimbava a data de HOJE: editar um gasto só para
+    // corrigir o valor apagava o vencimento original. Isso passou a importar de
+    // verdade quando o vencimento virou o que decide em qual mês o gasto entra.
+    setForm({ ...VAZIO, ...g, data: paraISO(g.vencimento) })
     setEditId(g.id); setModal(true)
   }
 
   function salvar() {
     if (!form.descricao.trim() || !form.valor) return
-    const vencimento = form.data ? new Date(form.data + 'T12:00:00').toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR')
+    // Sem data informada numa EDIÇÃO, mantém o vencimento que já existia.
+    const anterior = editId ? gastos.find(g => g.id === editId) : null
+    const vencimento = form.data
+      ? new Date(form.data + 'T12:00:00').toLocaleDateString('pt-BR')
+      : (anterior?.vencimento || new Date().toLocaleDateString('pt-BR'))
     if (editId) {
       const antigo = gastos.find(g => g.id === editId)
       const atualizado = { ...antigo, ...form, vencimento }
@@ -236,7 +267,10 @@ export default function Gastos() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
-                  <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
+                  {/* Trocar para Fixo religa a recorrência; para Variável,
+                      desliga — gasto variável costuma ser pontual. Continua
+                      editável no toggle abaixo para os casos fora da regra. */}
+                  <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value, recorrente: e.target.value === 'Fixo' }))}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                     <option>Fixo</option>
                     <option>Variável</option>

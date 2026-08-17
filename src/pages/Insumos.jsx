@@ -1,21 +1,20 @@
 import { useState } from 'react'
 import { Plus, Search, Pencil, ArrowUpDown, AlertTriangle, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
+import { parseValorBR } from '../utils/numero'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function parseNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
-
-const INICIAL = [
-  { id: 1, nome: 'Sabão', marca: 'Norte', codigo: '', custo: '10,00', estoque: 1, minimo: 1, descricao: '' },
-]
+// Parser unico em utils/numero.js — cada tela tinha a propria copia, e a
+// versao antiga lia "1.500" como 1,5.
+const parseNum = parseValorBR
 
 const VAZIO = { nome: '', marca: '', codigo: '', custo: '', estoque: '0', minimo: '', descricao: '' }
 
 export default function Insumos() {
-  const { adicionarLancamento } = useApp()
-  const [insumos, setInsumos] = useLocalStorage('insumos', INICIAL)
+  // Saiu do localStorage pelo mesmo motivo dos gastos: lista por aparelho, sem
+  // backup. O "Sabão" que vinha no código era dado de teste e não sobe junto.
+  const { adicionarLancamento, insumos, setInsumos } = useApp()
   const [busca, setBusca] = useState('')
   const [modalNovo, setModalNovo] = useState(false)
   const [form, setForm] = useState(VAZIO)
@@ -25,10 +24,10 @@ export default function Insumos() {
   const [movMotivo, setMovMotivo] = useState('')
   const [movLancarFinanceiro, setMovLancarFinanceiro] = useState(false)
 
+  // `nome` estava sem guarda: insumo migrado sem esse campo derrubava a tela na
+  // primeira tecla digitada na busca.
   const filtrados = insumos.filter(i =>
-    i.nome.toLowerCase().includes(busca.toLowerCase()) ||
-    (i.marca || '').toLowerCase().includes(busca.toLowerCase()) ||
-    (i.descricao || '').toLowerCase().includes(busca.toLowerCase())
+    `${i.nome || ''} ${i.marca || ''} ${i.descricao || ''}`.toLowerCase().includes(busca.toLowerCase())
   )
 
   const criticos = insumos.filter(i => Number(i.estoque) <= Number(i.minimo)).length

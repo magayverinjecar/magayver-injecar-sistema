@@ -1,3 +1,5 @@
+import { parseValorBR } from './numero'
+
 function getConfig() {
   try {
     const v = localStorage.getItem('config-oficina')
@@ -5,7 +7,9 @@ function getConfig() {
   } catch { return {} }
 }
 
-function pNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
+// Parser único em utils/numero.js — a cópia local lia "1.500" como 1,5, então a
+// nota impressa podia sair com valor diferente do que a tela mostrava.
+const pNum = parseValorBR
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // Quantidade aceita vírgula ("4,5" litros de óleo). Number() sozinho devolvia
@@ -620,7 +624,11 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
   const pecas    = itens.filter(i => i.tipo !== 'Serviço' && i.tipo !== 'servico')
   const totalSrv = servicos.reduce((s, i) => s + pNum(i.valorUnitario) * qtd(i.quantidade) - pNum(i.desconto || 0), 0)
   const totalPec = pecas.reduce((s, i) => s + pNum(i.valorUnitario) * qtd(i.quantidade) - pNum(i.desconto || 0), 0)
-  const total = totalSrv + totalPec
+  // Desconto geral: existe nas OS e não era considerado aqui. Como o orçamento
+  // da OS passou a ser impresso por esta função, sem isto o cliente receberia
+  // uma proposta com o total MAIOR do que o combinado.
+  const descGeralOrc = pNum(orc.descontoGeral || 0)
+  const total = Math.max(0, totalSrv + totalPec - descGeralOrc)
 
   const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
@@ -723,6 +731,7 @@ function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
     <div style="border:1px solid #cbd5e1;border-radius:4px;padding:8px 12px;margin-bottom:14px;display:flex;justify-content:flex-end;gap:24px;align-items:center;background:#f8fafc">
       ${servicos.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL SERVIÇOS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalSrv)}</div></div>` : ''}
       ${pecas.length > 0 ? `<div><div style="font-size:9px;color:#64748b;font-weight:600">TOTAL PEÇAS</div><div style="font-size:13px;font-weight:700;color:#1e293b">${fmt(totalPec)}</div></div>` : ''}
+      ${descGeralOrc > 0 ? `<div><div style="font-size:9px;color:#b91c1c;font-weight:600">DESCONTO</div><div style="font-size:13px;font-weight:700;color:#b91c1c">- ${fmt(descGeralOrc)}</div></div>` : ''}
       <div style="border-left:2px solid #e2e8f0;padding-left:24px"><div style="font-size:9px;color:#64748b;font-weight:600">VALOR TOTAL</div><div style="font-size:20px;font-weight:900;color:#1e293b">${fmt(total)}</div></div>
     </div>
 

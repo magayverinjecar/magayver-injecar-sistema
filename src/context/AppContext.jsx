@@ -1,6 +1,11 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react'
+import { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from './AuthContext'
+import { enriquecerPagamento, enriquecerPagamentos, somarPagamentos } from '../utils/cartao'
+import { listaAReceber, diasEmAberto } from '../utils/receber'
+import { parseDataBR } from '../utils/datas'
+import { parseValorBR } from '../utils/numero'
+import { intervaloDe, periodoAnteriorDe, resumirFinanceiro } from '../utils/periodo'
 import gerarId from '../utils/id'
 
 const AppContext = createContext(null)
@@ -120,6 +125,10 @@ export function mesclarOrdem(prevRow, nextRow, remotoData) {
 export function AppProvider({ children }) {
   const { currentUser } = useAuth()
   const [carregando, setCarregando] = useState(true)
+  // O turno de caixa carrega DEPOIS de `carregando` virar false (vem em segundo
+  // plano para não travar a tela). Quem depende dele precisa saber a diferença
+  // entre "ainda não chegou" e "não existe turno aberto".
+  const [caixaCarregado, setCaixaCarregado] = useState(false)
   // Saúde da conexão — o Modo TV depende disso para não exibir dados velhos calado
   const [realtimeOk, setRealtimeOk] = useState(false)
   const [ultimaSync, setUltimaSync] = useState(Date.now())
@@ -138,6 +147,8 @@ export function AppProvider({ children }) {
   const [fornecedores, _setFornecedores] = useState([])
   const [caixaTurno, _setCaixaTurno] = useState(null)
   const [caixaHistorico, _setCaixaHistorico] = useState([])
+  const [gastos, _setGastos] = useState([])
+  const [insumos, _setInsumos] = useState([])
   const [config, _setConfig] = useState({})
 
   // Refs mantêm o valor atual para uso síncrono dentro dos setters
@@ -145,6 +156,7 @@ export function AppProvider({ children }) {
     clientes: [], veiculos: [], ordens: [], estoque: [], financeiro: [],
     agenda: [], funcionarios: [], servicos: [], checklists: [], orcamentos: [],
     compras: [], fornecedores: [], caixaHistorico: [], caixaTurno: null, config: {},
+    gastos: [], insumos: [],
   })
 
   // ─── Controle de gravação (evita o "eco" do Realtime) ────────────────────────
@@ -171,6 +183,8 @@ export function AppProvider({ children }) {
     compras:         (d) => { r.current.compras         = d; _setCompras(d) },
     fornecedores:    (d) => { r.current.fornecedores    = d; _setFornecedores(d) },
     caixa_historico: (d) => { r.current.caixaHistorico  = d; _setCaixaHistorico(d) },
+    gastos:          (d) => { r.current.gastos          = d; _setGastos(d) },
+    insumos:         (d) => { r.current.insumos         = d; _setInsumos(d) },
   }
 
   // Nome da tabela → chave do estado em r.current (para o realtime cirúrgico ler)
@@ -179,6 +193,7 @@ export function AppProvider({ children }) {
     financeiro: 'financeiro', agenda: 'agenda', funcionarios: 'funcionarios',
     servicos: 'servicos', checklists: 'checklists', orcamentos: 'orcamentos',
     compras: 'compras', fornecedores: 'fornecedores', caixa_historico: 'caixaHistorico',
+    gastos: 'gastos', insumos: 'insumos',
   }
 
   // Evento do realtime: aplica só a linha alterada. Durante gravação local o
@@ -209,13 +224,19 @@ export function AppProvider({ children }) {
   async function recarregarTabela(table) {
     if (pendingWrites.current[table] > 0) { reloadPendente.current[table] = true; return }
     if (table === 'caixa_turno') {
-      const { data } = await supabase.from('caixa_turno').select('id, data').eq('id', 'caixa-turno')
+      const { data, error } = await supabase.from('caixa_turno').select('id, data').eq('id', 'caixa-turno')
+      // Falha de rede não é "não há turno". Zerar aqui fazia a tela oferecer
+      // "Abrir Caixa" no meio do expediente — e o turno novo sobrescrevia o do
+      // dia. Na dúvida, mantém o que já estava na tela.
+      if (error) { console.error('[caixa_turno] Erro ao recarregar:', error); return }
       const turno = data?.[0] ? { id: 'caixa-turno', ...data[0].data } : null
       r.current.caixaTurno = turno; _setCaixaTurno(turno)
       return
     }
     if (table === 'configuracoes') {
-      const { data } = await supabase.from('configuracoes').select('id, data').eq('id', 'config-oficina')
+      const { data, error } = await supabase.from('configuracoes').select('id, data').eq('id', 'config-oficina')
+      // Mesmo motivo: config vazia apagaria as maquininhas da tela de venda.
+      if (error) { console.error('[configuracoes] Erro ao recarregar:', error); return }
       const configData = data?.[0]?.data || {}
       r.current.config = configData; _setConfig(configData)
       try { localStorage.setItem('config-oficina', JSON.stringify(configData)) } catch {}
@@ -381,19 +402,78 @@ export function AppProvider({ children }) {
     }
   }
 
+  // Sobe para o banco o que ficou preso no localStorage deste aparelho.
+  //
+  // Roda uma vez só, e só quando a tabela está vazia: se dois celulares tivessem
+  // listas diferentes e ambos subissem, o custo fixo apareceria dobrado. O
+  // primeiro que abrir leva os dados dele; os outros passam a ler do banco.
+  function migrarDoNavegador(tabela, dadosDoBanco, setter, exemplosParaIgnorar) {
+    const marca = `migracao-${tabela}-supabase`
+    if (localStorage.getItem(marca)) return
+    if (dadosDoBanco === null) return            // falha de rede: tenta na próxima vez
+    if ((dadosDoBanco || []).length > 0) { localStorage.setItem(marca, '1'); return }
+
+    let locais
+    try { locais = JSON.parse(localStorage.getItem(tabela) || '[]') } catch { locais = [] }
+    if (!Array.isArray(locais)) locais = []
+
+    // Descarta os dados de exemplo que vinham no código — mas só se ainda
+    // estiverem intactos. Se o valor foi editado, virou custo real da oficina e
+    // sobe junto: filtrar só pelo nome jogaria fora o aluguel de verdade.
+    const paraSubir = locais.filter(item => {
+      const nome = String(item?.descricao || item?.nome || '').trim()
+      if (!nome) return false
+      const exemplo = exemplosParaIgnorar.find(e => e.nome === nome)
+      if (!exemplo) return true
+      return String(item?.valor ?? item?.custo ?? '').trim() !== exemplo.valor
+    })
+    if (paraSubir.length === 0) { localStorage.setItem(marca, '1'); return }
+
+    // Id derivado do CONTEÚDO, não de `gerarId()`.
+    //
+    // Amanhã de manhã a recepção, o celular e o tablet abrem o sistema quase ao
+    // mesmo tempo. Os três leem a tabela vazia antes de qualquer um ter subido, e
+    // os três migram. Com id sorteado, o mesmo aluguel viraria três linhas e o
+    // custo fixo triplicaria — silenciosamente, contaminando ponto de equilíbrio,
+    // custo da hora e DRE. Com id do conteúdo, o segundo aparelho grava por cima
+    // do primeiro: a lista converge em vez de acumular.
+    //
+    // Valores diferentes para o mesmo nome continuam virando linhas distintas —
+    // aí são dois cadastros divergentes de verdade, e quem decide é o dono.
+    const chaveDoItem = (item) => {
+      const nome = String(item?.descricao || item?.nome || '').trim().toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').slice(0, 40)
+      const valor = String(item?.valor ?? item?.custo ?? '').trim().replace(/[^0-9,.]/g, '')
+      return `mig-${nome}-${valor}`
+    }
+    const normalizados = paraSubir.map(item => ({ ...item, id: chaveDoItem(item) }))
+    r.current[tabela] = normalizados
+    setter(normalizados)
+    marcarGravando(tabela)
+    // A marca NÃO é gravada aqui de propósito. `supabaseDiff` resolve mesmo
+    // quando o upsert falha (a falha vai para a fila em memória, que se perde ao
+    // fechar a aba) — gravar a marca aqui queimava a única chance de migrar e o
+    // custo fixo ficava preso no navegador para sempre. Na próxima abertura,
+    // se os dados chegaram, a tabela vem preenchida e a marca é gravada no
+    // caminho de cima; se não chegaram, tenta de novo.
+    supabaseDiff(tabela, [], normalizados)
+      .catch(e => console.error(`[migração ${tabela}]`, e))
+      .finally(() => fimGravando(tabela))
+  }
+
   // Carrega todos os dados ao montar
   useEffect(() => {
     async function init() {
       const [
         clientesData, veiculosData, ordensData, estoqueData, financeiroData,
         agendaData, funcionariosData, servicosData, checklistsData, orcamentosData,
-        comprasData, fornecedoresData, caixaHistoricoData,
+        comprasData, fornecedoresData, caixaHistoricoData, gastosData, insumosData,
       ] = await Promise.all([
         loadTable('clientes'), loadTable('veiculos'), loadTable('ordens'),
         loadTable('estoque'), loadTable('financeiro'), loadTable('agenda'),
         loadTable('funcionarios'), loadTable('servicos'), loadTable('checklists'),
         loadTable('orcamentos'), loadTable('compras'), loadTable('fornecedores'),
-        loadTable('caixa_historico'),
+        loadTable('caixa_historico'), loadTable('gastos'), loadTable('insumos'),
       ])
 
       r.current.clientes      = clientesData || []
@@ -409,6 +489,8 @@ export function AppProvider({ children }) {
       r.current.compras       = comprasData || []
       r.current.fornecedores  = fornecedoresData || []
       r.current.caixaHistorico = caixaHistoricoData || []
+      r.current.gastos        = gastosData || []
+      r.current.insumos       = insumosData || []
 
       _setClientes(r.current.clientes)
       _setVeiculos(r.current.veiculos)
@@ -423,6 +505,17 @@ export function AppProvider({ children }) {
       _setCompras(r.current.compras)
       _setFornecedores(r.current.fornecedores)
       _setCaixaHistorico(r.current.caixaHistorico)
+      _setGastos(r.current.gastos)
+      _setInsumos(r.current.insumos)
+
+      // Resgate único do que ficou preso no localStorage deste aparelho. Só sobe
+      // se a tabela no banco estiver vazia — senão duplicaria em cada celular
+      // que abrisse o sistema. Os dados de exemplo que vinham no código
+      // ("Terreno", "Água da empresa", "Sabão") não sobem: eram teste, não custo.
+      migrarDoNavegador('gastos', gastosData, _setGastos,
+        [{ nome: 'Terreno', valor: '4.000,00' }, { nome: 'Água da empresa', valor: '110,00' }])
+      migrarDoNavegador('insumos', insumosData, _setInsumos,
+        [{ nome: 'Sabão', valor: '10,00' }])
 
       // Migração Opção C: incorpora dados de checklists existentes nas OS (roda 1x)
       if (!localStorage.getItem('migracao-opcao-c-done') && checklistsData?.length) {
@@ -516,7 +609,14 @@ export function AppProvider({ children }) {
       // Libera UI imediatamente — dados principais já estão prontos
       setCarregando(false)
 
-      // caixa_turno e configuracoes carregam em segundo plano sem bloquear a UI
+      // caixa_turno e configuracoes carregam em segundo plano sem bloquear a UI.
+      //
+      // Se a leitura do turno FALHAR, `caixaCarregado` continua false de
+      // propósito. Marcar "carregado" com turno nulo faz a tela do Caixa
+      // oferecer o botão "Abrir Caixa" no meio do expediente — e um clique ali
+      // sobrescreve o turno real, com as vendas do dia inteiro. Ficar em
+      // "Carregando…" atrapalha; abrir um turno por cima destrói o dia.
+      let turnoOk = false
       try {
         const { data: turnoRows, error: turnoErr } = await supabase
           .from('caixa_turno').select('id, data').eq('id', 'caixa-turno')
@@ -525,8 +625,29 @@ export function AppProvider({ children }) {
           const turno = turnoRows?.[0] ? { id: 'caixa-turno', ...turnoRows[0].data } : null
           r.current.caixaTurno = turno
           _setCaixaTurno(turno)
+          turnoOk = true
         }
       } catch (e) { console.error('[caixa_turno] Erro:', e) }
+      if (turnoOk) setCaixaCarregado(true)
+      else {
+        // Tenta de novo em segundo plano até conseguir — sem isso a tela ficaria
+        // presa em "Carregando…" para sempre depois de um piscar de internet.
+        const retentar = async () => {
+          try {
+            const { data, error } = await supabase.from('caixa_turno').select('id, data').eq('id', 'caixa-turno')
+            if (error) return false
+            const turno = data?.[0] ? { id: 'caixa-turno', ...data[0].data } : null
+            r.current.caixaTurno = turno
+            _setCaixaTurno(turno)
+            setCaixaCarregado(true)
+            return true
+          } catch { return false }
+        }
+        for (let t = 0; t < 5; t++) {
+          await new Promise(res => setTimeout(res, 2000 * (t + 1)))
+          if (await retentar()) break
+        }
+      }
 
       try {
         const { data: configRows, error: configErr } = await supabase
@@ -625,10 +746,22 @@ export function AppProvider({ children }) {
   const setCompras      = makeSet('compras',          'compras',       _setCompras)
   const setFornecedores = makeSet('fornecedores',     'fornecedores',  _setFornecedores)
   const setCaixaHistorico = makeSet('caixa_historico','caixaHistorico',_setCaixaHistorico)
+  const setGastos       = makeSet('gastos',           'gastos',        _setGastos)
+  const setInsumos      = makeSet('insumos',          'insumos',       _setInsumos)
 
   function setCaixaTurno(valOrFn) {
     const prev = r.current.caixaTurno
     const next = valOrFn instanceof Function ? valOrFn(prev) : valOrFn
+
+    // Quase todo chamador usa a forma `t => t ? {...t, ...} : t`, que devolve
+    // null quando não há turno local. Sem esta guarda, esse null caía no ramo do
+    // DELETE e apagava do banco o turno aberto de verdade — com as vendas do dia
+    // inteiro, para todos os aparelhos, sem erro nenhum na tela. Bastava o
+    // estado local estar null por uma falha de rede momentânea.
+    //
+    // Só apaga quando havia um turno e alguém pediu explicitamente para encerrar.
+    if (next === null && prev === null) return
+
     r.current.caixaTurno = next
     _setCaixaTurno(next)
     marcarGravando('caixa_turno')
@@ -725,12 +858,11 @@ export function AppProvider({ children }) {
     CANCELADA: 'Cancelada',
   }
 
-  function parseBR(v) {
-    if (typeof v === 'number') return v
-    const s = (v || '0').toString()
-    if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0
-    return parseFloat(s) || 0
-  }
+  // Leitura de valor em português — uma implementação só, em utils/numero.js.
+  // Cada tela tinha a própria cópia desta função, e a versão antiga lia "1.500"
+  // como 1,5: o mesmo valor gravado valia mil e quinhentos numa tela e um e
+  // cinquenta na outra.
+  const parseBR = parseValorBR
 
   function subtotalOrdem(o) {
     if (o.itens && o.itens.length > 0) {
@@ -846,6 +978,14 @@ export function AppProvider({ children }) {
   function adicionarItemOrdem(id, item) {
     const novo = { ...item, id: gerarId() }
     if (item.tipo === 'peca' && item.produtoId) {
+      // Congela o custo da peça NESTE momento. O preço de custo do estoque muda
+      // com o tempo; sem congelar, reajustar uma peça hoje reescreveria a margem
+      // de todas as OS antigas que a usaram — o resultado de meses fechados
+      // mudava sozinho.
+      const produto = r.current.estoque.find(p => Number(p.id) === Number(item.produtoId))
+      const custo = parseBR(produto?.precoCusto)
+      if (custo > 0) novo.custoUnitario = produto.precoCusto
+
       setEstoque(prev => prev.map(p => p.id === Number(item.produtoId)
         ? { ...p, estoque: Math.max(0, Number(p.estoque) - (Number(item.quantidade) || 1)) } : p))
     }
@@ -988,13 +1128,26 @@ export function AppProvider({ children }) {
       ...(semConferencia ? [evento(`Entregue sem passar pela conferência — liberado por ${currentUser?.nome || 'usuário'}`)] : []),
       ...(o.historico || []),
     ]
+    // Enriquece ANTES de gravar na OS. A conta da taxa acontecia só dentro de
+    // `registrarVendaCaixa`, e o resultado ficava na venda do turno: a OS
+    // guardava o pagamento cru, com `taxa` ausente. Efeito colateral duplo — a
+    // margem da OS aparecia maior do que é (não descontava a maquininha) e o
+    // aviso "cartão sem taxa calculada" saía em TODA OS paga no cartão, mesmo
+    // com a máquina cadastrada certinho.
+    const pagamentosEnriquecidos = enriquecerPagamentos(
+      (pagamentos || []).filter(p => p.forma !== 'Pagar Depois'),
+      r.current.config,
+    )
+    const aPrazoOS = (pagamentos || []).filter(p => p.forma === 'Pagar Depois')
+    const pagamentosDaOS = [...pagamentosEnriquecidos, ...aPrazoOS]
+
     // Guarda como o cliente pagou na própria OS: a venda do caixa some quando o
     // turno está fechado, e sem isto o recibo reimpresso depois sai sem pagamento.
     setOrdens(prev => prev.map(x => x.id === osId ? {
       ...x,
       status: 'Entregue',
       pago: true,
-      pagamentos: pagamentos || [],
+      pagamentos: pagamentosDaOS,
       dataEntrega: new Date().toLocaleDateString('pt-BR'),
       historico,
       etapaEm: Date.now(),
@@ -1265,7 +1418,10 @@ export function AppProvider({ children }) {
   // --- FINANCEIRO ---
   function adicionarLancamento(lancamento) {
     const hoje = new Date().toLocaleDateString('pt-BR')
-    setFinanceiro(prev => [{ ...lancamento, id: gerarId(), data: hoje }, ...prev])
+    // A data informada tem prioridade. Sem isso, uma taxa recalculada depois
+    // entrava com a data de hoje em vez da data da venda, e o custo de agosto
+    // aparecia em setembro nos relatórios por período.
+    setFinanceiro(prev => [{ ...lancamento, id: gerarId(), data: lancamento.data || hoje }, ...prev])
   }
 
   // --- COMPRAS ---
@@ -1302,7 +1458,10 @@ export function AppProvider({ children }) {
     // Atualiza quantidade dos itens já cadastrados no estoque
     setEstoque(prev => prev.map(item => {
       const entrada = compra.itens.find(i => Number(i.produtoId) === item.id)
-      if (entrada) return { ...item, estoque: Number(item.estoque) + Number(entrada.quantidade) }
+      // Quantidade vazia virava NaN e gravava `estoque: NaN` na linha do
+      // produto — corrompendo o cadastro de vez, porque toda conta com NaN
+      // continua NaN. Vale para os dois caminhos abaixo.
+      if (entrada) return { ...item, estoque: (Number(item.estoque) || 0) + (parseBR(entrada.quantidade) || 0) }
       return item
     }))
 
@@ -1319,7 +1478,7 @@ export function AppProvider({ children }) {
           precoCusto: i.valorUnitario || '0',
           preco: i.novoItemDados.precoVenda || '0',
           minimo: Number(i.novoItemDados.minimo) || 0,
-          estoque: Number(i.quantidade),
+          estoque: parseBR(i.quantidade) || 0,
         })),
       ])
     }
@@ -1330,15 +1489,21 @@ export function AppProvider({ children }) {
         adicionarLancamento({
           descricao: `Compra ${compra.numero} - ${compra.fornecedorNome || 'Fornecedor'} (${idx + 1}/${parcelas.length})`,
           tipo: 'despesa',
+          categoria: 'Compra de peças',
           valor: parseBR(p.valor).toFixed(2).replace('.', ','),
           vencimento: p.vencimento || '',
           compraId: id,
+          // Amarra o lançamento à parcela: sem isto, dar baixa não tinha como
+          // achar a despesa já existente e criava uma segunda — a compra
+          // parcelada aparecia no resultado pelo dobro do que custou.
+          parcelaId: p.id,
         })
       })
     } else {
       adicionarLancamento({
         descricao: `Compra ${compra.numero} - ${compra.fornecedorNome || 'Fornecedor'}`,
         tipo: 'despesa',
+        categoria: 'Compra de peças',
         valor: compra.total.toFixed(2).replace('.', ','),
         vencimento: '',
         compraId: id,
@@ -1370,21 +1535,38 @@ export function AppProvider({ children }) {
   }
 
   function registrarVendaCaixa(venda) {
-    const recebido = (venda.pagamentos || [])
-      .filter(p => p.forma !== 'Pagar Depois')
-      .reduce((s, p) => s + pNum(p.valor), 0)
+    // Cada pagamento passa a carregar quanto custou de taxa e quanto sobrou.
+    // O cliente pagou o bruto (é o faturamento); a adquirente ficou com a taxa;
+    // só o líquido virou saldo. Antes o bruto entrava como se fosse tudo isso.
+    const pagamentos = enriquecerPagamentos(
+      (venda.pagamentos || []).filter(p => p.forma !== 'Pagar Depois'),
+      r.current.config,
+    )
+    const aPrazo = (venda.pagamentos || []).filter(p => p.forma === 'Pagar Depois')
+
+    const totais = somarPagamentos(pagamentos)
+    const recebido = totais.bruto
     const pago = recebido >= venda.total - 0.001
-    const vendasExistentes = new Set((caixaTurno?.vendas || []).map(v => v.numero))
+    const vendasExistentes = new Set((r.current.caixaTurno?.vendas || []).map(v => v.numero))
     let numero
     for (let i = 0; i < 20; i++) {
       const n = '#' + Math.floor(3000 + Math.random() * 7000)
       if (!vendasExistentes.has(n)) { numero = n; break }
     }
     if (!numero) {
-      const nums = (caixaTurno?.vendas || []).map(v => parseInt((v.numero || '').replace('#', '')) || 0)
+      const nums = (r.current.caixaTurno?.vendas || []).map(v => parseInt((v.numero || '').replace('#', '')) || 0)
       numero = '#' + ((Math.max(0, ...nums)) + 1)
     }
-    const novaVenda = { ...venda, id: gerarId(), numero, status: pago ? 'Paga' : 'Pendente', recebido, hora: horaAgora() }
+    const novaVenda = {
+      ...venda,
+      pagamentos: [...pagamentos, ...aPrazo],
+      id: gerarId(), numero,
+      status: pago ? 'Paga' : 'Pendente',
+      recebido,
+      taxaTotal: totais.taxa,
+      recebidoLiquido: totais.liquido,
+      hora: horaAgora(),
+    }
 
     setCaixaTurno(t => t ? { ...t, vendas: [novaVenda, ...t.vendas] } : t)
 
@@ -1395,11 +1577,150 @@ export function AppProvider({ children }) {
         valor: recebido.toFixed(2).replace('.', ','),
         vendaId: novaVenda.id,
         caixa: true,
+        // Sem isto não dá para responder quanto entrou em PIX, dinheiro ou cartão
+        formasPagamento: pagamentos.map(p => p.forma),
+        liquido: totais.liquido,
       }
       if (venda.osId) lanc.osId = venda.osId
+      // Marca a dívida que este dinheiro está quitando, para o "A Receber"
+      // saber que aquela venda antiga já foi (parcial ou totalmente) paga.
+      if (venda.quitacaoDe != null) lanc.quitacaoDe = venda.quitacaoDe
       adicionarLancamento(lanc)
+      lancarTaxasCartao(pagamentos, { vendaId: novaVenda.id, osId: venda.osId, numero })
     }
     return numero
+  }
+
+  // A taxa da maquininha é despesa como qualquer outra — e precisa sair
+  // identificada por máquina para se poder somar quanto cada uma custou no mês
+  // e ter com o que negociar. Um lançamento por máquina dentro da venda: quase
+  // sempre uma linha só, sem inchar o extrato.
+  function lancarTaxasCartao(pagamentos, { vendaId, osId, numero, data }) {
+    const porMaquina = new Map()
+    for (const p of pagamentos) {
+      if (!(p.taxa > 0)) continue
+      const chave = String(p.maquinaId)
+      const atual = porMaquina.get(chave)
+        || { maquinaId: p.maquinaId, maquinaNome: p.maquinaNome, taxa: 0, base: 0, detalhes: [] }
+      atual.taxa = Math.round((atual.taxa + p.taxa) * 100) / 100
+      atual.base = Math.round((atual.base + p.bruto) * 100) / 100
+      // Guardar COMO passou (débito, à vista, 6x) é o que permite depois
+      // perguntar "quanto isto teria custado na outra máquina?". Só o valor
+      // total da taxa não responde: cada modalidade tem preço diferente.
+      atual.detalhes.push({ modalidade: p.modalidade, parcelas: p.parcelas, bruto: p.bruto, taxa: p.taxa })
+      porMaquina.set(chave, atual)
+    }
+    for (const m of porMaquina.values()) {
+      // Se já existe taxa lançada para esta venda nesta máquina, não lança de
+      // novo. Sem isso, um reprocessamento que gravasse o financeiro mas
+      // falhasse ao gravar o turno deixava `taxaPendente` no banco — e o
+      // próximo clique em "Recalcular taxas" duplicava a despesa. Vale também
+      // para dois aparelhos rodando o recálculo.
+      const jaLancada = r.current.financeiro.some(f =>
+        f.taxaCartao &&
+        String(f.vendaId) === String(vendaId) &&
+        String(f.maquinaId) === String(m.maquinaId)
+      )
+      if (jaLancada) continue
+
+      const lanc = {
+        descricao: `Taxa de cartão — Venda ${numero}${m.maquinaNome ? ` (${m.maquinaNome})` : ''}`,
+        tipo: 'despesa',
+        categoria: 'Taxa de cartão',
+        taxaCartao: true,
+        valor: m.taxa.toFixed(2).replace('.', ','),
+        baseCalculo: m.base,
+        detalhes: m.detalhes,
+        maquinaId: m.maquinaId,
+        maquinaNome: m.maquinaNome,
+        vendaId,
+      }
+      // Taxa recalculada depois pertence ao mês da VENDA, não ao de hoje.
+      if (data) lanc.data = data
+      // Mesmo osId da receita: o estorno da OS já limpa por osId e leva a taxa junto.
+      if (osId) lanc.osId = osId
+      adicionarLancamento(lanc)
+    }
+  }
+
+  // Vendas registradas antes de a taxa da máquina estar cadastrada entraram pelo
+  // valor cheio, marcadas com taxaPendente. Como o pagamento guardou máquina,
+  // modalidade, parcelas e bruto, dá para refazer a conta depois — em vez de
+  // perder o custo daquelas vendas para sempre.
+  //
+  // Só recalcula o que tem máquina identificada: adivinhar em qual maquininha
+  // passou seria inventar despesa.
+  function reprocessarTaxasPendentes() {
+    const cfg = r.current.config
+    const resultado = { pagamentos: 0, taxa: 0, semMaquina: 0 }
+
+    function reprocessarVenda(venda, dataDoTurno) {
+      const ts = parseDataBR(dataDoTurno)
+      const dataVenda = ts ? new Date(ts) : new Date()
+      let mudou = false
+      const novosDetalhes = []
+      const pagamentos = (venda.pagamentos || []).map(p => {
+        if (!p.taxaPendente) return p
+        if (!p.maquinaId) { resultado.semMaquina++; return p }
+        // A data da venda vai junto: sem ela o `creditoEm` era recalculado como
+        // se a venda fosse de hoje, e uma venda de março passava a dizer que o
+        // dinheiro cai hoje.
+        const recalc = enriquecerPagamento(p, cfg, dataVenda)
+        if (!(recalc.taxa > 0)) return p          // taxa ainda não cadastrada
+        mudou = true
+        resultado.pagamentos++
+        resultado.taxa = Math.round((resultado.taxa + recalc.taxa) * 100) / 100
+        novosDetalhes.push(recalc)
+        return recalc
+      })
+      if (!mudou) return null
+      const totais = somarPagamentos(pagamentos.filter(p => p.forma !== 'Pagar Depois'))
+      return {
+        venda: { ...venda, pagamentos, taxaTotal: totais.taxa, recebidoLiquido: totais.liquido },
+        novosDetalhes,
+      }
+    }
+
+    // Turno aberto
+    const turno = r.current.caixaTurno
+    if (turno) {
+      let alterou = false
+      const vendas = (turno.vendas || []).map(v => {
+        const res = reprocessarVenda(v, turno.dataAbertura)
+        if (!res) return v
+        alterou = true
+        lancarTaxasCartao(res.novosDetalhes, { vendaId: v.id, osId: v.osId, numero: v.numero, data: turno.dataAbertura })
+        return res.venda
+      })
+      if (alterou) setCaixaTurno(t => (t ? { ...t, vendas } : t))
+    }
+
+    // Turnos já fechados — o custo daquele dia também precisa ficar certo
+    let alterouHistorico = false
+    const historico = (r.current.caixaHistorico || []).map(t => {
+      let alterou = false
+      const vendas = (t.vendas || []).map(v => {
+        const res = reprocessarVenda(v, t.dataAbertura)
+        if (!res) return v
+        alterou = true
+        lancarTaxasCartao(res.novosDetalhes, { vendaId: v.id, osId: v.osId, numero: v.numero, data: t.dataAbertura })
+        return res.venda
+      })
+      if (!alterou) return t
+      alterouHistorico = true
+      return { ...t, vendas }
+    })
+    if (alterouHistorico) setCaixaHistorico(historico)
+
+    return resultado
+  }
+
+  // Excluir a venda tirava ela só do turno: a receita continuava no Financeiro e
+  // o faturamento do mês seguia contando um dinheiro que ninguém mais via. Com a
+  // taxa lançada junto, sobrariam duas linhas órfãs em vez de uma.
+  function excluirVendaCaixa(vendaId) {
+    setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.id !== vendaId) } : t)
+    setFinanceiro(fp => fp.filter(f => f.vendaId !== vendaId))
   }
 
   function registrarSangria(valor, motivo, forma = 'Dinheiro') {
@@ -1410,7 +1731,10 @@ export function AppProvider({ children }) {
     setCaixaTurno(t => t ? { ...t, movimentos: [{ id: gerarId(), tipo: 'reforco', valor: pNum(valor), motivo, forma, hora: horaAgora() }, ...t.movimentos] } : t)
   }
 
-  function fecharCaixa(contagem, justificativa, saldoEsperado, totalContado) {
+  // `extra` traz a conferência separada de gaveta e banco. Fica opcional para
+  // que turnos fechados antes desta mudança continuem legíveis no histórico:
+  // lá `saldoEsperado`/`saldoFinal` somavam todas as formas juntas.
+  function fecharCaixa(contagem, justificativa, saldoEsperado, totalContado, extra = {}) {
     if (!r.current.caixaTurno) return
     const fechado = {
       ...r.current.caixaTurno,
@@ -1420,23 +1744,91 @@ export function AppProvider({ children }) {
       horaFechamento: horaAgora(),
       contagem,
       justificativa,
+      // A partir daqui estes três se referem só ao DINHEIRO em espécie — é o
+      // único valor que alguém conta de fato, e por isso o único que pode
+      // divergir de verdade.
       saldoEsperado,
       saldoFinal: totalContado,
       divergencia: totalContado - saldoEsperado,
+      fechadoPorId: currentUser?.id ?? null,
+      fechadoPorNome: currentUser?.nome || '',
+      ...extra,
     }
+    // O turno só é apagado DEPOIS que o histórico estiver gravado de verdade.
+    //
+    // Antes as duas coisas disparavam juntas, em tabelas diferentes: se o
+    // upsert do histórico falhasse, o DELETE do turno acontecia mesmo assim e o
+    // dia inteiro passava a existir só na fila de falhas em memória — que morre
+    // quando a pessoa fecha o navegador. E fechar o caixa é exatamente a última
+    // coisa que se faz antes de fechar o navegador.
     setCaixaHistorico(h => [fechado, ...h])
-    setCaixaTurno(null)
+    encadearEscrita('caixa_historico', async () => {
+      const salvou = r.current.caixaHistorico.some(t => String(t.id) === String(fechado.id))
+      if (!salvou) {
+        console.error('[fecharCaixa] histórico não confirmado — turno preservado')
+        alert('O fechamento não foi gravado no servidor.\n\nO turno continua aberto de propósito, para o dia não se perder. Verifique a internet e feche o caixa de novo.')
+        return
+      }
+      setCaixaTurno(null)
+    })
+  }
+
+  // Cliente voltou e pagou o que ficou devendo numa venda de balcão.
+  //
+  // O dinheiro entra no caixa de HOJE (é hoje que ele está na gaveta), como uma
+  // venda de quitação apontando para a dívida original. A venda antiga não é
+  // reescrita: turno fechado é registro histórico, e mexer nele mudaria o
+  // fechamento daquele dia.
+  function registrarQuitacaoVenda(item, pagamentos) {
+    if (!item || !r.current.caixaTurno) return null
+    return registrarVendaCaixa({
+      clienteId: item.clienteId ?? null,
+      clienteNome: item.clienteNome || 'Cliente',
+      itens: [{ id: gerarId(), tipo: 'servico', nome: `Quitação da venda ${item.numero}`, preco: item.saldo, qtd: '1', desc: '0' }],
+      total: item.saldo,
+      pagamentos: pagamentos || [],
+      quitacaoDe: item.id,
+      // De propósito SEM `osId`. Os estornos de OS apagam lançamentos filtrando
+      // por osId; se a quitação carregasse o osId, reabrir a OS meses depois
+      // apagaria um recebimento que aconteceu de verdade — a dívida voltava
+      // inteira e o dinheiro sumia do turno em que entrou. O vínculo com a
+      // dívida original é o `quitacaoDe`, que é o que importa aqui.
+      observacoes: `Recebimento de dívida em aberto da venda ${item.numero}`,
+    })
   }
 
   // --- DADOS DERIVADOS ---
   const devedores = ordens.filter(o => o.status === 'Concluída' && !o.pago)
 
-  function pValor(v) { return parseBR(v) }
+  // Tudo que a oficina tem a receber: OS concluída não paga + venda de balcão
+  // com saldo em aberto, inclusive de turnos já fechados. Antes só a primeira
+  // metade aparecia, e a venda "pago sexta" sumia na virada do turno.
+  // Memoizado: varre todos os turnos × vendas e, para cada dívida, o financeiro
+  // inteiro. Sem isso rodava a cada render do provider — inclusive a cada tecla
+  // digitada numa tela que grava — e travava o tablet com meses de histórico.
+  const aReceber = useMemo(
+    () => listaAReceber({ ordens, totalOrdem, caixaTurno, caixaHistorico, financeiro }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ordens, caixaTurno, caixaHistorico, financeiro],
+  )
 
-  const resumoFinanceiro = {
-    receitas: financeiro.filter(f => f.tipo === 'receita' && !f.pendente).reduce((s, f) => s + pValor(f.valor), 0),
-    despesas: financeiro.filter(f => f.tipo === 'despesa' && !f.pendente).reduce((s, f) => s + pValor(f.valor), 0),
-  }
+  // Resumo do financeiro.
+  //
+  // `receitas`/`despesas` continuam sendo o acumulado de sempre para não quebrar
+  // quem já lê esse formato, mas o número que interessa no dia a dia é o do mês:
+  // acumulado desde o primeiro dia da oficina só cresce e não responde se este
+  // mês está melhor que o passado. `mes`/`mesAnterior` vêm prontos para isso —
+  // o `mesAnterior` é recortado no mesmo dia do mês (dia 1 a 10 contra 1 a 10),
+  // senão dez dias apareceriam como queda contra um mês inteiro.
+  //
+  // Memoizado porque varre o financeiro inteiro três vezes e antes rodava a cada
+  // render do provider, inclusive a cada tecla digitada numa tela que grava.
+  const resumoFinanceiro = useMemo(() => {
+    const total = resumirFinanceiro(financeiro, intervaloDe('tudo'))
+    const mes = resumirFinanceiro(financeiro, intervaloDe('mes'))
+    const mesAnterior = resumirFinanceiro(financeiro, periodoAnteriorDe('mes'))
+    return { receitas: total.receitas, despesas: total.despesas, total, mes, mesAnterior }
+  }, [financeiro])
 
   const estoqueAlerta = estoque.filter(i => Number(i.estoque) <= Number(i.minimo))
 
@@ -1469,14 +1861,17 @@ export function AppProvider({ children }) {
       orcamentos, setOrcamentos,
       compras, setCompras, criarCompra, atualizarCompra, receberCompra, excluirCompra,
       fornecedores, setFornecedores,
-      caixaTurno, caixaHistorico, abrirCaixa, registrarVendaCaixa,
+      gastos, setGastos, insumos, setInsumos,
+      caixaTurno, caixaHistorico, abrirCaixa, registrarVendaCaixa, excluirVendaCaixa,
+      reprocessarTaxasPendentes,
       registrarSangria, registrarReforco, fecharCaixa, setCaixaTurno,
-      devedores, resumoFinanceiro, estoqueAlerta,
+      devedores, aReceber, registrarQuitacaoVenda, diasEmAberto,
+      resumoFinanceiro, estoqueAlerta,
       getCliente, getVeiculo, getFuncionario,
       checklists, setChecklists, gerarNumeroChecklist,
       veiculosPorCliente, ordensPorCliente, ordensPorVeiculo,
       config, setConfig,
-      carregando,
+      carregando, caixaCarregado,
       realtimeOk, ultimaSync, sincronizarOrdens,
     }}>
       {/* Falha de gravação não pode ser silenciosa: antes, o erro ia só para o

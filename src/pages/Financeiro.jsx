@@ -1,9 +1,17 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TrendingUp, TrendingDown, DollarSign, CalendarDays, Plus, Trash2, CheckCircle2, Package, X, Banknote, CreditCard, Smartphone, ArrowRightLeft, FileText } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, CalendarDays, Plus, Trash2, CheckCircle2, Package, X, Banknote, CreditCard, Smartphone, ArrowRightLeft, FileText, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
 import Modal from '../components/ui/Modal'
+import PainelCartoes from '../components/PainelCartoes'
+import PontoDeEquilibrio from '../components/PontoDeEquilibrio'
+import DRE from '../components/DRE'
+import SeletorMaquina from '../components/ui/SeletorMaquina'
+import SeletorPeriodo from '../components/ui/SeletorPeriodo'
+import { ehCartao, maquinaPadrao } from '../utils/cartao'
+import { intervaloDe, periodoAnteriorDe, resumirFinanceiro, dentroDoPeriodo, variacao } from '../utils/periodo'
+import { parseValorBR } from '../utils/numero'
 
 const vazio = { descricao: '', tipo: 'receita', valor: '' }
 
@@ -39,12 +47,37 @@ function alertaVenc(vencimento) {
   return { cls, label }
 }
 
+// Comparação com o período anterior.
+//
+// Em despesa subir é notícia ruim: a seta é a mesma, mas a cor tem de inverter,
+// senão "despesas +30%" sai em verde como se fosse conquista.
+function Variacao({ atual, anterior, subirEhBom = true, rotulo }) {
+  const v = variacao(atual, anterior)
+  if (v == null) {
+    return <p className="text-xs text-slate-400 mt-1.5">sem base no período anterior</p>
+  }
+  if (Math.abs(v) < 0.5) {
+    return <p className="text-xs text-slate-400 mt-1.5">estável vs {rotulo}</p>
+  }
+  const subiu = v > 0
+  const Icone = subiu ? ArrowUpRight : ArrowDownRight
+  const cor = subiu === subirEhBom ? 'text-green-600' : 'text-red-500'
+  return (
+    <p className={`text-xs mt-1.5 flex items-center gap-1 ${cor}`}>
+      <Icone size={13} className="flex-shrink-0" />
+      <span className="font-semibold tabular-nums">{Math.abs(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%</span>
+      <span className="text-slate-400 font-normal truncate">vs {rotulo}</span>
+    </p>
+  )
+}
+
 export default function Financeiro() {
   const {
     financeiro, setFinanceiro, adicionarLancamento,
-    devedores, getCliente, resumoFinanceiro, totalOrdem,
+    getCliente,
     compras, atualizarCompra,
     caixaTurno, registrarSangria,
+    aReceber, diasEmAberto, registrarQuitacaoVenda, config,
   } = useApp()
   const navigate = useNavigate()
 
@@ -54,15 +87,46 @@ export default function Financeiro() {
 
   const [modalBoleto, setModalBoleto] = useState(null)
   const [formaPagamento, setFormaPagamento] = useState('PIX')
+  const [baixando, setBaixando] = useState(false)
+  const [modalReceber, setModalReceber] = useState(null)
+  const [formaRecebimento, setFormaRecebimento] = useState('PIX')
+  const [maquinaRecebimento, setMaquinaRecebimento] = useState(null)
+  const [valorRecebimento, setValorRecebimento] = useState('')
+  const [recebendo, setRecebendo] = useState(false)
 
   const [modalNovoBoleto, setModalNovoBoleto] = useState(false)
   const [formBoleto, setFormBoleto] = useState(VAZIO_BOLETO)
 
-  const fmt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  const pNum = (v) => { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
-  const lucro = resumoFinanceiro.receitas - resumoFinanceiro.despesas
+  // Recorte de período — começa no mês corrente, que é a pergunta do dia a dia.
+  const [periodo, setPeriodo] = useState('mes')
+  const [datas, setDatas] = useState({ de: '', ate: '' })
 
-  // Parcelas pendentes de compras cadastradas
+  const fmt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  // Parser unico em utils/numero.js — cada tela tinha a propria copia, e a
+// versao antiga lia "1.500" como 1,5.
+const pNum = parseValorBR
+
+  const intervalo = useMemo(() => intervaloDe(periodo, datas), [periodo, datas])
+  const anterior = useMemo(() => periodoAnteriorDe(periodo, datas), [periodo, datas])
+  const resumo = useMemo(() => resumirFinanceiro(financeiro, intervalo), [financeiro, intervalo])
+  const resumoAnterior = useMemo(
+    () => (anterior ? resumirFinanceiro(financeiro, anterior) : null),
+    [financeiro, anterior],
+  )
+  const lucro = resumo.lucro
+
+  // Lançamentos já realizados dentro do período (pendente é boleto em aberto e
+  // vive na aba "A Pagar", não na lista de movimento).
+  const lancamentosDoPeriodo = useMemo(
+    () => financeiro.filter(l => !l.pendente && dentroDoPeriodo(l.data, intervalo)),
+    [financeiro, intervalo],
+  )
+
+  // Parcelas ainda não pagas de qualquer compra.
+  //
+  // Não filtra por `recebida` de propósito: na prática as compras são cadastradas
+  // com as parcelas e pagas direto por aqui, sem passar pelo "Confirmar
+  // Recebimento". Exigir `recebida` esvaziaria a lista inteira de contas a pagar.
   const contasAPagar = compras
     .filter(c => c.parcelas?.length > 0)
     .flatMap(c =>
@@ -107,44 +171,114 @@ export default function Financeiro() {
     setModalBoleto(p)
   }
 
-  function confirmarBaixa() {
-    if (!modalBoleto) return
-
+  // Cliente voltou e pagou o que ficou devendo numa venda de balcão.
+  function abrirRecebimento(item) {
     if (!caixaTurno) {
-      if (!confirm('O caixa está fechado. O pagamento será registrado no financeiro, mas não será descontado do caixa. Deseja continuar?')) return
-    }
-
-    if (modalBoleto.tipo === 'avulso') {
-      // Boleto avulso: marca como pago no financeiro
-      setFinanceiro(prev => prev.map(f =>
-        f.id === modalBoleto.id ? { ...f, pendente: false, formaPagamento } : f
-      ))
-      if (caixaTurno) {
-        registrarSangria(modalBoleto.valor, `Pagto: ${modalBoleto.descricao} — ${formaPagamento}`)
-      }
-      setModalBoleto(null)
+      alert('Abra o caixa antes de receber.\n\nO dinheiro precisa entrar no turno de hoje, senão o fechamento não bate.')
       return
     }
+    setFormaRecebimento('PIX')
+    setMaquinaRecebimento(maquinaPadrao(config)?.id ?? null)
+    setValorRecebimento(item.saldo.toFixed(2).replace('.', ','))
+    setModalReceber(item)
+  }
 
-    // Compra parcela: comportamento existente
-    const { parcelaId, compraId, compraNumero, fornecedor, valor, parcela, totalParcelas } = modalBoleto
-    const descricao = `${fornecedor} ${compraNumero} — Parcela ${parcela}/${totalParcelas}`
-
-    adicionarLancamento({ descricao, tipo: 'despesa', valor: valor.toFixed(2).replace('.', ','), formaPagamento, compraId })
-
-    if (caixaTurno) {
-      registrarSangria(valor, `Pagto boleto: ${descricao} — ${formaPagamento}`)
+  function confirmarRecebimento() {
+    if (!modalReceber || recebendo) return
+    const valor = pNum(valorRecebimento)
+    if (valor <= 0) { alert('Informe o valor recebido.'); return }
+    if (valor > modalReceber.saldo + 0.01) {
+      alert(`O valor não pode passar do que está em aberto (${fmt(modalReceber.saldo)}).`)
+      return
     }
-
-    const compra = compras.find(c => c.id === compraId)
-    if (compra) {
-      const novasParcelas = (compra.parcelas || []).map(p =>
-        p.id === parcelaId ? { ...p, pago: true, formaPagamento } : p
-      )
-      atualizarCompra(compraId, { parcelas: novasParcelas })
+    setRecebendo(true)
+    try {
+      const pg = { forma: formaRecebimento, valor: String(valor) }
+      if (ehCartao(formaRecebimento)) { pg.maquinaId = maquinaRecebimento; pg.parcelas = 1 }
+      // Recebimento parcial é permitido: o que sobrar continua em aberto.
+      registrarQuitacaoVenda({ ...modalReceber, saldo: valor }, [pg])
+      setModalReceber(null)
+    } finally {
+      setTimeout(() => setRecebendo(false), 800)
     }
+  }
 
-    setModalBoleto(null)
+  function confirmarBaixa() {
+    if (!modalBoleto) return
+    // Dois cliques rápidos geravam dois lançamentos e duas sangrias.
+    if (baixando) return
+    setBaixando(true)
+
+    try {
+      if (!caixaTurno) {
+        if (!confirm('O caixa está fechado. O pagamento será registrado no financeiro, mas não será descontado do caixa. Deseja continuar?')) return
+      }
+
+      if (modalBoleto.tipo === 'avulso') {
+        // Boleto avulso: marca como pago no financeiro
+        setFinanceiro(prev => prev.map(f =>
+          f.id === modalBoleto.id ? { ...f, pendente: false, formaPagamento } : f
+        ))
+        if (caixaTurno) {
+          // A forma precisa ir junto: sem ela toda baixa virava sangria em
+          // dinheiro, mesmo paga por PIX, e a gaveta ficava devendo um dinheiro
+          // que nunca saiu de lá.
+          registrarSangria(modalBoleto.valor, `Pagto: ${modalBoleto.descricao}`, formaPagamento)
+        }
+        setModalBoleto(null)
+        return
+      }
+
+      // Parcela de compra — a despesa entra UMA vez só.
+      //
+      // Existem dois caminhos na prática: quem passa por "Confirmar Recebimento"
+      // (que já lança a despesa de cada parcela) e quem cadastra a compra e vem
+      // direto dar baixa aqui. Antes, o primeiro caminho lançava duas vezes e a
+      // compra parcelada entrava no resultado pelo dobro do que custou.
+      //
+      // Agora a baixa procura a despesa daquela parcela: se já existe, só
+      // registra como e quando foi paga; se não existe, é ela quem lança.
+      const { parcelaId, compraId, compraNumero, fornecedor, valor, parcela, totalParcelas } = modalBoleto
+      const descricao = `${fornecedor} ${compraNumero} — Parcela ${parcela}/${totalParcelas}`
+      const hoje = new Date().toLocaleDateString('pt-BR')
+      const jaLancada = financeiro.some(f => f.compraId === compraId && f.parcelaId === parcelaId)
+
+      if (jaLancada) {
+        setFinanceiro(prev => prev.map(f =>
+          f.compraId === compraId && f.parcelaId === parcelaId
+            ? { ...f, formaPagamento, pagoEm: hoje }
+            : f
+        ))
+      } else {
+        adicionarLancamento({
+          descricao,
+          tipo: 'despesa',
+          categoria: 'Compra de peças',
+          valor: valor.toFixed(2).replace('.', ','),
+          formaPagamento,
+          compraId,
+          // Sem isto, uma segunda baixa da mesma parcela lançaria de novo.
+          parcelaId,
+          pagoEm: hoje,
+        })
+      }
+
+      if (caixaTurno) {
+        registrarSangria(valor, `Pagto boleto: ${descricao}`, formaPagamento)
+      }
+
+      const compra = compras.find(c => c.id === compraId)
+      if (compra) {
+        const novasParcelas = (compra.parcelas || []).map(p =>
+          p.id === parcelaId ? { ...p, pago: true, formaPagamento, pagoEm: new Date().toLocaleDateString('pt-BR') } : p
+        )
+        atualizarCompra(compraId, { parcelas: novasParcelas })
+      }
+
+      setModalBoleto(null)
+    } finally {
+      setTimeout(() => setBaixando(false), 800)
+    }
   }
 
   function salvarBoleto() {
@@ -196,23 +330,57 @@ export default function Financeiro() {
 
   return (
     <div className="space-y-6">
+      {/* Período — manda nos três primeiros cards e na lista de lançamentos */}
+      <SeletorPeriodo
+        periodo={periodo}
+        datas={datas}
+        onChange={(chave, novasDatas) => { setPeriodo(chave); setDatas(novasDatas) }}
+      />
+
       {/* Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Receitas',          valor: fmt(resumoFinanceiro.receitas), icon: TrendingUp,    cor: 'text-green-600',  bg: 'bg-green-50' },
-          { label: 'Despesas',          valor: fmt(resumoFinanceiro.despesas), icon: TrendingDown,   cor: 'text-red-500',    bg: 'bg-red-50' },
-          { label: 'Lucro Líquido',     valor: fmt(lucro),                     icon: DollarSign,     cor: lucro >= 0 ? 'text-primary-600' : 'text-red-600', bg: 'bg-primary-50' },
-          { label: 'A Pagar',           valor: fmt(totalAPagar),               icon: CalendarDays,   cor: 'text-orange-500', bg: 'bg-orange-50', badge: todasContasAPagar.length },
-        ].map(({ label, valor, icon: Icon, cor, bg, badge }) => (
+          {
+            label: 'Receitas', nota: intervalo.rotulo, valor: fmt(resumo.receitas),
+            icon: TrendingUp, cor: 'text-green-600', bg: 'bg-green-50',
+            atual: resumo.receitas, base: resumoAnterior?.receitas, subirEhBom: true,
+          },
+          {
+            label: 'Despesas', nota: intervalo.rotulo, valor: fmt(resumo.despesas),
+            icon: TrendingDown, cor: 'text-red-500', bg: 'bg-red-50',
+            atual: resumo.despesas, base: resumoAnterior?.despesas, subirEhBom: false,
+          },
+          {
+            label: 'Lucro Líquido', nota: intervalo.rotulo, valor: fmt(lucro),
+            icon: DollarSign, cor: lucro >= 0 ? 'text-primary-600' : 'text-red-600', bg: 'bg-primary-50',
+            atual: lucro, base: resumoAnterior?.lucro, subirEhBom: true,
+          },
+          {
+            // Saldo em aberto, não movimento: filtrar por período daria a
+            // impressão de que a dívida some quando se olha para outro mês.
+            label: 'A Pagar', nota: 'posição atual — não muda com o período', valor: fmt(totalAPagar),
+            icon: CalendarDays, cor: 'text-orange-500', bg: 'bg-orange-50',
+            badge: todasContasAPagar.length, semComparacao: true,
+          },
+        ].map(({ label, nota, valor, icon: Icon, cor, bg, badge, atual, base, subirEhBom, semComparacao }) => (
           <div key={label} className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-slate-500">{label}</p>
-              <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center relative`}>
+            <div className="flex items-start justify-between mb-3 gap-2">
+              <div className="min-w-0">
+                <p className="text-sm text-slate-500">{label}</p>
+                <p className="text-[11px] text-slate-400 truncate">{nota}</p>
+              </div>
+              <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center relative flex-shrink-0`}>
                 <Icon size={18} className={cor} />
                 {badge > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{badge}</span>}
               </div>
             </div>
-            <p className={`text-xl font-bold ${cor}`}>{valor}</p>
+            <p className={`text-xl font-bold tabular-nums ${cor}`}>{valor}</p>
+            {!semComparacao && anterior && (
+              <Variacao atual={atual} anterior={base} subirEhBom={subirEhBom} rotulo={anterior.rotulo} />
+            )}
+            {!semComparacao && !anterior && (
+              <p className="text-xs text-slate-400 mt-1.5">acumulado — sem período anterior para comparar</p>
+            )}
           </div>
         ))}
       </div>
@@ -221,8 +389,10 @@ export default function Financeiro() {
       <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit flex-wrap">
         {[
           { key: 'lancamentos', label: 'Lançamentos' },
+          { key: 'dre',         label: 'DRE' },
           { key: 'apagar',      label: `A Pagar${todasContasAPagar.length ? ` (${todasContasAPagar.length})` : ''}` },
-          { key: 'devedores',   label: `A Receber${devedores.length ? ` (${devedores.length})` : ''}` },
+          { key: 'devedores',   label: `A Receber${aReceber.itens.length ? ` (${aReceber.itens.length})` : ''}` },
+          { key: 'cartoes',     label: 'Cartões' },
         ].map(({ key, label }) => (
           <button key={key} onClick={() => setAba(key)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -231,18 +401,35 @@ export default function Financeiro() {
         ))}
       </div>
 
+      {/* Ponto de equilíbrio — segue o mesmo período escolhido lá em cima.
+          Fica acima da lista porque responde a pergunta que o dono faz antes de
+          olhar lançamento nenhum: o mês pagou as contas fixas ou não? */}
+      {aba === 'lancamentos' && <PontoDeEquilibrio intervalo={intervalo} />}
+
+      {/* DRE — segue o mesmo período e a mesma comparação dos cards do topo, por
+          isso recebe `intervalo`/`anterior` em vez de ter o próprio seletor: dois
+          seletores na mesma tela diriam coisas diferentes sobre os mesmos números. */}
+      {aba === 'dre' && <DRE intervalo={intervalo} anterior={anterior} />}
+
       {/* Lançamentos */}
       {aba === 'lancamentos' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-800">Lançamentos</h2>
-            <button onClick={() => setModal(true)} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="font-semibold text-slate-800">Lançamentos</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {lancamentosDoPeriodo.length} lançamento{lancamentosDoPeriodo.length === 1 ? '' : 's'} · {intervalo.rotulo}
+              </p>
+            </div>
+            <button onClick={() => setModal(true)} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex-shrink-0">
               <Plus size={14} />Novo
             </button>
           </div>
           <div className="divide-y divide-slate-50">
-            {financeiro.filter(l => !l.pendente).length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum lançamento.</p>}
-            {financeiro.filter(l => !l.pendente).map(l => (
+            {lancamentosDoPeriodo.length === 0 && (
+              <p className="text-center text-sm text-slate-400 py-8">Nenhum lançamento em {intervalo.rotulo}.</p>
+            )}
+            {lancamentosDoPeriodo.map(l => (
               <div key={l.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-slate-50">
                 <div className="flex items-center gap-4">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${l.tipo === 'receita' ? 'bg-green-500' : 'bg-red-400'}`} />
@@ -274,7 +461,9 @@ export default function Financeiro() {
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div>
               <h2 className="font-semibold text-slate-800">Boletos / Contas a Pagar</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Parcelas de compras e boletos avulsos pendentes</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Parcelas de compras e boletos avulsos pendentes — posição de hoje, não segue o período escolhido
+              </p>
             </div>
             <button
               onClick={() => setModalNovoBoleto(true)}
@@ -364,34 +553,72 @@ export default function Financeiro() {
         </div>
       )}
 
-      {/* A Receber */}
+      {/* Cartões — quanto a adquirência está custando */}
+      {aba === 'cartoes' && <PainelCartoes intervalo={intervalo} />}
+
+      {/* A Receber — OS concluída não paga + venda de balcão com saldo aberto */}
       {aba === 'devedores' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100">
-            <h2 className="font-semibold text-slate-800">OS Concluídas — Aguardando Pagamento</h2>
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="font-semibold text-slate-800">A Receber</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Serviços concluídos e vendas de balcão em aberto — mais antigos primeiro.
+                É a posição de hoje: não segue o período escolhido lá em cima.
+              </p>
+            </div>
+            {aReceber.total > 0 && (
+              <span className="text-lg font-bold text-orange-600 tabular-nums">{fmt(aReceber.total)}</span>
+            )}
           </div>
           <div className="divide-y divide-slate-50">
-            {devedores.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhuma OS pendente de pagamento!</p>}
-            {devedores.map(o => {
-              const cliente = getCliente(o.clienteId)
+            {aReceber.itens.length === 0 && (
+              <p className="text-center text-sm text-slate-400 py-8">Ninguém devendo. Tudo recebido!</p>
+            )}
+            {aReceber.itens.map(item => {
+              const cliente = getCliente(item.clienteId)
+              const dias = diasEmAberto(item)
+              const nome = cliente?.nome || item.clienteNome || '—'
+              // Vermelho a partir de um mês: é quando a cobrança costuma
+              // deixar de ser lembrete e virar prejuízo.
+              const corIdade = dias == null ? 'text-slate-400'
+                : dias >= 30 ? 'text-red-500 font-semibold'
+                : dias >= 15 ? 'text-amber-600' : 'text-slate-400'
               return (
-                <div key={o.id} className="px-5 py-4 flex items-center justify-between hover:bg-slate-50">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-slate-400">{o.id}</span>
+                <div key={`${item.origem}-${item.id}`} className="px-5 py-4 flex items-center justify-between gap-3 hover:bg-slate-50">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono text-slate-400">{item.numero}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        item.origem === 'os' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'
+                      }`}>
+                        {item.origem === 'os' ? 'OS' : 'Balcão'}
+                      </span>
                     </div>
-                    <p className="text-sm font-medium text-slate-800">{cliente?.nome || '—'}</p>
-                    <p className="text-xs text-slate-400">{o.servico} · {o.data}</p>
+                    <p className="text-sm font-medium text-slate-800 truncate">{nome}</p>
+                    <p className="text-xs text-slate-400">
+                      {item.data}
+                      {dias != null && <span className={`ml-1.5 ${corIdade}`}>· há {dias} dia{dias === 1 ? '' : 's'}</span>}
+                      {item.quitadoParcial > 0 && (
+                        <span className="ml-1.5 text-green-600">· já pagou {fmt(item.quitadoParcial)}</span>
+                      )}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm font-bold text-orange-600">{fmt(totalOrdem(o))}</p>
-                    {/* Chamava pagarOrdem sem informar o pagamento: a OS ficava
-                        paga e o dinheiro não entrava nem no caixa nem aqui.
-                        Agora manda receber na OS, que é onde o valor é lançado. */}
-                    <button onClick={() => navigate(`/ordens-servico/${encodeURIComponent(o.id)}`)}
-                      className="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
-                      Receber
-                    </button>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <p className="text-sm font-bold text-orange-600 tabular-nums">{fmt(item.saldo)}</p>
+                    {item.origem === 'os' ? (
+                      // O valor da OS é lançado na própria OS, que é onde o
+                      // fluxo de pagamento e entrega existe.
+                      <button onClick={() => navigate(`/ordens-servico/${encodeURIComponent(item.id)}`)}
+                        className="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+                        Receber
+                      </button>
+                    ) : (
+                      <button onClick={() => abrirRecebimento(item)}
+                        className="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+                        Receber
+                      </button>
+                    )}
                   </div>
                 </div>
               )
@@ -441,8 +668,9 @@ export default function Financeiro() {
             </div>
             <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
               <button onClick={() => setModalBoleto(null)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-              <button onClick={confirmarBaixa} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
-                <CheckCircle2 size={15} />Confirmar Pagamento
+              <button onClick={confirmarBaixa} disabled={baixando}
+                className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                <CheckCircle2 size={15} />{baixando ? 'Registrando…' : 'Confirmar Pagamento'}
               </button>
             </div>
           </div>
@@ -528,6 +756,64 @@ export default function Financeiro() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Receber venda de balcão em aberto */}
+      {modalReceber && (
+        <Modal title={`Receber — venda ${modalReceber.numero}`} onClose={() => setModalReceber(null)}>
+          <div className="space-y-4">
+            <div className="bg-slate-50 rounded-lg px-4 py-3 space-y-0.5">
+              <p className="text-sm font-semibold text-slate-800">{modalReceber.clienteNome}</p>
+              <p className="text-xs text-slate-400">Venda de {modalReceber.data}</p>
+              <p className="text-base font-bold text-orange-600 pt-1">Em aberto: {fmt(modalReceber.saldo)}</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Valor recebido agora</label>
+              <input value={valorRecebimento} onChange={e => setValorRecebimento(e.target.value)}
+                inputMode="decimal" placeholder="0,00"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              <p className="text-xs text-slate-400 mt-1">
+                Pode receber só uma parte — o restante continua em aberto na lista.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Como pagou?</label>
+              <div className="grid grid-cols-2 gap-2">
+                {FORMAS.map(({ label, icon: Icon }) => (
+                  <button key={label} onClick={() => {
+                      setFormaRecebimento(label)
+                      if (ehCartao(label) && !maquinaRecebimento) setMaquinaRecebimento(maquinaPadrao(config)?.id ?? null)
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                      formaRecebimento === label ? 'bg-primary-500 border-primary-500 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}>
+                    <Icon size={15} />{label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {ehCartao(formaRecebimento) && (
+              <SeletorMaquina
+                forma={formaRecebimento}
+                valor={valorRecebimento}
+                parcelas={1}
+                maquinaId={maquinaRecebimento}
+                onSelecionar={setMaquinaRecebimento}
+              />
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setModalReceber(null)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+              <button onClick={confirmarRecebimento} disabled={recebendo}
+                className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                <CheckCircle2 size={15} />{recebendo ? 'Registrando…' : 'Confirmar Recebimento'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* Modal Novo Lançamento */}

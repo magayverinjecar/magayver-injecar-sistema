@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, AlertTriangle, ShieldCheck, Plus, Trash2, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react'
+import { Save, AlertTriangle, ShieldCheck, Plus, Trash2, ChevronUp, ChevronDown, RotateCcw, CreditCard, Power, Timer } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { CHECKLIST_PADRAO, itensDoChecklist } from '../utils/conferencia'
+import {
+  PRAZOS, novaMaquina, maquinasDoConfig, ordenarFaixas,
+  problemasDaMaquina, calcularPagamentoCartao, TAXA_MAXIMA_PCT,
+} from '../utils/cartao'
+import { capacidadeDoConfig, problemasDaCapacidade, avisoDaOcupacao } from '../utils/capacidade'
+import { custoFixoMensal, custoDaHora } from '../utils/margem'
 import gerarId from '../utils/id'
 
 const DEFAULTS = {
@@ -28,8 +34,13 @@ export default function Configuracoes() {
   }, [config])
 
   function salvar() {
-    // Mescla em vez de substituir — o config guarda outras coisas além destes campos
-    setConfig(c => ({ ...c, ...form }))
+    // Grava SÓ os campos desta seção. O form recebeu uma cópia do config inteiro
+    // ao abrir a tela — incluindo checklist de conferência e maquininhas —, então
+    // devolver o form todo ressuscitaria a versão velha dessas listas caso outro
+    // aparelho as tenha editado nesse meio tempo.
+    const meus = {}
+    for (const campo of Object.keys(DEFAULTS)) meus[campo] = form[campo] ?? DEFAULTS[campo]
+    setConfig(c => ({ ...c, ...meus }))
     setSalvo(true)
     setTimeout(() => setSalvo(false), 2000)
   }
@@ -86,6 +97,10 @@ export default function Configuracoes() {
         </div>
       </div>
 
+      <CapacidadeDaOficina />
+
+      <Maquininhas />
+
       <ChecklistConferencia />
 
       <div className="bg-white rounded-xl shadow-sm border border-red-100 overflow-hidden">
@@ -101,6 +116,422 @@ export default function Configuracoes() {
             </p>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Capacidade da oficina — de onde sai o custo da hora.
+//
+// O custo fixo (aluguel, energia, salário) NÃO entra na margem de cada OS: com
+// salário fixo, o mecânico custa o mesmo tendo levado 2 ou 8 horas no carro, e
+// ratear isso por serviço daria um número preciso e errado. Mas o custo fixo
+// precisa ser recuperado em algum lugar — e o lugar é o PREÇO. É isso que este
+// bloco calcula: quanto a hora da oficina precisa render só para pagar a
+// estrutura, antes de qualquer lucro.
+//
+// Ferramenta de precificação, portanto: olha para frente ("quanto cobrar"), não
+// para trás ("quanto lucrei naquela OS").
+function CapacidadeDaOficina() {
+  const { config, setConfig, gastos } = useApp()
+  const [edicao, setEdicao] = useState(null)
+  const [salvo, setSalvo] = useState(false)
+
+  const cap = edicao ?? capacidadeDoConfig(config)
+  const alterado = edicao !== null
+
+  // Sem intervalo, `custoFixoMensal` responde "quanto custa um mês típico": só
+  // os gastos fixos recorrentes. É a base certa para o custo da hora, que é uma
+  // conta mensal — não a soma do histórico, e não o custo de um mês específico.
+  const custoFixo = custoFixoMensal(gastos)
+  const { horasVendaveis, custoHora } = custoDaHora({
+    custoFixo,
+    mecanicos: cap.reparadores,
+    horasPorDia: cap.horasPorDia,
+    diasUteis: cap.diasUteis,
+    ocupacao: cap.ocupacao,
+  })
+  const faltas = problemasDaCapacidade(cap)
+  const aviso = avisoDaOcupacao(cap.ocupacao)
+
+  function mudar(campo, valor) {
+    setEdicao(atual => ({ ...(atual ?? capacidadeDoConfig(config)), [campo]: valor }))
+  }
+
+  function salvar() {
+    setConfig(c => ({ ...c, capacidade: { ...cap } }))
+    setEdicao(null)
+    setSalvo(true)
+    setTimeout(() => setSalvo(false), 2000)
+  }
+
+  const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-500'
+  const fmt = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const num = (v) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+
+  const CAMPOS = [
+    { campo: 'reparadores', label: 'Reparadores', dica: 'quem põe a mão no carro', placeholder: '2' },
+    { campo: 'horasPorDia', label: 'Horas por dia', dica: 'de bancada, por pessoa', placeholder: '8' },
+    { campo: 'diasUteis',   label: 'Dias úteis no mês', dica: 'que a oficina abre', placeholder: '22' },
+    { campo: 'ocupacao',    label: 'Ocupação (%)', dica: 'da hora paga, quanto vira hora vendida', placeholder: '70' },
+  ]
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100">
+        <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+          <Timer size={17} className="text-emerald-500" />Capacidade da oficina
+        </h2>
+        <p className="text-xs text-slate-500 mt-1">
+          Quantas horas a oficina consegue vender por mês. Com isso o sistema calcula quanto a
+          hora precisa render só para pagar aluguel, energia e salário — o piso da sua tabela de preço.
+        </p>
+      </div>
+
+      <div className="p-5 space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {CAMPOS.map(({ campo, label, dica, placeholder }) => (
+            <div key={campo}>
+              <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
+              <input type="number" min="0" inputMode="numeric"
+                value={cap[campo]} onChange={e => mudar(campo, e.target.value)}
+                placeholder={placeholder} className={inp} />
+              <p className="text-[10px] text-slate-400 mt-1 leading-snug">{dica}</p>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-xs text-slate-500 leading-snug">
+          <strong className="text-slate-600">Por que a ocupação não é 100%:</strong> orçamento que não fecha,
+          espera de peça e retrabalho consomem hora paga que ninguém fatura — dividir o custo fixo pelas horas
+          cheias faria toda a tabela sair barata demais. Na prática fica entre 60% e 80%.
+        </p>
+
+        {/* Prévia ao vivo — o efeito em dinheiro do que está sendo digitado.
+            Igual à prévia das maquininhas: número solto não denuncia erro. */}
+        {faltas.length > 0 ? (
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+            <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800 leading-snug">
+              Falta preencher: {faltas.join(' · ')}. Sem isso não dá para calcular o custo da hora —
+              e um valor chutado aqui vira preço errado em toda OS.
+            </p>
+          </div>
+        ) : custoFixo <= 0 ? (
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+            <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800 leading-snug">
+              A oficina consegue vender <strong>{num(horasVendaveis)} horas por mês</strong>, mas nenhum
+              gasto fixo recorrente está cadastrado. Cadastre aluguel, energia e salário em
+              <strong> Gastos</strong>, com o tipo <strong>"Fixo"</strong> — sem eles o
+              custo da hora sairia R$ 0,00, que é um preço que ninguém pode praticar.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-slate-50 rounded-lg px-4 py-3">
+            <p className="text-xs font-medium text-slate-600">Custo da hora desta oficina</p>
+            <p className="text-2xl font-bold text-emerald-600 tabular-nums mt-0.5">{fmt(custoHora)}<span className="text-sm font-normal text-slate-400"> / hora</span></p>
+            <p className="text-xs text-slate-500 mt-1.5 leading-snug tabular-nums">
+              {fmt(custoFixo)} de custo fixo por mês ÷ {num(horasVendaveis)} horas vendáveis
+              ({cap.reparadores} × {cap.horasPorDia}h × {cap.diasUteis} dias × {cap.ocupacao}%).
+            </p>
+            <p className="text-xs text-slate-400 mt-1.5 leading-snug">
+              Cobrar exatamente isso na hora empata a estrutura e não deixa lucro nenhum.
+              O que você quer ganhar entra <em>em cima</em> deste valor.
+            </p>
+          </div>
+        )}
+
+        {aviso && (
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800 leading-snug">{aviso}</p>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 pt-1">
+          <button onClick={salvar} disabled={!alterado}
+            className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <Save size={15} />{salvo ? 'Salvo!' : 'Salvar capacidade'}
+          </button>
+          {alterado && (
+            <span className="text-xs text-amber-700 flex items-center gap-1 ml-auto">
+              <AlertTriangle size={12} /> Não salvo
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Maquininhas de cartão.
+//
+// A oficina opera mais de uma máquina e elas cobram diferente pelo mesmo
+// serviço: uma credita na hora (taxa maior, porque antecipa), outra credita no
+// próximo dia útil (taxa menor). Sem esta tabela cadastrada não há de onde
+// calcular a taxa, e a receita continua entrando pelo valor cheio — que nunca
+// foi o que caiu na conta.
+function Maquininhas() {
+  const { config, setConfig } = useApp()
+  const [edicao, setEdicao] = useState(null)
+  const [salvo, setSalvo] = useState(false)
+
+  const lista = edicao ?? maquinasDoConfig(config)
+  const alterado = edicao !== null
+
+  // Toda alteração parte do estado anterior, nunca do `lista` deste render:
+  // dois cliques rápidos (adicionar faixa duas vezes) leriam a mesma lista velha
+  // e o primeiro clique se perderia.
+  function editar(fn) {
+    setEdicao(prev => fn(prev ?? maquinasDoConfig(config)))
+  }
+
+  function mudar(id, dados) {
+    editar(atual => atual.map(m => m.id === id ? { ...m, ...dados } : m))
+  }
+
+  function mudarMaquina(id, fn) {
+    editar(atual => atual.map(m => m.id === id ? fn(m) : m))
+  }
+
+  function adicionar() {
+    editar(atual => [...atual, novaMaquina('maq-' + gerarId())])
+  }
+
+  function remover(id) {
+    const m = lista.find(x => x.id === id)
+    if (!confirm(`Excluir a máquina "${m?.nome || 'sem nome'}"?\n\nOs pagamentos já registrados guardam o nome dela e continuam intactos.\nSe você só parou de usá-la, prefira desativar — assim ela some das telas de venda sem sumir dos relatórios.`)) return
+    editar(atual => atual.filter(x => x.id !== id))
+  }
+
+  function mudarFaixa(maqId, faixaId, dados) {
+    mudarMaquina(maqId, m => ({
+      ...m,
+      faixasParcelado: (m.faixasParcelado || []).map(f => f.id === faixaId ? { ...f, ...dados } : f),
+    }))
+  }
+
+  function addFaixa(maqId) {
+    mudarMaquina(maqId, m => {
+      const atuais = m.faixasParcelado || []
+      const maiorTeto = atuais.reduce((mx, f) => Math.max(mx, Number(f.ate) || 0), 1)
+      return { ...m, faixasParcelado: [...atuais, { id: 'fx-' + gerarId(), ate: String(Math.min(maiorTeto + 5, 21)), taxa: '' }] }
+    })
+  }
+
+  function delFaixa(maqId, faixaId) {
+    mudarMaquina(maqId, m => ({
+      ...m,
+      faixasParcelado: (m.faixasParcelado || []).filter(f => f.id !== faixaId),
+    }))
+  }
+
+  function salvar() {
+    if (lista.some(m => !String(m.nome || '').trim())) {
+      alert('Toda máquina precisa de um apelido — é por ele que você vai escolher na hora da venda.')
+      return
+    }
+    // Faixa sem número de parcelas seria descartada silenciosamente na gravação.
+    // Melhor barrar aqui do que a pessoa achar que salvou.
+    const incompleta = lista.find(m => (m.faixasParcelado || []).some(f => !(Number(f.ate) > 1)))
+    if (incompleta) {
+      alert(`Na máquina "${incompleta.nome}" há uma faixa de parcelado sem o número de parcelas.\n\nPreencha o "até quantas vezes" ou remova a faixa.`)
+      return
+    }
+    // Taxa fora de escala é quase sempre vírgula errada — "349" no lugar de
+    // "3,49". Passando batido, TODA venda no cartão a partir daí grava despesa
+    // dez vezes maior e líquido negativo. O aviso âmbar existia, mas aviso não
+    // impede ninguém com pressa de clicar em salvar.
+    const absurda = lista.find(m => problemasDaMaquina(m).some(p => p.includes('acima de')))
+    if (absurda) {
+      alert(`A máquina "${absurda.nome}" tem taxa acima de ${TAXA_MAXIMA_PCT}%.\n\nConfira a vírgula: 3,49% é diferente de 349%. Como está, uma venda de R$ 1.000 lançaria milhares de reais de despesa.`)
+      return
+    }
+    const limpas = lista.map(m => ({
+      ...m,
+      nome: m.nome.trim(),
+      faixasParcelado: ordenarFaixas(m.faixasParcelado).map(f => ({ id: f.id, ate: Number(f.ate), taxa: f.taxa })),
+    }))
+    setConfig(c => ({ ...c, maquinasCartao: limpas }))
+    setEdicao(null)
+    setSalvo(true)
+    setTimeout(() => setSalvo(false), 2000)
+  }
+
+  const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500'
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100">
+        <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+          <CreditCard size={17} className="text-violet-500" />Maquininhas de cartão
+        </h2>
+        <p className="text-xs text-slate-500 mt-1">
+          Cadastre a taxa de cada máquina uma vez. Na venda o sistema calcula sozinho quanto
+          foi de taxa e quanto realmente caiu na conta — digitar a cada venda é erro que ninguém percebe.
+        </p>
+      </div>
+
+      <div className="p-5 space-y-4">
+        {lista.length === 0 && (
+          <p className="text-sm text-slate-400 text-center py-6">
+            Nenhuma máquina cadastrada. Enquanto isso, a taxa do cartão não é descontada de nada.
+          </p>
+        )}
+
+        {lista.map(maq => {
+          const problemas = problemasDaMaquina(maq)
+          const inativa = maq.ativa === false
+          const faixas = maq.faixasParcelado || []
+          return (
+            <div key={maq.id} className={`border rounded-xl overflow-hidden ${inativa ? 'border-slate-200 bg-slate-50 opacity-70' : 'border-slate-200'}`}>
+              {/* Cabeçalho: apelido + prazo */}
+              <div className="p-4 space-y-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <input value={maq.nome} onChange={e => mudar(maq.id, { nome: e.target.value })}
+                    placeholder="Apelido da máquina (ex: Cielo antiga, Stone nova)"
+                    className={inp + ' font-medium'} />
+                  <button onClick={() => mudar(maq.id, { ativa: inativa })} title={inativa ? 'Reativar' : 'Desativar'}
+                    className={`p-2 rounded-lg flex-shrink-0 transition-colors ${inativa ? 'text-slate-400 hover:text-green-600 hover:bg-green-50' : 'text-green-600 hover:bg-slate-100'}`}>
+                    <Power size={16} />
+                  </button>
+                  <button onClick={() => remover(maq.id)} title="Excluir"
+                    className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 flex-shrink-0 transition-colors">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Quando o dinheiro cai na conta</label>
+                  <div className="flex gap-2">
+                    {Object.entries(PRAZOS).map(([chave, { label }]) => (
+                      <button key={chave} onClick={() => mudar(maq.id, { prazo: chave })}
+                        className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                          maq.prazo === chave ? 'bg-primary-500 border-primary-500 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {maq.prazo === 'proximo_dia_util' && (
+                    <p className="text-xs text-slate-400 mt-1.5">
+                      Venda de sexta vira saldo na segunda. Feriado nacional e carnaval já são pulados automaticamente.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Taxas */}
+              <div className="p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Débito (%)</label>
+                    <input value={maq.taxaDebito} onChange={e => mudar(maq.id, { taxaDebito: e.target.value })}
+                      inputMode="decimal" placeholder="1,99" className={inp} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Crédito à vista (%)</label>
+                    <input value={maq.taxaCreditoVista} onChange={e => mudar(maq.id, { taxaCreditoVista: e.target.value })}
+                      inputMode="decimal" placeholder="3,49" className={inp} />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                    Crédito parcelado — a taxa sobe conforme as parcelas
+                  </label>
+                  <div className="space-y-2">
+                    {faixas.map(f => (
+                      <div key={f.id} className="flex items-center gap-2">
+                        <span className="text-xs text-slate-400 flex-shrink-0">até</span>
+                        <input type="number" min="2" max="21" value={f.ate}
+                          onChange={e => mudarFaixa(maq.id, f.id, { ate: e.target.value })}
+                          className="w-16 border border-slate-200 rounded-lg px-2 py-2 text-sm text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        <span className="text-xs text-slate-400 flex-shrink-0">x cobra</span>
+                        <input value={f.taxa} onChange={e => mudarFaixa(maq.id, f.id, { taxa: e.target.value })}
+                          inputMode="decimal" placeholder="4,99"
+                          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                        <span className="text-xs text-slate-400 flex-shrink-0">%</span>
+                        <button onClick={() => delFaixa(maq.id, f.id)} aria-label="Remover faixa"
+                          className="p-1.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 flex-shrink-0 transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                    <button onClick={() => addFaixa(maq.id)}
+                      className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 text-slate-500 py-2 rounded-lg text-xs font-medium hover:border-slate-300 hover:text-slate-700 transition-colors">
+                      <Plus size={13} /> Adicionar faixa
+                    </button>
+                  </div>
+                </div>
+
+                <PreviaMaquina maquina={maq} />
+
+                {problemas.length > 0 && (
+                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800">
+                      Falta preencher: {problemas.join(' · ')}. Enquanto isso, a venda nesta máquina sai sem taxa descontada.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+
+        <button onClick={adicionar}
+          className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 text-slate-500 py-2.5 rounded-lg text-sm font-medium hover:border-slate-300 hover:text-slate-700 transition-colors">
+          <Plus size={15} /> Adicionar maquininha
+        </button>
+
+        <div className="flex items-center gap-2 pt-1">
+          <button onClick={salvar} disabled={!alterado}
+            className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <Save size={15} />{salvo ? 'Salvo!' : 'Salvar maquininhas'}
+          </button>
+          {alterado && (
+            <span className="text-xs text-amber-700 flex items-center gap-1 ml-auto">
+              <AlertTriangle size={12} /> Não salvo
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Confere o que foi digitado mostrando o efeito em dinheiro: percentual sozinho
+// não denuncia um 4,99 digitado como 49,9.
+function PreviaMaquina({ maquina }) {
+  const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const faixas = ordenarFaixas(maquina.faixasParcelado)
+  const casos = [
+    { rotulo: 'Débito',          calc: { bruto: 1000, modalidade: 'debito' } },
+    { rotulo: 'Crédito à vista', calc: { bruto: 1000, modalidade: 'credito', parcelas: 1 } },
+    ...faixas.map(f => ({ rotulo: `Crédito ${f.ate}x`, calc: { bruto: 1000, modalidade: 'credito', parcelas: Number(f.ate) } })),
+  ]
+  const temAlgumaTaxa = casos.some(c => calcularPagamentoCartao(maquina, c.calc).taxa > 0)
+  if (!temAlgumaTaxa) return null
+
+  return (
+    <div className="bg-slate-50 rounded-lg px-3 py-2.5">
+      <p className="text-xs font-medium text-slate-600">Confira se digitou certo</p>
+      <p className="text-xs text-slate-400 mb-2">
+        A taxa é percentual e vale para qualquer valor. Abaixo, o exemplo de uma venda de R$ 1.000:
+      </p>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        {casos.map(({ rotulo, calc }) => {
+          const r = calcularPagamentoCartao(maquina, calc)
+          if (!(r.taxa > 0)) return null
+          return (
+            <span key={rotulo} className="text-xs text-slate-600 tabular-nums">
+              {rotulo}: <strong className="text-slate-800">{fmt(r.liquido)}</strong>
+              <span className="text-red-500"> −{fmt(r.taxa)}</span>
+            </span>
+          )
+        })}
       </div>
     </div>
   )

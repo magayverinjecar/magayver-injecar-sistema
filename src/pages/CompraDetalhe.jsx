@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Plus, X, Trash2, Package, Save, Search, CheckCircle2, AlertTriangle, CalendarDays } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
+import { parseValorBR } from '../utils/numero'
 
 const statusColor = {
   Rascunho: 'bg-slate-100 text-slate-600',
@@ -12,7 +13,9 @@ const statusColor = {
 }
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function parseNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
+// Parser unico em utils/numero.js — cada tela tinha a propria copia, e a
+// versao antiga lia "1.500" como 1,5.
+const parseNum = parseValorBR
 
 const VAZIO_ITEM = { produtoId: '', descricao: '', codigo: '', quantidade: '1', valorUnitario: '' }
 const VAZIO_NOVO = { nome: '', codigo: '', categoria: '', precoVenda: '', minimo: '0' }

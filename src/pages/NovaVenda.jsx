@@ -1,21 +1,25 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Plus, Trash2, Printer, FileText, CheckCircle, Package } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { imprimirReciboCaixa } from '../utils/print'
 import gerarId from '../utils/id'
+import SeletorMaquina from '../components/ui/SeletorMaquina'
+import { ehCartao, maquinaPadrao, enriquecerPagamento } from '../utils/cartao'
+import { parseValorBR } from '../utils/numero'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-function pNum(v) { if (typeof v === 'number') return v; const s = (v || '0').toString(); if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0; return parseFloat(s) || 0 }
+// Parser unico em utils/numero.js — cada tela tinha a propria copia, e a
+// versao antiga lia "1.500" como 1,5.
+const pNum = parseValorBR
 
 const FORMAS = ['Dinheiro', 'PIX', 'Transferência', 'Cartão Crédito', 'Cartão Débito', 'Boleto', 'Vale Funcionário', 'Outro', 'Pagar Depois']
-const COM_TAXA = ['Cartão Crédito', 'Cartão Débito']
 
 const PASSOS = ['Identificação', 'Itens', 'Pagamento', 'Confirmação', 'Concluído']
 
 export default function NovaVenda() {
   const navigate = useNavigate()
-  const { caixaTurno, registrarVendaCaixa, clientes, veiculosPorCliente, servicos, estoque, setEstoque, ordens, orcamentos, getCliente } = useApp()
+  const { caixaTurno, caixaCarregado, registrarVendaCaixa, clientes, veiculosPorCliente, servicos, estoque, setEstoque, ordens, orcamentos, getCliente, config } = useApp()
 
   const [passo, setPasso] = useState(1)
   const [clienteId, setClienteId] = useState('')
@@ -31,14 +35,30 @@ export default function NovaVenda() {
   const [pagamentos, setPagamentos] = useState([])
   const [formaPag, setFormaPag] = useState('Dinheiro')
   const [valorPag, setValorPag] = useState('')
-  const [taxaPag, setTaxaPag] = useState('')
+  const [maquinaPag, setMaquinaPag] = useState(null)
+  const [parcelasPag, setParcelasPag] = useState('1')
   const [refPag, setRefPag] = useState('')
   const [obsPag, setObsPag] = useState('')
 
   const [vendaNumero, setVendaNumero] = useState('')
   const [vendaFinalizada, setVendaFinalizada] = useState(null)
+  const [finalizando, setFinalizando] = useState(false)
 
-  if (!caixaTurno) { navigate('/caixa'); return null }
+  // O turno carrega depois do resto (vem em segundo plano), então na primeira
+  // renderização ele ainda é null mesmo com o caixa aberto. Redirecionar aqui
+  // dentro do render chutava a pessoa de volta para o Caixa — e o React avisava
+  // que estava navegando durante a renderização. Espera o carregamento terminar.
+  useEffect(() => {
+    if (caixaCarregado && !caixaTurno) navigate('/caixa')
+  }, [caixaCarregado, caixaTurno, navigate])
+
+  if (!caixaTurno) {
+    return (
+      <div className="flex items-center justify-center py-20 text-sm text-slate-400">
+        {caixaCarregado ? 'Nenhum turno de caixa aberto.' : 'Carregando o caixa…'}
+      </div>
+    )
+  }
 
   const subtotal = itens.reduce((s, i) => s + pNum(i.preco) * pNum(i.qtd) - pNum(i.desc), 0)
   const total = subtotal
@@ -95,15 +115,48 @@ export default function NovaVenda() {
   function delItem(id) { setItens(prev => prev.filter(i => i.id !== id)) }
 
   // === pagamentos ===
+  // A taxa deixou de ser digitada aqui: quem sabe quanto a maquininha cobra é o
+  // cadastro dela. Digitada a cada venda, ficava em branco quase sempre.
+  function montarPagamento(valor) {
+    const pg = { id: gerarId(), forma: formaPag, valor, ref: refPag, depois: 0 }
+    if (ehCartao(formaPag)) {
+      pg.maquinaId = maquinaPag
+      pg.parcelas = formaPag === 'Cartão Crédito' ? (Number(parcelasPag) || 1) : 1
+    }
+    return pg
+  }
+  function limparCampos() { setValorPag(''); setRefPag(''); setParcelasPag('1') }
+
   function addPagamento() {
-    const v = formaPag === 'Pagar Depois' ? falta : pNum(valorPag)
-    if (formaPag !== 'Pagar Depois' && v <= 0) return
-    setPagamentos(prev => [...prev, { id: gerarId(), forma: formaPag, valor: formaPag === 'Pagar Depois' ? 0 : v, taxa: pNum(taxaPag), ref: refPag, depois: formaPag === 'Pagar Depois' ? falta : 0 }])
-    setValorPag(''); setTaxaPag(''); setRefPag('')
+    if (formaPag === 'Pagar Depois') {
+      // Uma linha de "Pagar Depois" basta: duas cobravam o cliente em dobro,
+      // porque o botão continua visível (a linha entra com valor 0 e o que
+      // falta não muda).
+      if (pagamentos.some(p => p.forma === 'Pagar Depois')) {
+        alert('Esta venda já tem um valor marcado para pagar depois.\n\nRemova a linha existente se quiser mudar o valor.')
+        return
+      }
+      if (!(falta > 0)) { alert('Não há saldo em aberto para deixar como "Pagar Depois".'); return }
+      setPagamentos(prev => [...prev, { id: gerarId(), forma: 'Pagar Depois', valor: 0, ref: '', depois: falta }])
+      limparCampos()
+      return
+    }
+    const v = pNum(valorPag)
+    if (v <= 0) return
+    // Recebido acima do total é troco, não faturamento. Sem esta guarda a venda
+    // era gravada pelo valor entregue e a receita do mês subia sozinha.
+    if (v > falta + 0.009) {
+      const troco = pNum((v - falta).toFixed(2))
+      alert(`Falta receber ${fmt(falta)}, e você lançou ${fmt(v)}.\n\nSe o cliente entregou mais, registre ${fmt(falta)} e devolva ${fmt(troco)} de troco.`)
+      return
+    }
+    setPagamentos(prev => [...prev, montarPagamento(v)])
+    limparCampos()
   }
   function preencherRestante() {
-    setPagamentos(prev => [...prev, { id: gerarId(), forma: formaPag, valor: falta, taxa: pNum(taxaPag), ref: refPag }])
-    setValorPag(''); setTaxaPag(''); setRefPag('')
+    if (!(falta > 0)) return
+    setPagamentos(prev => [...prev, montarPagamento(falta)])
+    limparCampos()
   }
   function restantePagarDepois() {
     setPagamentos(prev => [...prev, { id: gerarId(), forma: 'Pagar Depois', valor: 0, taxa: 0, ref: '', depois: falta }])
@@ -111,6 +164,14 @@ export default function NovaVenda() {
   function delPagamento(id) { setPagamentos(prev => prev.filter(p => p.id !== id)) }
 
   function finalizar() {
+    // Sem trava, um clique duplo (ou impaciente) registrava a venda duas vezes:
+    // dinheiro em dobro no caixa, receita em dobro no financeiro e peça saindo
+    // duas vezes do estoque.
+    if (finalizando) return
+    setFinalizando(true)
+    // Se algo estourar no meio, a trava precisa cair — senão o botão morre e a
+    // única saída é recarregar, perdendo a venda inteira que já foi digitada.
+    try {
     const dadosVenda = {
       clienteId: clienteId ? Number(clienteId) : null,
       clienteNome: clienteNome || 'Consumidor',
@@ -126,17 +187,30 @@ export default function NovaVenda() {
     // da OS dava baixa, e o estoque ia ficando maior do que a prateleira real.
     const pecas = itens.filter(i => i.tipo === 'peca' && i.produtoId)
     if (pecas.length > 0) {
+      // Soma as quantidades por produto ANTES de baixar. A busca adiciona uma
+      // linha nova a cada clique, então a mesma peça vira várias linhas de
+      // quantidade 1 — e o `find` descontava só a primeira: vendia duas,
+      // baixava uma, e o estoque ia ficando maior que a prateleira.
+      const porProduto = new Map()
+      for (const p of pecas) {
+        const id = Number(p.produtoId)
+        porProduto.set(id, (porProduto.get(id) || 0) + (pNum(p.qtd) || 1))
+      }
       setEstoque(prev => prev.map(item => {
-        const vendida = pecas.find(p => Number(p.produtoId) === item.id)
-        if (!vendida) return item
-        const qtd = pNum(vendida.qtd) || 1
+        const qtd = porProduto.get(item.id)
+        if (!qtd) return item
         return { ...item, estoque: Math.max(0, Number(item.estoque) - qtd) }
       }))
     }
 
-    setVendaFinalizada({ ...dadosVenda, numero })
-    setVendaNumero(numero)
-    setPasso(5)
+      setVendaFinalizada({ ...dadosVenda, numero })
+      setVendaNumero(numero)
+      setPasso(5)
+    } catch (e) {
+      console.error('[NovaVenda] Falha ao finalizar:', e)
+      alert('Não foi possível registrar a venda. Confira os dados e tente de novo.')
+      setFinalizando(false)
+    }
   }
 
   const veiculoSel = veiculoId ? veiculosCliente.find(v => v.id === Number(veiculoId)) : null
@@ -309,32 +383,59 @@ export default function NovaVenda() {
               : <p className="text-sm text-green-600 font-medium">Pagamento completo ✓</p>}
           </div>
 
-          <div className="grid grid-cols-12 gap-2 items-end">
-            <div className="col-span-4">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Forma</label>
-              <select value={formaPag} onChange={e => setFormaPag(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                {FORMAS.map(f => <option key={f}>{f}</option>)}
-              </select>
-            </div>
-            {formaPag !== 'Pagar Depois' && <>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Valor</label>
-                <input value={valorPag} onChange={e => setValorPag(e.target.value)} placeholder="0,00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          <div className="space-y-2">
+            <div className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-4">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Forma</label>
+                <select value={formaPag}
+                  onChange={e => {
+                    const nova = e.target.value
+                    setFormaPag(nova)
+                    // Cartão sem máquina entraria sem taxa e sem ninguém notar
+                    if (ehCartao(nova) && !maquinaPag) setMaquinaPag(maquinaPadrao(config)?.id ?? null)
+                  }}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                  {FORMAS.map(f => <option key={f}>{f}</option>)}
+                </select>
               </div>
-              {COM_TAXA.includes(formaPag) && (
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Taxa R$</label>
-                  <input value={taxaPag} onChange={e => setTaxaPag(e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              {formaPag !== 'Pagar Depois' && <>
+                <div className="col-span-3">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Valor</label>
+                  <input value={valorPag} onChange={e => setValorPag(e.target.value)} inputMode="decimal" placeholder="0,00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 </div>
-              )}
-              <div className={COM_TAXA.includes(formaPag) ? 'col-span-3' : 'col-span-5'}>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Ref. externa</label>
-                <input value={refPag} onChange={e => setRefPag(e.target.value)} placeholder="Opcional" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                <div className="col-span-4">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Ref. externa</label>
+                  <input value={refPag} onChange={e => setRefPag(e.target.value)} placeholder="Opcional" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+              </>}
+              <div className="col-span-1">
+                <button onClick={addPagamento} aria-label="Adicionar pagamento" className="w-full bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg flex items-center justify-center transition-colors"><Plus size={16} /></button>
               </div>
-            </>}
-            <div className="col-span-1">
-              <button onClick={addPagamento} className="w-full bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg flex items-center justify-center transition-colors"><Plus size={16} /></button>
             </div>
+
+            {formaPag === 'Cartão Crédito' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Parcelas</label>
+                <div className="grid grid-cols-6 gap-1">
+                  {['1','2','3','4','5','6','7','8','9','10','11','12'].map(p => (
+                    <button key={p} type="button" onClick={() => setParcelasPag(p)}
+                      className={`py-1 rounded border text-xs font-medium transition-colors ${parcelasPag === p ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      {p}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {ehCartao(formaPag) && (
+              <SeletorMaquina
+                forma={formaPag}
+                valor={valorPag || falta}
+                parcelas={parcelasPag}
+                maquinaId={maquinaPag}
+                onSelecionar={setMaquinaPag}
+              />
+            )}
           </div>
 
           {falta > 0.001 && (
@@ -355,16 +456,32 @@ export default function NovaVenda() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {pagamentos.map(p => (
-                  <tr key={p.id}>
-                    <td className="py-2 text-sm text-slate-700">{p.forma}</td>
-                    <td className="py-2 text-sm text-slate-700">
-                      {p.forma === 'Pagar Depois' ? <span className="text-orange-500">{fmt(p.depois)} (a receber)</span> : <>{fmt(pNum(p.valor))}{pNum(p.taxa) > 0 && <span className="text-red-500"> (-{fmt(pNum(p.taxa))})</span>}</>}
-                    </td>
-                    <td className="py-2 text-sm text-slate-400">{p.ref || '-'}</td>
-                    <td className="py-2 text-right"><button onClick={() => delPagamento(p.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400"><Trash2 size={14} /></button></td>
-                  </tr>
-                ))}
+                {pagamentos.map(p => {
+                  const calc = enriquecerPagamento(p, config)
+                  return (
+                    <tr key={p.id}>
+                      <td className="py-2 text-sm text-slate-700">
+                        {p.forma}
+                        {p.maquinaNome === undefined && calc.maquinaNome && (
+                          <span className="block text-[10px] text-slate-400">
+                            {calc.maquinaNome}{Number(p.parcelas) > 1 ? ` · ${p.parcelas}x` : ''}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 text-sm text-slate-700">
+                        {p.forma === 'Pagar Depois'
+                          ? <span className="text-orange-500">{fmt(p.depois)} (a receber)</span>
+                          : <>
+                              {fmt(calc.bruto)}
+                              {calc.taxa > 0 && <span className="text-red-500"> (−{fmt(calc.taxa)})</span>}
+                              {calc.taxaPendente && <span className="text-amber-600 text-xs"> · taxa pendente</span>}
+                            </>}
+                      </td>
+                      <td className="py-2 text-sm text-slate-400">{p.ref || '-'}</td>
+                      <td className="py-2 text-right"><button onClick={() => delPagamento(p.id)} aria-label="Remover pagamento" className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400"><Trash2 size={14} /></button></td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
@@ -427,7 +544,7 @@ export default function NovaVenda() {
 
           <div className="flex items-center justify-between">
             <button onClick={() => setPasso(3)} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"><ArrowLeft size={15} />Voltar</button>
-            <button onClick={finalizar} className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"><CheckCircle size={15} />Finalizar Venda</button>
+            <button onClick={finalizar} disabled={finalizando} className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"><CheckCircle size={15} />{finalizando ? 'Registrando…' : 'Finalizar Venda'}</button>
           </div>
         </div>
       )}
@@ -443,7 +560,7 @@ export default function NovaVenda() {
           </div>
           <div className="flex items-center justify-center gap-3">
             <button onClick={() => navigate('/caixa')} className="bg-primary-500 hover:bg-primary-600 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">Voltar ao Caixa</button>
-            <button onClick={() => { setPasso(1); setClienteId(''); setClienteNome(''); setBuscaCliente(''); setVeiculoId(''); setItens([]); setPagamentos([]); setObsPag(''); setVendaFinalizada(null) }} className="border border-slate-200 text-slate-600 px-5 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Nova Venda</button>
+            <button onClick={() => { setPasso(1); setClienteId(''); setClienteNome(''); setBuscaCliente(''); setVeiculoId(''); setItens([]); setPagamentos([]); setObsPag(''); setParcelasPag('1'); setVendaFinalizada(null); setFinalizando(false) }} className="border border-slate-200 text-slate-600 px-5 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Nova Venda</button>
           </div>
         </div>
       )}
