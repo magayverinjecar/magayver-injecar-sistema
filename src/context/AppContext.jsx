@@ -135,6 +135,11 @@ export function AppProvider({ children }) {
   // plano para não travar a tela). Quem depende dele precisa saber a diferença
   // entre "ainda não chegou" e "não existe turno aberto".
   const [caixaCarregado, setCaixaCarregado] = useState(false)
+  // Mesma ideia do `caixaCarregado`, para a tela de login: so vira true quando a
+  // leitura de funcionarios REALMENTE voltou do servidor. `carregando` nao serve
+  // — ele e desligado no fim do init mesmo quando a leitura falhou, e a tela de
+  // PIN usa "lista vazia" para oferecer o acesso admin sem senha.
+  const [funcionariosCarregados, setFuncionariosCarregados] = useState(false)
   // Saúde da conexão — o Modo TV depende disso para não exibir dados velhos calado
   const [realtimeOk, setRealtimeOk] = useState(false)
   const [ultimaSync, setUltimaSync] = useState(Date.now())
@@ -713,6 +718,9 @@ export function AppProvider({ children }) {
       r.current.financeiro    = financeiroData || []
       r.current.agenda        = agendaData || []
       r.current.funcionarios  = funcionariosData || []
+      // `loadTable` devolve null so em FALHA (lista vazia vem como []). Marcar
+      // aqui e o que separa "nao ha funcionarios" de "nao consegui ler".
+      if (funcionariosData !== null) setFuncionariosCarregados(true)
       r.current.servicos      = servicosData || []
       r.current.checklists    = checklistsData || []
       r.current.orcamentos    = orcamentosData || []
@@ -2227,7 +2235,7 @@ export function AppProvider({ children }) {
       checklists, setChecklists, gerarNumeroChecklist,
       veiculosPorCliente, ordensPorCliente, ordensPorVeiculo,
       config, setConfig,
-      carregando, caixaCarregado,
+      carregando, caixaCarregado, funcionariosCarregados,
       realtimeOk, ultimaSync, sincronizarOrdens,
     }}>
       {/* Falha de gravação não pode ser silenciosa: antes, o erro ia só para o

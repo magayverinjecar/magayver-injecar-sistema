@@ -14,7 +14,7 @@ const PERFIL_COR = {
 const PERFIL_LABEL = { admin: 'Administrador', reparador: 'Reparador', recepcao: 'Recepção', personalizado: 'Personalizado' }
 
 export default function PinLogin() {
-  const { funcionarios, carregando } = useApp()
+  const { funcionarios, carregando, funcionariosCarregados } = useApp()
   const { login } = useAuth()
   const { dark, toggle } = useTheme()
   const navigate = useNavigate()
@@ -115,6 +115,23 @@ export default function PinLogin() {
             <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
               <div className="w-8 h-8 mx-auto border-4 border-slate-200 border-t-primary-500 rounded-full animate-spin" />
               <p className={txtSub}>Carregando usuários...</p>
+            </div>
+          ) : !funcionariosCarregados ? (
+            /* Lista vazia SEM leitura confirmada nao e "oficina nova": e leitura
+               que falhou. O servidor devolve lista vazia — sem erro — quando uma
+               politica do banco esconde a tabela, e era exatamente nesse caso
+               que a tela oferecia entrar como administrador SEM SENHA, para
+               qualquer um que abrisse o site. Sem confirmacao de leitura, a
+               porta fica fechada. */
+            <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
+              <p className={txtSub}>Não consegui ler a lista de usuários do servidor.</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="w-full bg-primary-500 hover:bg-primary-600 text-white py-3 rounded-xl font-medium text-sm transition-colors"
+              >
+                Tentar de novo
+              </button>
+              <p className={`text-xs ${txtSub}`}>Verifique a internet. Se continuar, avise o responsável pelo sistema.</p>
             </div>
           ) : funcionariosComSenha.length === 0 ? (
             <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
