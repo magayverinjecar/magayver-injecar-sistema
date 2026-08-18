@@ -2053,6 +2053,14 @@ export function AppProvider({ children }) {
     setCaixaTurno(t => t ? { ...t, movimentos: [{ id: gerarId(), tipo: 'reforco', valor: pNum(valor), motivo, forma, hora: horaAgora() }, ...t.movimentos] } : t)
   }
 
+  // Chave estável e única do fechamento de um turno. Turno sem data/hora de
+  // abertura (registro antigo) cai no id gerado — pior para retentativa, mas
+  // nunca sobrescreve outro fechamento, que é o erro que não se pode cometer.
+  function idDoFechamento(turno) {
+    const marca = `${turno?.dataAbertura || ''}-${turno?.horaAbertura || ''}`.replace(/[^0-9]/g, '')
+    return marca.length >= 8 ? `fech-${marca}` : `fech-${gerarId()}`
+  }
+
   // `extra` traz a conferência separada de gaveta e banco. Fica opcional para
   // que turnos fechados antes desta mudança continuem legíveis no histórico:
   // lá `saldoEsperado`/`saldoFinal` somavam todas as formas juntas.
@@ -2065,7 +2073,14 @@ export function AppProvider({ children }) {
       // subisse depois, o mesmo turno virava DOIS fechamentos no histórico, com
       // faturamento e taxas contados em dobro. Derivado, o reenvio vira upsert
       // da mesma linha.
-      id: `fech-${r.current.caixaTurno.id}`,
+      //
+      // ⚠️ Derivado da ABERTURA, e não de `caixaTurno.id`: o turno NÃO tem id
+      // próprio — `recarregarTabela` o monta como `{ id: 'caixa-turno', ... }`,
+      // uma constante. Usar esse id fazia todo fechamento nascer com a mesma
+      // chave e o de hoje gravar POR CIMA do de ontem, apagando o histórico.
+      // Data + hora de abertura é único por turno (não se abrem dois caixas no
+      // mesmo minuto) e estável entre retentativas, que é o que se precisa.
+      id: idDoFechamento(r.current.caixaTurno),
       aberto: false,
       dataFechamento: new Date().toLocaleDateString('pt-BR'),
       horaFechamento: horaAgora(),
