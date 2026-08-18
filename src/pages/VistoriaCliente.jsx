@@ -1,17 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { fotosDaEntrada, fotosDoReparo } from '../utils/vistoria'
 import {
   Car, User, Clock, Camera, CheckCircle2, AlertTriangle,
-  X, ChevronLeft, ChevronRight, ZoomIn, Phone, Loader2, Wrench
+  X, ChevronLeft, ChevronRight, ZoomIn, Phone, Wrench
 } from 'lucide-react'
 
-function row2item(row) {
-  const numId = Number(row.id)
-  const id = Number.isFinite(numId) && String(numId) === row.id ? numId : row.id
-  return { id, ...row.data }
-}
 
 // Aceita as chaves gravadas pela OS (ok/atencao/problema) e as do checklist
 // legado (ok/warning/issue) — um item marcado em qualquer um dos fluxos aparece aqui.
@@ -26,84 +21,52 @@ const STATUS_BADGE = {
 const ATENCAO = ['atencao', 'warning']
 const PROBLEMA = ['problema', 'issue']
 
-// A ficha legada guardava nome, telefone e veículo dentro dela mesma; a OS só
-// guarda os ids. Sem buscar nas tabelas, o cliente via "—" no lugar do carro e
-// o telefone vinha vazio — e telefone vazio libera a página para qualquer um.
-async function completarDaOS(os) {
-  const [cli, vei] = await Promise.all([
-    os.clienteId != null
-      ? supabase.from('clientes').select('data').eq('id', String(os.clienteId)).maybeSingle()
-      : Promise.resolve({ data: null }),
-    os.veiculoId != null
-      ? supabase.from('veiculos').select('data').eq('id', String(os.veiculoId)).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ])
-  const cliente = cli?.data?.data || null
-  const veiculo = vei?.data?.data || null
-  const modelo = [veiculo?.marca, veiculo?.modelo].filter(Boolean).join(' ').trim()
-  return {
-    ...os,
-    clienteNome: os.clienteNome || cliente?.nome || '',
-    clienteTelefone: os.clienteTelefone || cliente?.telefone || cliente?.celular || '',
-    veiculoModelo: os.veiculoModelo || modelo || veiculo?.modelo || '',
-    veiculoPlaca: os.veiculoPlaca || veiculo?.placa || '',
-  }
-}
 
 export default function VistoriaCliente() {
   const { id } = useParams()
 
   const [ck, setCk] = useState(null)
-  const [carregando, setCarregando] = useState(true)
-  const [erro, setErro] = useState('')
+  const [erro] = useState(id ? '' : 'Link inválido.')
 
   // Verificação de telefone
   const [telefone, setTelefone] = useState('')
   const [autenticado, setAutenticado] = useState(false)
   const [erroTelefone, setErroTelefone] = useState('')
+  const [verificando, setVerificando] = useState(false)
 
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
 
-  useEffect(() => {
-    async function carregar() {
-      if (!id) { setErro('Link inválido.'); setCarregando(false); return }
-      // Tenta buscar na tabela ordens primeiro (novo fluxo), depois checklists (legado)
-      const { data: osData } = await supabase.from('ordens').select('id, data').eq('id', id)
-      if (osData?.length) {
-        setCk(await completarDaOS(row2item(osData[0])))
-        setCarregando(false)
-        return
-      }
-      const { data, error } = await supabase.from('checklists').select('id, data').eq('id', id)
-      if (error || !data?.length) {
-        setErro('Vistoria não encontrada. Peça à oficina um novo link.')
-        setCarregando(false)
-        return
-      }
-      setCk(row2item(data[0]))
-      setCarregando(false)
-    }
-    carregar()
-  }, [id])
+  // Nada e carregado antes do telefone. Antes a vistoria inteira — incluindo as
+  // fotos do veiculo — era baixada ao abrir o link, e a pergunta do telefone
+  // servia so para decidir se a tela mostrava. Agora quem confere e o servidor.
 
-  // Mesma lógica da ClienteAssinatura
-  function verificarTelefone(e) {
+  const MENSAGEM_DO_ERRO = {
+    'telefone-curto': 'Digite pelo menos 8 dígitos.',
+    'telefone-nao-confere': 'Número não confere com o cadastrado. Tente novamente.',
+    'nao-encontrada': 'Vistoria não encontrada. Peça à oficina um novo link.',
+    'sem-telefone': 'Seu telefone não está no cadastro da oficina. Entre em contato com a oficina.',
+  }
+
+  async function verificarTelefone(e) {
     e.preventDefault()
     setErroTelefone('')
     const input = telefone.replace(/\D/g, '')
-    const stored = (ck?.clienteTelefone || '').replace(/\D/g, '')
-
-    if (!stored) { setAutenticado(true); return }
-
-    if (input.length < 8) {
-      setErroTelefone('Digite pelo menos 8 dígitos.')
-      return
-    }
-
-    if (input === stored || stored.endsWith(input)) {
+    if (input.length < 8) { setErroTelefone(MENSAGEM_DO_ERRO['telefone-curto']); return }
+    setVerificando(true)
+    try {
+      const { data, error } = await supabase.rpc('os_do_cliente', { p_id: id, p_tel: input })
+      if (error) throw error
+      if (!data?.ok) {
+        setErroTelefone(MENSAGEM_DO_ERRO[data?.erro] || 'Não consegui abrir este link. Fale com a oficina.')
+        return
+      }
+      setCk({ id: data.id, ...data.os })
       setAutenticado(true)
-    } else {
-      setErroTelefone('Número não confere com o cadastrado. Tente novamente.')
+    } catch (err) {
+      console.error('[vistoria] falha ao abrir:', err)
+      setErroTelefone('Não consegui falar com o servidor. Verifique a internet e tente de novo.')
+    } finally {
+      setVerificando(false)
     }
   }
 
@@ -125,13 +88,6 @@ export default function VistoriaCliente() {
     const novo = idx + direcao
     if (novo >= 0 && novo < lista.length) setFotoAmpliada(lista[novo])
   }
-
-  // ── Loading ──
-  if (carregando) return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-      <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-    </div>
-  )
 
   // ── Erro ──
   if (erro) return (
@@ -198,9 +154,10 @@ export default function VistoriaCliente() {
 
             <button
               type="submit"
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-colors active:scale-95"
+              disabled={verificando}
+              className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors active:scale-95"
             >
-              Acessar Fotos e Vistoria
+              {verificando ? 'Conferindo…' : 'Acessar Fotos e Vistoria'}
             </button>
           </form>
         </div>

@@ -93,42 +93,19 @@ function PainelAssinatura({ onSave, onClear }) {
   )
 }
 
-// A OS guarda só os ids do cliente e do veículo. Sem completar daqui, o
-// telefone chegava vazio na conferência — e telefone vazio deixava qualquer
-// pessoa com o link abrir e assinar no lugar do cliente.
-async function completarDaOS(os) {
-  const [cli, vei] = await Promise.all([
-    os.clienteId != null
-      ? supabase.from('clientes').select('data').eq('id', String(os.clienteId)).maybeSingle()
-      : Promise.resolve({ data: null }),
-    os.veiculoId != null
-      ? supabase.from('veiculos').select('data').eq('id', String(os.veiculoId)).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ])
-  const cliente = cli?.data?.data || null
-  const veiculo = vei?.data?.data || null
-  const modelo = [veiculo?.marca, veiculo?.modelo].filter(Boolean).join(' ').trim()
-  return {
-    ...os,
-    clienteNome: os.clienteNome || cliente?.nome || '',
-    clienteTelefone: os.clienteTelefone || cliente?.telefone || cliente?.celular || '',
-    veiculoModelo: os.veiculoModelo || modelo || veiculo?.modelo || '',
-    veiculoPlaca: os.veiculoPlaca || veiculo?.placa || '',
-  }
-}
 
 // ─── Página principal ────────────────────────────────────────────────────────
 export default function ClienteAssinatura() {
   const { id } = useParams()
 
   const [checklist, setChecklist] = useState(null)
-  const [carregando, setCarregando] = useState(true)
-  const [erro, setErro] = useState('')
+  const [erro] = useState(id ? '' : 'Link inválido ou expirado.')
 
   // Verificação por telefone
   const [telefone, setTelefone] = useState('')
   const [autenticado, setAutenticado] = useState(false)
   const [erroTelefone, setErroTelefone] = useState('')
+  const [verificando, setVerificando] = useState(false)
 
   // Assinatura e envio
   const [assinatura, setAssinatura] = useState(null)
@@ -136,57 +113,48 @@ export default function ClienteAssinatura() {
   const [sucesso, setSucesso] = useState(false)
   const [erroEnvio, setErroEnvio] = useState('')
 
-  useEffect(() => {
-    async function carregar() {
-      if (!id) { setErro('Link inválido ou expirado.'); setCarregando(false); return }
-      // Tenta buscar na tabela ordens primeiro (novo fluxo), depois checklists (legado)
-      const { data: osData } = await supabase.from('ordens').select('id, data').eq('id', id)
-      if (osData?.length) {
-        let linha = osData[0]
-        // Link gerado na Nova Entrada: o rascunho aponta para a OS já criada.
-        // Sem seguir o ponteiro, o cliente assinaria num registro descartado.
-        const alvo = linha.data?.redirectPara
-        if (alvo) {
-          const { data: real } = await supabase.from('ordens').select('id, data').eq('id', String(alvo))
-          if (real?.length) linha = real[0]
-        }
-        const os = await completarDaOS({ id: linha.id, ...linha.data })
-        setChecklist(os)
-        if (os.assinatura) setSucesso(true)
-        setCarregando(false)
-        return
-      }
-      const { data, error } = await supabase.from('checklists').select('id, data').eq('id', id)
-      if (error || !data?.length) {
-        setErro('Registro não encontrado. Peça à oficina um link atualizado.')
-        setCarregando(false)
-        return
-      }
-      const ck = { id: data[0].id, ...data[0].data }
-      setChecklist(ck)
-      if (ck.assinatura) setSucesso(true)
-      setCarregando(false)
-    }
-    carregar()
-  }, [id])
+  // Nao ha mais nada para carregar antes do telefone.
+  //
+  // Antes esta tela baixava a OS inteira ao abrir e SO DEPOIS perguntava o
+  // telefone, para decidir se mostrava. Ou seja: a conferencia era enfeite —
+  // quem abrisse o link e olhasse o trafego via tudo sem digitar nada. E
+  // cliente sem telefone cadastrado abria direto, para qualquer um que
+  // recebesse o link encaminhado.
+  //
+  // Agora quem confere e o servidor, e o dado so sai do banco depois de o
+  // telefone bater. E o mesmo caminho que continuara funcionando quando as
+  // tabelas deixarem de ser legiveis por quem nao tem login.
 
-  function verificarTelefone(e) {
+  const MENSAGEM_DO_ERRO = {
+    'telefone-curto': 'Digite pelo menos 8 dígitos.',
+    'telefone-nao-confere': 'Número não confere com o cadastrado. Tente novamente.',
+    'nao-encontrada': 'Registro não encontrado. Peça à oficina um link atualizado.',
+    'sem-telefone': 'Seu telefone não está no cadastro da oficina. Entre em contato com a oficina para liberar a assinatura.',
+  }
+
+  async function verificarTelefone(e) {
     e.preventDefault()
     setErroTelefone('')
     const input = telefone.replace(/\D/g, '')
-    const stored = (checklist?.clienteTelefone || '').replace(/\D/g, '')
+    if (input.length < 8) { setErroTelefone(MENSAGEM_DO_ERRO['telefone-curto']); return }
 
-    if (!stored) { setAutenticado(true); return }
-
-    if (input.length < 8) {
-      setErroTelefone('Digite pelo menos 8 dígitos.')
-      return
-    }
-
-    if (input === stored || stored.endsWith(input)) {
+    setVerificando(true)
+    try {
+      const { data, error } = await supabase.rpc('os_do_cliente', { p_id: id, p_tel: input })
+      if (error) throw error
+      if (!data?.ok) {
+        setErroTelefone(MENSAGEM_DO_ERRO[data?.erro] || 'Não consegui abrir este link. Fale com a oficina.')
+        return
+      }
+      const os = { id: data.id, ...data.os }
+      setChecklist(os)
+      if (os.assinatura) setSucesso(true)
       setAutenticado(true)
-    } else {
-      setErroTelefone('Número não confere com o cadastrado. Tente novamente.')
+    } catch (err) {
+      console.error('[assinatura] falha ao abrir a OS:', err)
+      setErroTelefone('Não consegui falar com o servidor. Verifique a internet e tente de novo.')
+    } finally {
+      setVerificando(false)
     }
   }
 
@@ -203,22 +171,22 @@ export default function ClienteAssinatura() {
       try {
         assinaturaFinal = await uploadAssinatura(assinatura, `${ckId.replace(/[^A-Za-z0-9_-]/g, '-')}-${Date.now()}`)
       } catch (e) { console.error('[assinatura] upload falhou, salvando embutida:', e) }
-      // Tenta salvar na tabela ordens primeiro (novo fluxo)
-      const { data: osRow } = await supabase.from('ordens').select('id, data').eq('id', ckId)
-      if (osRow?.length) {
-        const baseData = osRow[0].data || {}
-        const dataAtualizado = { ...baseData, assinatura: assinaturaFinal, assinaturaTempo: Date.now() }
-        const { error } = await supabase.from('ordens').upsert({ id: ckId, data: dataAtualizado })
-        if (error) throw error
-      } else {
-        // Fallback: salva na tabela checklists (legado)
-        const { data: frescos, error: erroFetch } = await supabase
-          .from('checklists').select('id, data').eq('id', ckId)
-        if (erroFetch) throw erroFetch
-        const baseData = frescos?.[0]?.data || {}
-        const dataAtualizado = { ...baseData, assinatura: assinaturaFinal, assinaturaTempo: Date.now() }
-        const { error } = await supabase.from('checklists').upsert({ id: ckId, data: dataAtualizado })
-        if (error) throw error
+
+      // Grava pela mesma funcao que conferiu o telefone. Antes esta tela lia e
+      // escrevia a tabela direto — o que so funcionava porque o banco estava
+      // aberto para qualquer visitante. E a conferencia ficava no navegador,
+      // onde nao vale nada.
+      const digitos = telefone.replace(/\D/g, '')
+      const { data, error } = await supabase.rpc('assinar_os', {
+        p_id: ckId, p_tel: digitos, p_assinatura: assinaturaFinal, p_tempo: Date.now(),
+      })
+      if (error) throw error
+      if (!data?.ok) {
+        // "Ja assinada" nao e falha: o cliente ja cumpriu a parte dele. Pode
+        // acontecer quando ele volta no link antigo depois de assinar.
+        if (data?.erro === 'ja-assinada') { setSucesso(true); return }
+        setErroEnvio(MENSAGEM_DO_ERRO[data?.erro] || 'Não consegui salvar a assinatura. Fale com a oficina.')
+        return
       }
       setSucesso(true)
     } catch (err) {
@@ -228,13 +196,6 @@ export default function ClienteAssinatura() {
       setEnviando(false)
     }
   }
-
-  // ── Loading ──
-  if (carregando) return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-      <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-    </div>
-  )
 
   // ── Erro ──
   if (erro) return (
@@ -316,9 +277,10 @@ export default function ClienteAssinatura() {
 
             <button
               type="submit"
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition-colors active:scale-95"
+              disabled={verificando}
+              className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors active:scale-95"
             >
-              Acessar Autorização
+              {verificando ? 'Conferindo…' : 'Acessar Autorização'}
             </button>
           </form>
         </div>
