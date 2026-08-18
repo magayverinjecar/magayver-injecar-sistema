@@ -16,6 +16,24 @@ import {
 
 const AppContext = createContext(null)
 
+// As telas abertas pelo CLIENTE nao carregam o sistema.
+//
+// `/assinar/:id` e `/vistoria/:id` ficam dentro do mesmo provedor que o resto do
+// app — e o provedor le as 17 tabelas ao abrir. Resultado, medido no navegador:
+// o celular de todo cliente que abriu um link de assinatura baixou a carteira de
+// clientes com CPF e endereco, o financeiro, o historico de caixa, os gastos E a
+// tabela de funcionarios com os PINs em texto puro.
+//
+// Essas duas telas hoje falam so com as funcoes `os_do_cliente` e `assinar_os`,
+// entao nao precisam de nada disto. Nao carregar e a correcao — e ela vale
+// mesmo depois do RLS, porque baixar 17 tabelas no celular do cliente seria
+// desperdicio de qualquer jeito.
+const ROTAS_DO_CLIENTE = ['/assinar/', '/vistoria/']
+function ehTelaDoCliente() {
+  try { return ROTAS_DO_CLIENTE.some(r => window.location.pathname.startsWith(r)) }
+  catch { return false }
+}
+
 // Converte linha do Supabase { id, data } → objeto do app
 // IDs numéricos são convertidos de volta para number
 function row2item(row) {
@@ -130,7 +148,8 @@ export function mesclarOrdem(prevRow, nextRow, remotoData) {
 
 export function AppProvider({ children }) {
   const { currentUser } = useAuth()
-  const [carregando, setCarregando] = useState(true)
+  // Na tela do cliente nao ha o que carregar — ja nasce pronto.
+  const [carregando, setCarregando] = useState(!ehTelaDoCliente())
   // O turno de caixa carrega DEPOIS de `carregando` virar false (vem em segundo
   // plano para não travar a tela). Quem depende dele precisa saber a diferença
   // entre "ainda não chegou" e "não existe turno aberto".
@@ -698,6 +717,9 @@ export function AppProvider({ children }) {
 
   // Carrega todos os dados ao montar
   useEffect(() => {
+    // Tela do cliente: nao le nada e nao assina realtime.
+    if (ehTelaDoCliente()) return
+
     async function init() {
       const [
         clientesData, veiculosData, ordensData, estoqueData, financeiroData,
@@ -922,6 +944,10 @@ export function AppProvider({ children }) {
   // rebaixar a tabela inteira a cada evento foi o que estourou a cota de
   // tráfego. Eventos durante gravação local vão para a fila (ver receberEvento).
   useEffect(() => {
+    // Tela do cliente nao assina realtime: seria manter um socket aberto no
+    // celular dele recebendo evento de OS, caixa e estoque da oficina inteira.
+    if (ehTelaDoCliente()) return
+
     const ch = supabase.channel('app-realtime')
 
     for (const table of Object.keys(aplicarTabela)) {
