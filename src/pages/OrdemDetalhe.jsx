@@ -446,7 +446,7 @@ export default function OrdemDetalhe() {
     }))
   }
 
-  function confirmarPagarEntregar(comImprimir) {
+  async function confirmarPagarEntregar(comImprimir) {
     const somaPgtos = pgtos.reduce((s, p) => s + pNum(p.valor), 0)
     if (Math.abs(somaPgtos - total) > 0.01) {
       alert(`A soma dos pagamentos (${fmt(somaPgtos)}) deve ser igual ao total da OS (${fmt(total)}).`)
@@ -462,7 +462,14 @@ export default function OrdemDetalhe() {
       }
       return pg
     })
-    entregarOrdem(os.id, pagFormatados, cliente?.nome || 'Cliente')
+    // Entregar e cobrar e operacao critica: espera a confirmacao do banco antes
+    // de fechar o modal e imprimir. Fechar antes deixava a recepcao entregando o
+    // carro com a tela dizendo "pago" sobre uma gravacao que podia nao existir.
+    const resEntrega = await entregarOrdem(os.id, pagFormatados, cliente?.nome || 'Cliente')
+    if (!resEntrega?.ok) {
+      alert('A entrega NAO foi gravada no servidor.\n\nNao entregue o veiculo ainda: confira o aviso no topo da tela e tente de novo.')
+      return
+    }
     setModalFinalizar(false)
     if (comImprimir) {
       // O `os` desta closure ainda é o de antes da entrega — o recibo sairia como

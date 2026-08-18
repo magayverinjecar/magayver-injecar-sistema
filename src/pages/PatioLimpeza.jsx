@@ -81,7 +81,7 @@ export default function PatioLimpeza() {
   const totalConcluidas = visiveis.filter(o => o.status === 'Concluída').length
   const totalExecucao = visiveis.filter(o => ['Em Execução', 'Em Andamento', 'Aberta', 'Aprovada'].includes(o.status)).length
 
-  function executarAcao(os, acao) {
+  async function executarAcao(os, acao) {
     setConfirmar(null)
     setProcessados(prev => new Set(prev).add(os.id))
 
@@ -99,7 +99,12 @@ export default function PatioLimpeza() {
           setProcessados(prev => { const n = new Set(prev); n.delete(os.id); return n })
           return
         }
-        entregarOrdem(os.id, [{ forma: 'Dinheiro', valor: os.valor }], cli?.nome || 'Cliente')
+        const resEntrega = await entregarOrdem(os.id, [{ forma: 'Dinheiro', valor: os.valor }], cli?.nome || 'Cliente')
+        if (!resEntrega?.ok) {
+          alert('A entrega NAO foi gravada no servidor.\n\nConfira o aviso no topo da tela e tente de novo.')
+          setProcessados(prev => { const n = new Set(prev); n.delete(os.id); return n })
+          return
+        }
       } else {
         setOrdens(prev => prev.map(o => {
           if (o.id !== os.id) return o

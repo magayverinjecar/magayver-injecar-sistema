@@ -435,10 +435,18 @@ export default function NovaEntrada() {
     // finalizou. Apagar o rascunho matava o link ("Registro não encontrado"):
     // agora ele vira um ponteiro para a OS de verdade e o link continua valendo.
     if (osIdParaLink) {
-      supabase.from('ordens').upsert({
+      // O retorno era descartado com `.then(() => {})`: sem catch, sem olhar o
+      // erro. Se este ponteiro nao gravasse, o link que o cliente JA recebeu no
+      // WhatsApp continuava apontando para o rascunho descartado — ele assinava
+      // um registro morto e ninguem via nada, nem no console.
+      const { error: erroPonteiro } = await supabase.from('ordens').upsert({
         id: String(osIdParaLink),
         data: { rascunho: true, redirectPara: osId },
-      }).then(() => {})
+      }).select('id')
+      if (erroPonteiro) {
+        console.error('[NovaEntrada] ponteiro do link de assinatura nao gravou:', erroPonteiro)
+        alert('A entrada foi salva, mas o link de assinatura que voce ja enviou pode nao funcionar.\n\nAbra a OS e envie o link novamente.')
+      }
     }
 
     localStorage.removeItem(RASCUNHO_KEY)

@@ -7,6 +7,12 @@ import { parseDataBR } from '../utils/datas'
 import { parseValorBR } from '../utils/numero'
 import { intervaloDe, periodoAnteriorDe, resumirFinanceiro } from '../utils/periodo'
 import gerarId from '../utils/id'
+import {
+  enfileirar as enfileirarPendencia,
+  listar as listarPendencias,
+  remover as removerPendencia,
+  dedupPendencias,
+} from '../utils/filaGravacao'
 
 const AppContext = createContext(null)
 
@@ -244,8 +250,28 @@ export function AppProvider({ children }) {
     }
     const data = await loadTable(table)
     if (data === null) return
+    if (tabelaVazioSuspeito(table, data)) return
     aplicarTabela[table]?.(data)
     marcarSync()
+  }
+
+  // "Lista vazia" e "leitura bloqueada" chegam IDENTICAS aqui: quando uma
+  // politica do banco esconde as linhas, o Postgres nao devolve erro — devolve
+  // lista vazia, como se a tabela estivesse zerada. Sem esta guarda, o dia em
+  // que o RLS entrar em cena com a politica errada o app apagaria a oficina
+  // inteira da tela e trataria isso como a verdade. Pior: `gerarNumeroOS`
+  // voltaria a contar do #1 e colidiria com OS existentes e invisiveis.
+  //
+  // Nenhuma dessas tabelas vai de N linhas para zero na operacao normal —
+  // ninguem apaga todos os clientes de uma vez. Entao zero vindo depois de ter
+  // dado é sintoma, nao dado. Na duvida, mantem o que ja estava na tela.
+  function tabelaVazioSuspeito(table, data) {
+    if (data.length > 0) return false
+    const atual = r.current[refDaTabela[table]]
+    if (!Array.isArray(atual) || atual.length === 0) return false
+    console.error(`[${table}] o servidor devolveu lista VAZIA para uma tabela que tinha ${atual.length} linhas — ignorando para nao apagar a tela`)
+    setLeituraSuspeita(true)
+    return true
   }
 
   // Releitura sob demanda — o Modo TV usa como rede de segurança caso o Realtime caia.
@@ -254,6 +280,7 @@ export function AppProvider({ children }) {
     const data = await loadTable('ordens')
     if (data === null) return false
     if (pendingWrites.current['ordens'] > 0) return true
+    if (tabelaVazioSuspeito('ordens', data)) return false
     aplicarTabela.ordens(data)
     marcarSync()
     return true
@@ -280,6 +307,9 @@ export function AppProvider({ children }) {
 
   // ── Gravação: mescla + retentativa + fila de falhas ────────────────────────
   const [gravacaoPendente, setGravacaoPendente] = useState(0)
+  const [falhaDePermissao, setFalhaDePermissao] = useState(false)
+  const [pendenciaAntiga, setPendenciaAntiga] = useState(false)
+  const [leituraSuspeita, setLeituraSuspeita] = useState(false)
   const filaFalhas = useRef([])      // gravações que falharam mesmo após retentativas
   const drenandoFila = useRef(false)
   const filasEscrita = useRef({})    // serializa as gravações por tabela
@@ -291,52 +321,223 @@ export function AppProvider({ children }) {
     setUltimaSync(Date.now())
   }
 
-  // Antes, uma falha de rede só ia para o console: a tela mostrava o item como
-  // salvo e ele nunca tinha chegado ao banco. Agora tenta 3 vezes e, se não
-  // der, entra na fila e o aviso vermelho aparece.
+  // `error: null` NÃO quer dizer que gravou.
+  //
+  // O Postgres trata recusa por permissão de duas formas opostas: INSERT que
+  // viola a política levanta erro 42501, mas UPDATE e DELETE cuja linha a
+  // política esconde afetam ZERO linhas e voltam limpos, sem erro nenhum. Um
+  // SELECT filtrado, idem: devolve lista vazia como se a tabela estivesse
+  // vazia. Enquanto o banco está sem RLS isso não acontece, mas o dia em que
+  // ligarmos, o sistema inteiro passaria a registrar sucesso em gravação que
+  // não existiu — e a tela continuaria mostrando o dado como salvo.
+  //
+  // A defesa é encadear `.select('id')`: o Postgres garante que linha devolvida
+  // por RETURNING nunca é silenciosamente descartada — ou ela volta, ou é erro.
+  // Então contar o que voltou é a única confirmação confiável de que gravou.
+  const MOTIVO = { OK: 'ok', PERMISSAO: 'permissao', REDE: 'rede', PARCIAL: 'parcial', PERMANENTE: 'permanente' }
+
+  // Depois deste tempo a pendência para de ser reenviada sozinha: reenviar a
+  // foto de ontem por cima do trabalho de hoje é pior do que perdê-la.
+  const LIMITE_REENVIO_MS = 6 * 60 * 60 * 1000
+  // A fila em memória também precisa de teto: sem drenagem (rede morta, aba em
+  // segundo plano) ela cresce carregando o conteúdo inteiro de cada linha.
+  const TETO_FILA_MEMORIA = 500
+  // Erros que retentativa NUNCA conserta. Sem esta lista eles ficavam morando
+  // na fila para sempre, retentados a cada 30s, com a tarja vermelha eterna
+  // mandando "verifique a internet" para um problema que não é de internet.
+  // PGRST205/42P01 (tabela inexistente ou fora do cache de schema) entram aqui, e
+  // não em "recusa de permissão": a mensagem ao operador é outra — não é que o
+  // servidor negou, é que o sistema está apontando para algo que não existe.
+  // Confirmado no navegador: tabela inexistente devolve `PGRST205`.
+  const ERROS_PERMANENTES = ['23505', '22P02', '23503', '23502', '21000', '22001', 'PGRST205', '42P01', 'PGRST204']
+
+  function guardarConfigLocal(cfg) {
+    try { localStorage.setItem('config-oficina', JSON.stringify(cfg)) } catch { /* cota cheia: o cache é dispensável */ }
+  }
+
+  // Recusa de permissão não melhora tentando de novo: as 3 tentativas só
+  // atrasam o aviso ao operador em ~2s e escondem o diagnóstico verdadeiro.
+  //
+  // A forma do erro foi conferida no navegador, contra o banco real: o objeto
+  // que o supabase-js devolve tem SOMENTE `code`, `details`, `hint` e `message`
+  // — não existe `error.status`. Testar status era código morto que nunca
+  // disparava. Vale sempre olhar o `code`.
+  function ehRecusaDePermissao(error) {
+    if (!error) return false
+    // 42501 = violação de política (RLS) ou privilégio insuficiente.
+    // PGRST301/302 = JWT expirado ou requisição sem autenticação válida.
+    if (['42501', 'PGRST301', 'PGRST302'].includes(error.code)) return true
+    // Rede de segurança: se a mensagem fala em RLS, é recusa, seja qual for o código.
+    return typeof error.message === 'string' && error.message.toLowerCase().includes('row-level security')
+  }
+
   async function gravarComRetry(tabela, rows) {
+    let ultimo = null
     for (let t = 0; t < 3; t++) {
       try {
-        const { error } = await supabase.from(tabela).upsert(rows)
-        if (!error) return true
-        if (t === 2) console.error(`[${tabela}] upsert falhou após 3 tentativas:`, error)
-      } catch (e) { if (t === 2) console.error(`[${tabela}] upsert exceção:`, e) }
+        const { data, error } = await supabase.from(tabela).upsert(rows).select('id')
+        if (error) {
+          ultimo = error
+          if (ehRecusaDePermissao(error)) {
+            console.error(`[${tabela}] upsert recusado por permissão:`, error)
+            return { ok: false, motivo: MOTIVO.PERMISSAO, erro: error }
+          }
+          if (ERROS_PERMANENTES.includes(error.code)) {
+            console.error(`[${tabela}] upsert com erro permanente (${error.code}) — não adianta retentar:`, error)
+            return { ok: false, motivo: MOTIVO.PERMANENTE, erro: error }
+          }
+        } else if ((data?.length ?? 0) < rows.length) {
+          // Sem erro e com menos linhas do que mandamos: recusa silenciosa.
+          console.error(`[${tabela}] upsert gravou ${data?.length ?? 0} de ${rows.length} linhas`)
+          return { ok: false, motivo: MOTIVO.PARCIAL, erro: null }
+        } else {
+          return { ok: true, motivo: MOTIVO.OK }
+        }
+      } catch (e) { ultimo = e }
       if (t < 2) await new Promise(r => setTimeout(r, 700 * (t + 1)))
     }
-    return false
+    console.error(`[${tabela}] upsert falhou após 3 tentativas:`, ultimo)
+    return { ok: false, motivo: MOTIVO.REDE, erro: ultimo }
   }
 
   async function apagarComRetry(tabela, id) {
+    let ultimo = null
     for (let t = 0; t < 3; t++) {
       try {
-        const { error } = await supabase.from(tabela).delete().eq('id', id)
-        if (!error) return true
-        if (t === 2) console.error(`[${tabela}] delete falhou após 3 tentativas:`, error)
-      } catch (e) { if (t === 2) console.error(`[${tabela}] delete exceção:`, e) }
+        const { data, error } = await supabase.from(tabela).delete().eq('id', id).select('id')
+        if (error) {
+          ultimo = error
+          if (ehRecusaDePermissao(error)) {
+            console.error(`[${tabela}] delete recusado por permissão:`, error)
+            return { ok: false, motivo: MOTIVO.PERMISSAO, erro: error }
+          }
+        } else if ((data?.length ?? 0) > 0) {
+          return { ok: true, motivo: MOTIVO.OK }
+        } else {
+          // Zero linhas apagadas é ambíguo: ou outro aparelho já apagou (e o
+          // estado desejado já vale), ou a política escondeu a linha e ela
+          // continua lá. Só uma releitura distingue os dois casos.
+          const { data: ainda, error: erroLeitura } = await supabase
+            .from(tabela).select('id').eq('id', id).maybeSingle()
+          if (erroLeitura) { ultimo = erroLeitura }
+          else if (!ainda) return { ok: true, motivo: MOTIVO.OK }
+          else {
+            console.error(`[${tabela}] delete não apagou a linha ${id} e ela continua no banco`)
+            return { ok: false, motivo: MOTIVO.PERMISSAO, erro: null }
+          }
+        }
+      } catch (e) { ultimo = e }
       if (t < 2) await new Promise(r => setTimeout(r, 700 * (t + 1)))
     }
-    return false
+    console.error(`[${tabela}] delete falhou após 3 tentativas:`, ultimo)
+    return { ok: false, motivo: MOTIVO.REDE, erro: ultimo }
   }
 
+  // O aviso na tela dizia sempre "verifique a internet". Quando a causa é
+  // permissão, isso manda a oficina reiniciar o roteador atrás de um problema
+  // que está no banco — por isso a pendência agora carrega o motivo.
   function registrarFalha(pendencia) {
-    filaFalhas.current.push(pendencia)
+    const p = {
+      motivo: MOTIVO.REDE,
+      ...pendencia,
+      // `filaGravacao` decide o que enviar pelo `tipo`; sem ele, uma exclusão
+      // pendente seria lida como gravação sem linhas e descartada em silêncio.
+      tipo: pendencia.delId != null ? 'apagar' : 'gravar',
+      criadoEm: Date.now(),
+    }
+    filaFalhas.current.push(p)
+    // Teto na fila de memória: com a rede morta e a drenagem parada, ela crescia
+    // sem limite carregando o conteúdo inteiro de cada linha. O disco já tinha
+    // teto; a memória não tinha nenhum.
+    if (filaFalhas.current.length > TETO_FILA_MEMORIA) {
+      filaFalhas.current = filaFalhas.current.slice(-TETO_FILA_MEMORIA)
+    }
     setGravacaoPendente(filaFalhas.current.length)
+    if (p.motivo === MOTIVO.PERMISSAO || p.motivo === MOTIVO.PARCIAL) {
+      setFalhaDePermissao(true)
+    }
+    // Espelha em disco. Antes a fila vivia só neste useRef: fechar a aba —
+    // que é exatamente o que se faz ao fim do expediente — apagava para sempre
+    // tudo que ainda não tinha chegado ao banco.
+    //
+    // `caixa_turno` fica de FORA de propósito. É linha única e o pendente dela
+    // é destrutivo: um "apagar caixa-turno" que ficou de ontem, reenviado hoje
+    // de manhã, apagaria o turno NOVO com as vendas do dia — justamente o
+    // desastre que a guarda de `next === null && prev === null` impede. Em
+    // memória ela continua sendo retentada durante a sessão, que é onde a
+    // retentativa faz sentido.
+    if (p.tabela !== 'caixa_turno') enfileirarPendencia(p)
   }
 
   async function tentarFila() {
-    if (drenandoFila.current || filaFalhas.current.length === 0) return
+    if (drenandoFila.current) return
     drenandoFila.current = true
-    const pendentes = filaFalhas.current.splice(0)
-    for (const p of pendentes) {
-      try {
-        const { error } = p.delId
-          ? await supabase.from(p.tabela).delete().eq('id', p.delId)
-          : await supabase.from(p.tabela).upsert(p.rows)
-        if (error) filaFalhas.current.push(p)
-      } catch { filaFalhas.current.push(p) }
+    try {
+      // Junta o que está na memória com o que sobreviveu em disco de uma sessão
+      // anterior, e deduplica por LINHA — não por pendência. A diferença não é
+      // acadêmica: uma pendência com as linhas [A,B] e outra só com [A] têm
+      // conjuntos diferentes, então uma chave feita com os ids grudados deixaria
+      // as duas passarem, e o A velho voltaria por cima do A novo.
+      const daMemoria = filaFalhas.current.splice(0)
+      const doDisco = await listarPendencias()
+      const todas = dedupPendencias([...doDisco, ...daMemoria])
+
+      // Pendência velha NÃO é reenviada às cegas.
+      //
+      // Persistir a fila em disco criou um risco que não existia quando ela
+      // morria com a aba: a foto de uma OS tirada ontem às 18h, reenviada hoje
+      // às 8h, sobe crua por cima do que a recepção gravou de manhã — e este
+      // caminho passa por fora da mescla de OS, então o trabalho novo some sem
+      // erro nenhum na tela. Depois de um limite, a pendência para de ser
+      // reenviada sozinha e passa a ser problema visível, para uma pessoa
+      // decidir. Perder trabalho de ontem é ruim; apagar o de hoje é pior.
+      const agora = Date.now()
+      const pendentes = []
+      for (const p of todas) {
+        // Erro permanente (chave duplicada, tipo inválido, payload grande
+        // demais) não melhora na centésima tentativa — só mantém a tarja acesa
+        // para sempre e ocupa vaga contra o teto da fila.
+        const paraDeTentar = p.motivo === MOTIVO.PERMANENTE ||
+                             agora - (p.criadoEm || 0) > LIMITE_REENVIO_MS
+        if (paraDeTentar) filaFalhas.current.push(p)
+        else pendentes.push(p)
+      }
+
+      for (const p of pendentes) {
+        let ok = true
+        if (p.tipo === 'apagar') {
+          for (const id of p.ids) {
+            const res = await apagarComRetry(p.tabela, id)
+            if (!res.ok) { ok = false; p.motivo = res.motivo }
+          }
+        } else {
+          const res = await gravarComRetry(p.tabela, p.rows)
+          if (!res.ok) { ok = false; p.motivo = res.motivo }
+        }
+        if (ok) {
+          // O `criadoEm` é a trava: se a mesma linha falhou de novo enquanto
+          // esta ia para o banco, a versão nova fica e não é apagada junto.
+          await removerPendencia(p.id, p.criadoEm)
+          // A config só vira verdade para a impressão depois de o servidor
+          // aceitar — e `print.js` lê justamente esta cópia local. Sem esta
+          // linha, uma config reenviada pela fila subia para o banco e o papel
+          // continuava saindo com o texto velho até alguém recarregar a página.
+          if (p.tabela === 'configuracoes' && p.rows?.[0]?.data) guardarConfigLocal(p.rows[0].data)
+        } else {
+          filaFalhas.current.push(p)
+        }
+      }
+      setGravacaoPendente(filaFalhas.current.length)
+      // Derivado do que REALMENTE ficou na fila, e não de uma variável do laço:
+      // uma pendência registrada no meio da drenagem não entra em `pendentes`,
+      // e zerar a bandeira por causa dela fazia a tarja voltar a dizer
+      // "verifique a internet" para uma recusa do servidor.
+      setFalhaDePermissao(filaFalhas.current.some(p => p.motivo === MOTIVO.PERMISSAO || p.motivo === MOTIVO.PARCIAL))
+      setPendenciaAntiga(filaFalhas.current.some(p =>
+        p.motivo === MOTIVO.PERMANENTE || agora - (p.criadoEm || 0) > LIMITE_REENVIO_MS))
+    } finally {
+      drenandoFila.current = false
     }
-    setGravacaoPendente(filaFalhas.current.length)
-    drenandoFila.current = false
   }
 
   // Duas gravações rápidas do MESMO navegador não podem correr em paralelo:
@@ -354,6 +555,7 @@ export function AppProvider({ children }) {
   }
 
   async function executarDiff(tableName, prev, next) {
+    const resultado = { ok: true }
     const prevMap = new Map(prev.map(i => [String(i.id), i]))
     const nextMap = new Map(next.map(i => [String(i.id), i]))
 
@@ -368,27 +570,55 @@ export function AppProvider({ children }) {
       if (tableName === 'ordens') {
         // Relê a linha atual e mescla: o que outro navegador gravou nesse meio
         // tempo sobrevive junto com o que este navegador está gravando agora.
-        rows = await Promise.all(paraGravar.map(async item => {
+        rows = []
+        for (const item of paraGravar) {
           const id = String(item.id)
+          // O `error` desta releitura era DESCARTADO e o catch estava vazio.
+          // Consequencia: se a leitura falhasse, o codigo caia calado na foto
+          // local e a gravacao apagava o que outro aparelho tinha acabado de
+          // fazer — exatamente o que a mescla existe para impedir. Ela nao pode
+          // falhar em silencio: sem poder mesclar, e melhor nao gravar e deixar
+          // a fila tentar de novo quando der para ler.
+          let rem = null
+          let erroLeitura
           try {
-            const { data: rem } = await supabase.from('ordens').select('data').eq('id', id).maybeSingle()
-            if (rem?.data) return { id, data: mesclarOrdem(prevMap.get(id), item, rem.data) }
-          } catch { /* sem rede agora — grava a foto local; a retentativa cuida */ }
-          return item2row(item)
-        }))
+            const resp = await supabase.from('ordens').select('data').eq('id', id).maybeSingle()
+            rem = resp.data
+            erroLeitura = resp.error
+          } catch (e) { erroLeitura = e }
+
+          if (erroLeitura) {
+            console.error(`[ordens] nao consegui reler a OS ${id} para mesclar — gravacao adiada para nao apagar o trabalho de outro aparelho:`, erroLeitura)
+            registrarFalha({ tabela: 'ordens', rows: [item2row(item)], motivo: MOTIVO.REDE })
+            resultado.ok = false
+            continue
+          }
+          rows.push(rem?.data ? { id, data: mesclarOrdem(prevMap.get(id), item, rem.data) } : item2row(item))
+        }
       } else {
         rows = paraGravar.map(item2row)
       }
-      const ok = await gravarComRetry(tableName, rows)
-      if (!ok) registrarFalha({ tabela: tableName, rows })
+      // `rows` pode ter ficado vazio se todas as OS foram adiadas por falha de
+      // leitura acima — nao ha o que gravar, e um upsert vazio so gastaria rede.
+      if (rows.length > 0) {
+        // Nome `res`, nao `r`: `r` e o useRef que guarda o estado inteiro do
+        // app. Sombrear ele aqui e uma armadilha para quem mexer nesse bloco.
+        const res = await gravarComRetry(tableName, rows)
+        if (!res.ok) registrarFalha({ tabela: tableName, rows, motivo: res.motivo })
+        resultado.ok = resultado.ok && res.ok
+      }
     }
 
     for (const id of prevMap.keys()) {
       if (!nextMap.has(id)) {
-        const ok = await apagarComRetry(tableName, id)
-        if (!ok) registrarFalha({ tabela: tableName, delId: id })
+        const res = await apagarComRetry(tableName, id)
+        if (!res.ok) registrarFalha({ tabela: tableName, delId: id, motivo: res.motivo })
+        resultado.ok = resultado.ok && res.ok
       }
     }
+    // Quem chamou precisa poder saber se gravou — sem isto, operação crítica
+    // (fechar caixa, entregar OS) não tem como esperar confirmação.
+    return resultado
   }
 
   // Tela que passou tempo em segundo plano (celular no bolso) fica congelada no
@@ -519,6 +749,7 @@ export function AppProvider({ children }) {
 
       // Migração Opção C: incorpora dados de checklists existentes nas OS (roda 1x)
       if (!localStorage.getItem('migracao-opcao-c-done') && checklistsData?.length) {
+        const promessasMigracao = []
         const ordensMap = new Map((ordensData || []).map(o => [String(o.id), o]))
         const idsMigrados = new Set()
         const novasOrdens = []
@@ -586,9 +817,11 @@ export function AppProvider({ children }) {
           r.current.ordens = ordensAtualizadas
           _setOrdens(ordensAtualizadas)
           marcarGravando('ordens')
-          supabaseDiff('ordens', ordensData || [], ordensAtualizadas)
-            .catch(console.error)
-            .finally(() => fimGravando('ordens'))
+          promessasMigracao.push(
+            supabaseDiff('ordens', ordensData || [], ordensAtualizadas)
+              .catch(e => { console.error(e); return { ok: false } })
+              .finally(() => fimGravando('ordens'))
+          )
         }
         // Fecha o vínculo nos dois sentidos: sem o osId na ficha, ela continua
         // parecendo órfã e um clique em "Abrir OS" criaria uma segunda OS.
@@ -599,11 +832,23 @@ export function AppProvider({ children }) {
           r.current.checklists = checklistsAtualizados
           _setChecklists(checklistsAtualizados)
           marcarGravando('checklists')
-          supabaseDiff('checklists', checklistsData, checklistsAtualizados)
-            .catch(console.error)
-            .finally(() => fimGravando('checklists'))
+          promessasMigracao.push(
+            supabaseDiff('checklists', checklistsData, checklistsAtualizados)
+              .catch(e => { console.error(e); return { ok: false } })
+              .finally(() => fimGravando('checklists'))
+          )
         }
-        localStorage.setItem('migracao-opcao-c-done', '1')
+        // A marca so e gravada se as gravacoes confirmaram. Antes ela era
+        // escrita incondicionalmente e sem esperar por elas: se a migracao
+        // falhasse, ela se dava por concluida e NUNCA MAIS rodava — perda
+        // irreversivel das OS criadas a partir das fichas e do vinculo entre
+        // elas. E roda uma vez so, na primeira abertura apos a mudanca.
+        const resMigracao = await Promise.all(promessasMigracao)
+        if (resMigracao.every(x => x?.ok !== false)) {
+          localStorage.setItem('migracao-opcao-c-done', '1')
+        } else {
+          console.error('[migracao opcao C] nao confirmada pelo servidor — sera tentada de novo na proxima abertura')
+        }
       }
 
       // Libera UI imediatamente — dados principais já estão prontos
@@ -699,6 +944,29 @@ export function AppProvider({ children }) {
     return () => { supabase.removeChannel(ch) }
   }, [])
 
+  // Ao abrir o app, traz do disco o que ficou pendente da sessão anterior.
+  //
+  // Sem isto o arquivo de fila persistida não servia para nada: os três
+  // gatilhos de `tentarFila` (timer de 30s, aba voltando ao foco, reconexão do
+  // realtime) são todos condicionados à fila EM MEMÓRIA, que no boot está
+  // vazia. Resultado: sexta-feira fecha com 6 OS pendentes, segunda o app abre
+  // com a tarja apagada e nada é reenviado.
+  //
+  // Quem faz isso e a propria drenagem, e nao uma copia da logica aqui. A
+  // primeira versao lia o disco e fazia `filaFalhas.current = ...` — uma
+  // ATRIBUICAO sobre uma foto tirada antes. Rodando junto com o "acordar" (que
+  // dispara quase no mesmo instante da abertura), ela sobrescrevia o resultado
+  // da drenagem em curso: as marcas de motivo recem-calculadas eram apagadas e
+  // o aviso na tela ficava um ciclo atrasado. Pior: pendencia ja enviada e
+  // removida do disco ressuscitava daquela foto e era enviada de novo.
+  //
+  // `tentarFila` ja le o disco, mescla com a memoria, respeita o limite de
+  // idade, acende a tarja e tem trava contra execucao concorrente.
+  useEffect(() => {
+    tentarFila()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Acordou (aba voltou do segundo plano / internet voltou) → esvazia a fila de
   // falhas e, se está sem sincronizar há mais de 30s, relê tudo antes que
   // alguém grave por cima com uma tela velha.
@@ -727,8 +995,12 @@ export function AppProvider({ children }) {
       r.current[refKey] = next
       setter(next)
       marcarGravando(tableName)
-      supabaseDiff(tableName, prev, next)
-        .catch(console.error)
+      // Devolve a promessa da gravação. A maioria dos chamadores ignora — a
+      // tela continua otimista, como sempre foi. Mas operação crítica (fechar
+      // caixa, entregar OS, baixar peça) agora TEM como esperar a confirmação
+      // do banco em vez de acreditar no próprio otimismo.
+      return supabaseDiff(tableName, prev, next)
+        .catch(e => { console.error(e); return { ok: false, motivo: MOTIVO.REDE } })
         .finally(() => fimGravando(tableName))
     }
   }
@@ -766,16 +1038,22 @@ export function AppProvider({ children }) {
     _setCaixaTurno(next)
     marcarGravando('caixa_turno')
     const done = () => fimGravando('caixa_turno')
+    // Passa pelo mesmo funil das outras tabelas: sem isto, o turno era a única
+    // gravação sem retentativa e sem detecção de recusa silenciosa — logo a
+    // mais frágil justamente na tabela que guarda o dinheiro do dia.
+    // Devolve a promessa, como os setters criados por `makeSet`. Sem isto,
+    // `await setCaixaTurno(...)` recebia undefined e quem esperasse confirmação
+    // concluiria "falhou" numa gravação que tinha dado certo.
     if (next === null) {
-      supabase.from('caixa_turno').delete().eq('id', 'caixa-turno')
-        .then(({ error }) => { if (error) { console.error('[caixa_turno] Erro ao deletar:', error); registrarFalha({ tabela: 'caixa_turno', delId: 'caixa-turno' }) } })
-        .finally(done)
-    } else {
-      const { id: _id, ...data } = next
-      supabase.from('caixa_turno').upsert({ id: 'caixa-turno', data })
-        .then(({ error }) => { if (error) { console.error('[caixa_turno] Erro ao salvar:', error); registrarFalha({ tabela: 'caixa_turno', rows: [{ id: 'caixa-turno', data }] }) } })
+      return apagarComRetry('caixa_turno', 'caixa-turno')
+        .then(res => { if (!res.ok) registrarFalha({ tabela: 'caixa_turno', delId: 'caixa-turno', motivo: res.motivo }); return res })
         .finally(done)
     }
+    const { id: _id, ...data } = next
+    const rows = [{ id: 'caixa-turno', data }]
+    return gravarComRetry('caixa_turno', rows)
+      .then(res => { if (!res.ok) registrarFalha({ tabela: 'caixa_turno', rows, motivo: res.motivo }); return res })
+      .finally(done)
   }
 
   function setConfig(valOrFn) {
@@ -783,10 +1061,21 @@ export function AppProvider({ children }) {
     const next = valOrFn instanceof Function ? valOrFn(prev) : valOrFn
     r.current.config = next
     _setConfig(next)
-    try { localStorage.setItem('config-oficina', JSON.stringify(next)) } catch {}
     marcarGravando('configuracoes')
-    supabase.from('configuracoes').upsert({ id: 'config-oficina', data: next })
-      .then(({ error }) => { if (error) console.error('[configuracoes] Erro ao salvar:', error) })
+    // Este era o pior setter do arquivo: sem retentativa, sem fila e sem aviso
+    // — só um console.error. Uma taxa de maquininha recusada pelo banco ficava
+    // valendo no aparelho, e `print.js` lê esta config para imprimir: o recibo
+    // saía com um valor que o servidor nunca aceitou.
+    //
+    // O localStorage agora só é escrito DEPOIS da confirmação. Assim a tela
+    // segue otimista (igual ao resto do sistema) e avisada pela tarja, mas
+    // recarregar a página volta para a última config que o banco realmente tem.
+    return gravarComRetry('configuracoes', [{ id: 'config-oficina', data: next }])
+      .then(res => {
+        if (res.ok) guardarConfigLocal(next)
+        else registrarFalha({ tabela: 'configuracoes', rows: [{ id: 'config-oficina', data: next }], motivo: res.motivo })
+        return res
+      })
       .finally(() => fimGravando('configuracoes'))
   }
 
@@ -975,21 +1264,44 @@ export function AppProvider({ children }) {
     return null
   }
 
-  function adicionarItemOrdem(id, item) {
+  // Lança o item na OS e, se for peça, baixa do estoque.
+  //
+  // A ORDEM aqui importa e mudou. Antes a peça saía do estoque primeiro e a OS
+  // era gravada depois, cada uma numa tabela e sem ninguém conferir: se a
+  // gravação da OS falhasse, a peça já tinha saído da prateleira e não estava
+  // em OS nenhuma — some do estoque e ninguém cobra. É a dor nº 1 que a
+  // pesquisa de mercado encontrou em oficina.
+  //
+  // Agora a OS grava primeiro e a baixa só acontece se ela confirmou. A falha
+  // que sobra é a oposta e bem menos grave: item cobrado com o saldo do estoque
+  // atrasado — visível, e a fila reenvia.
+  async function adicionarItemOrdem(id, item) {
     const novo = { ...item, id: gerarId() }
+    let produto = null
     if (item.tipo === 'peca' && item.produtoId) {
       // Congela o custo da peça NESTE momento. O preço de custo do estoque muda
       // com o tempo; sem congelar, reajustar uma peça hoje reescreveria a margem
       // de todas as OS antigas que a usaram — o resultado de meses fechados
       // mudava sozinho.
-      const produto = r.current.estoque.find(p => Number(p.id) === Number(item.produtoId))
+      produto = r.current.estoque.find(p => Number(p.id) === Number(item.produtoId))
       const custo = parseBR(produto?.precoCusto)
       if (custo > 0) novo.custoUnitario = produto.precoCusto
-
-      setEstoque(prev => prev.map(p => p.id === Number(item.produtoId)
-        ? { ...p, estoque: Math.max(0, Number(p.estoque) - (Number(item.quantidade) || 1)) } : p))
     }
-    setOrdens(prev => prev.map(o => o.id === id ? { ...o, itens: [...(o.itens || []), novo] } : o))
+
+    const resOS = await setOrdens(prev => prev.map(o => o.id === id ? { ...o, itens: [...(o.itens || []), novo] } : o))
+    if (!resOS?.ok) {
+      console.error('[adicionarItemOrdem] item nao confirmado na OS — peca NAO foi baixada do estoque', resOS)
+      return { ok: false, etapa: 'os' }
+    }
+    if (!produto) return { ok: true }
+
+    const resEstoque = await setEstoque(prev => prev.map(p => p.id === Number(item.produtoId)
+      ? { ...p, estoque: Math.max(0, Number(p.estoque) - (Number(item.quantidade) || 1)) } : p))
+    if (!resEstoque?.ok) {
+      console.error('[adicionarItemOrdem] item lancado na OS, mas a baixa do estoque nao confirmou', resEstoque)
+      return { ok: false, etapa: 'estoque' }
+    }
+    return { ok: true }
   }
 
   function removerItemOrdem(id, itemId) {
@@ -1116,10 +1428,10 @@ export function AppProvider({ children }) {
     setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Concluída', dataConclusao: hoje, historico, etapaEm: Date.now() } : x))
   }
 
-  function entregarOrdem(osId, pagamentos, clienteNome) {
+  async function entregarOrdem(osId, pagamentos, clienteNome) {
     const o = r.current.ordens.find(x => x.id === osId)
-    if (!o) return
-    if (o.status === 'Entregue') return   // evita duplo-clique gerando venda duplicada no caixa
+    if (!o) return { ok: false, motivo: 'os-nao-encontrada' }
+    if (o.status === 'Entregue') return { ok: true }   // evita duplo-clique gerando venda duplicada no caixa
     // A recepção pode cobrar sem esperar a conferência (cliente no balcão), mas
     // isso não passa em branco: fica escrito quem liberou o carro sem conferir.
     const semConferencia = !o.conferencia?.aprovado
@@ -1143,7 +1455,12 @@ export function AppProvider({ children }) {
 
     // Guarda como o cliente pagou na própria OS: a venda do caixa some quando o
     // turno está fechado, e sem isto o recibo reimpresso depois sai sem pagamento.
-    setOrdens(prev => prev.map(x => x.id === osId ? {
+    // Entregar e cobrar mexe em tres tabelas (ordens, caixa_turno, financeiro) e
+    // nao ha transacao entre elas. Esperar a OS confirmar antes de registrar a
+    // venda evita o pior par: receita lancada no caixa para uma OS que o banco
+    // nunca marcou como paga — dinheiro no relatorio sem OS correspondente, e
+    // o carro saindo do patio.
+    const resOS = await setOrdens(prev => prev.map(x => x.id === osId ? {
       ...x,
       status: 'Entregue',
       pago: true,
@@ -1152,6 +1469,10 @@ export function AppProvider({ children }) {
       historico,
       etapaEm: Date.now(),
     } : x))
+    if (!resOS?.ok) {
+      console.error('[entregarOrdem] OS nao confirmada pelo servidor — venda NAO registrada no caixa', resOS)
+      return { ok: false, motivo: 'os-nao-gravou' }
+    }
     const total = totalOrdem(o)
     registrarVendaCaixa({
       osId,
@@ -1161,6 +1482,7 @@ export function AppProvider({ children }) {
       total,
       pagamentos: pagamentos || [],
     })
+    return { ok: true }
   }
 
   // Saída para OS que já foi paga (no sistema antigo ou aqui): marca como
@@ -1734,11 +2056,16 @@ export function AppProvider({ children }) {
   // `extra` traz a conferência separada de gaveta e banco. Fica opcional para
   // que turnos fechados antes desta mudança continuem legíveis no histórico:
   // lá `saldoEsperado`/`saldoFinal` somavam todas as formas juntas.
-  function fecharCaixa(contagem, justificativa, saldoEsperado, totalContado, extra = {}) {
-    if (!r.current.caixaTurno) return
+  async function fecharCaixa(contagem, justificativa, saldoEsperado, totalContado, extra = {}) {
+    if (!r.current.caixaTurno) return { ok: false, motivo: 'sem-turno' }
     const fechado = {
       ...r.current.caixaTurno,
-      id: gerarId(),
+      // Id DERIVADO do turno, não `gerarId()`. Se a primeira tentativa falhar e
+      // ficar na fila, a segunda tentativa gerava um id novo — e quando a fila
+      // subisse depois, o mesmo turno virava DOIS fechamentos no histórico, com
+      // faturamento e taxas contados em dobro. Derivado, o reenvio vira upsert
+      // da mesma linha.
+      id: `fech-${r.current.caixaTurno.id}`,
       aberto: false,
       dataFechamento: new Date().toLocaleDateString('pt-BR'),
       horaFechamento: horaAgora(),
@@ -1761,16 +2088,30 @@ export function AppProvider({ children }) {
     // dia inteiro passava a existir só na fila de falhas em memória — que morre
     // quando a pessoa fecha o navegador. E fechar o caixa é exatamente a última
     // coisa que se faz antes de fechar o navegador.
-    setCaixaHistorico(h => [fechado, ...h])
-    encadearEscrita('caixa_historico', async () => {
-      const salvou = r.current.caixaHistorico.some(t => String(t.id) === String(fechado.id))
-      if (!salvou) {
-        console.error('[fecharCaixa] histórico não confirmado — turno preservado')
-        alert('O fechamento não foi gravado no servidor.\n\nO turno continua aberto de propósito, para o dia não se perder. Verifique a internet e feche o caixa de novo.')
-        return
-      }
-      setCaixaTurno(null)
-    })
+    // A checagem antiga perguntava a `r.current.caixaHistorico` se o histórico
+    // tinha sido salvo — mas a linha acima acabara de escrever nesse mesmo
+    // espelho local, de forma síncrona. Ou seja: perguntava ao próprio otimismo
+    // e a resposta era sempre "sim". O alerta de proteção nunca disparava, e o
+    // turno era apagado com o histórico do dia possivelmente não gravado.
+    //
+    // Agora quem responde é o banco.
+    const res = await setCaixaHistorico(h => [fechado, ...h])
+    if (!res?.ok) {
+      console.error('[fecharCaixa] histórico não confirmado pelo servidor — turno preservado', res)
+      alert('O fechamento NÃO foi gravado no servidor.\n\nO turno continua aberto de propósito, para o dia não se perder. Confira o aviso no topo da tela e feche o caixa de novo.')
+      return { ok: false }
+    }
+    // Esperar TAMBÉM o apagamento do turno. Sem isto a função respondia "ok"
+    // com metade da operação por confirmar: se o DELETE falhasse, o modal
+    // fechava dizendo "dia fechado" e o turno voltava aberto na próxima
+    // releitura — o dia existindo fechado e aberto ao mesmo tempo.
+    const resTurno = await setCaixaTurno(null)
+    if (!resTurno?.ok) {
+      console.error('[fecharCaixa] histórico gravado, mas o turno não foi encerrado no servidor', resTurno)
+      alert('O fechamento foi gravado, mas o turno NÃO foi encerrado no servidor.\n\nNão abra um novo caixa: confira o aviso no topo da tela e chame o responsável pelo sistema.')
+      return { ok: false, motivo: 'turno-nao-encerrado' }
+    }
+    return { ok: true }
   }
 
   // Cliente voltou e pagou o que ficou devendo numa venda de balcão.
@@ -1876,10 +2217,27 @@ export function AppProvider({ children }) {
     }}>
       {/* Falha de gravação não pode ser silenciosa: antes, o erro ia só para o
           console e a pessoa fechava a tela achando que estava salvo. */}
-      {gravacaoPendente > 0 && (
+      {/* Leitura que voltou vazia para uma tabela que tinha dados. Fica ACIMA do
+          aviso de gravacao porque, se o app esta cego para o que existe, tudo
+          que for lancado por cima disso nasce errado. */}
+      {leituraSuspeita && (
+        <div className="fixed top-0 inset-x-0 z-[9999] bg-amber-500 text-black text-sm font-semibold text-center py-2.5 px-4 shadow-lg">
+          ⚠ O servidor devolveu uma lista VAZIA para dados que existem. A tela pode estar incompleta —
+          NAO lance nada agora e avise o responsavel pelo sistema. Recarregue a pagina para tentar de novo.
+        </div>
+      )}
+      {gravacaoPendente > 0 && !leituraSuspeita && (
         <div className="fixed top-0 inset-x-0 z-[9999] bg-red-600 text-white text-sm font-semibold text-center py-2.5 px-4 shadow-lg">
-          ⚠ {gravacaoPendente === 1 ? 'Uma alteração ainda NÃO foi salva' : `${gravacaoPendente} alterações ainda NÃO foram salvas`} no
-          servidor — verifique a internet. Vou tentar de novo sozinho; não feche esta tela.
+          ⚠ {gravacaoPendente === 1 ? 'Uma alteração ainda NÃO foi salva' : `${gravacaoPendente} alterações ainda NÃO foram salvas`} no servidor
+          {/* Mandar verificar a internet quando o servidor RECUSOU a gravação faz
+              a oficina reiniciar o roteador atrás de um problema que não está lá. */}
+          {falhaDePermissao
+            ? ' — o servidor recusou a gravação. NÃO é problema de internet: avise o responsável pelo sistema antes de continuar lançando.'
+            : pendenciaAntiga
+              // Parou de tentar sozinho de propósito: reenviar a foto de ontem
+              // por cima do trabalho de hoje apagaria o trabalho de hoje.
+              ? ' — e parei de tentar sozinho, porque são antigas e reenviá-las agora poderia apagar o trabalho de hoje. Avise o responsável pelo sistema.'
+              : ' — verifique a internet. Vou tentar de novo sozinho; não feche esta tela.'}
         </div>
       )}
       {children}

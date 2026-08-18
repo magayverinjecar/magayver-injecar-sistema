@@ -27,6 +27,7 @@ export default function Caixa() {
   const [contagem, setContagem] = useState({})
   const [justificativa, setJustificativa] = useState('')
   const [bancoConferido, setBancoConferido] = useState(false)
+  const [fechando, setFechando] = useState(false)
   const [aba, setAba] = useState('vendas')
 
   // ===== AINDA CARREGANDO =====
@@ -141,7 +142,7 @@ export default function Caixa() {
   function abrirFechar() {
     setContagem({}); setJustificativa(''); setBancoConferido(false); setModalFechar(true)
   }
-  function confirmarFechar() {
+  async function confirmarFechar() {
     // Conta-se só a espécie. O que caiu no banco é conferido contra o extrato,
     // não digitado de volta: digitar o número que o sistema já sabe sempre bate
     // e não confere nada — era isso que deixava a divergência sem sentido.
@@ -151,14 +152,19 @@ export default function Caixa() {
       alert(`A gaveta está ${divergencia < 0 ? 'faltando' : 'sobrando'} ${fmt(Math.abs(divergencia))}.\n\nEscreva o que aconteceu antes de fechar — é esse registro que permite investigar depois.`)
       return
     }
-    fecharCaixa(
+    // Fechar o caixa é operação crítica: espera a confirmação do banco antes de
+    // fechar o modal. Fechar antes deixava a pessoa achando que o dia foi
+    // gravado enquanto o fechamento podia estar só na memória do navegador.
+    setFechando(true)
+    const res = await fecharCaixa(
       { [FORMA_DINHEIRO]: contagem[FORMA_DINHEIRO] || '0' },
       justificativa,
       resumo.gaveta.esperado,
       contadoGaveta,
       { conferenciaSeparada: true, banco: resumo.banco, bancoConferido, semForma: resumo.semForma },
     )
-    setModalFechar(false)
+    setFechando(false)
+    if (res?.ok) setModalFechar(false)
   }
 
   function excluirVenda(id) {
@@ -493,9 +499,9 @@ export default function Caixa() {
 
                 <div className="flex gap-3 justify-end">
                   <button onClick={() => setModalFechar(false)} className="border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-                  <button onClick={confirmarFechar} disabled={!temContagem}
+                  <button onClick={confirmarFechar} disabled={!temContagem || fechando}
                     className="bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-                    Fechar Caixa
+                    {fechando ? 'Gravando…' : 'Fechar Caixa'}
                   </button>
                 </div>
               </div>
