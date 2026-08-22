@@ -76,7 +76,7 @@ const PERMISSOES_ESPECIAIS = [
   { id: 'gerenciarFuncionarios', label: 'Gerenciar funcionários e permissões' },
 ]
 
-const vazioForm = { nome: '', nomeFinanceiro: '', cargo: '', telefone: '', especialidade: '', pin: '', perfil: 'personalizado' }
+const vazioForm = { nome: '', nomeFinanceiro: '', cargo: '', telefone: '', email: '', especialidade: '', pin: '', perfil: 'personalizado' }
 const vazioPermissoes = { menus: ['dashboard'], verPrecos: false, verFinanceiro: false, editarConfigs: false, gerenciarFuncionarios: false }
 
 export default function Funcionarios() {
@@ -103,6 +103,7 @@ export default function Funcionarios() {
       nomeFinanceiro: f.nomeFinanceiro || '',
       cargo: f.cargo || '',
       telefone: f.telefone || '',
+      email: f.email || '',
       especialidade: f.especialidade || '',
       pin: f.pin || '',
       perfil: f.perfil || 'personalizado',
@@ -243,6 +244,24 @@ export default function Funcionarios() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Telefone</label>
                 <input value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(41) 99999-0000" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              {/* O e-mail da conta de login. Fica guardado explicitamente, e nao
+                  adivinhado a partir do nome: um endereco no painel do Supabase
+                  diferente por uma letra do que esta aqui da "senha incorreta"
+                  sem ninguem descobrir o motivo. Nunca recebe e-mail nenhum — e
+                  so o nome de usuario. */}
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  E-mail de acesso
+                  <span className="ml-1.5 text-xs font-normal text-slate-400">(usado para entrar no sistema; nao recebe mensagens)</span>
+                </label>
+                <input
+                  value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value.trim().toLowerCase() }))}
+                  placeholder="nome@injecar.local"
+                  autoCapitalize="none" autoCorrect="off" spellCheck="false" inputMode="email"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Especialidade</label>
