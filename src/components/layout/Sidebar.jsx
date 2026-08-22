@@ -124,7 +124,11 @@ export default function Sidebar({ open, onClose }) {
 
       {/* Footer */}
       <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
-        <p className="text-xs text-slate-400">v1.0.0 • Magayver Injecar</p>
+        {/* A data do build, e nao um numero de versao fixo: e assim que se
+            descobre, olhando a tela, se este aparelho ja pegou o codigo novo. */}
+        <p className="text-xs text-slate-400" title="Data e hora desta versao do sistema">
+          {__VERSAO_BUILD__} • Magayver Injecar
+        </p>
         <NavLink to="/configuracoes" onClick={onClose} title="Configurações">
           <Settings size={16} className="text-slate-400 hover:text-slate-600 transition-colors" />
         </NavLink>
