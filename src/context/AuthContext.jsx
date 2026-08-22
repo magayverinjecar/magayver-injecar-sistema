@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import { supabase } from '../supabase'
 
 // Modelos de permissão para pré-preencher — admin pode alterar livremente
 export const MODELOS = {
@@ -110,7 +111,39 @@ export function AuthProvider({ children }) {
   function logout() {
     localStorage.removeItem('auth-user')
     setCurrentUser(null)
+    // `scope: 'local'` sai SO deste aparelho. O padrao do Supabase e 'global',
+    // que derrubaria a pessoa em todos os aparelhos dela ao mesmo tempo: sair
+    // do tablet do balcao apagaria a OS meio preenchida no celular dela no
+    // fosso. Ela faz isso uma vez e nunca mais aperta Sair — que e o comeco do
+    // login compartilhado.
+    supabase.auth.signOut({ scope: 'local' }).catch(e => console.error('[logout]', e))
   }
+
+  // Quem manda no arranque e a SESSAO DO SERVIDOR, nao o que ficou guardado no
+  // aparelho. Sem isto, na manha seguinte a virada todo aparelho abriria direto
+  // dentro do sistema — com os menus de sempre, sem sessao no banco, tudo
+  // vazio e sem um botao obvio para chegar ao login.
+  const [sessaoConferida, setSessaoConferida] = useState(false)
+  useEffect(() => {
+    let vivo = true
+    supabase.auth.getSession().then(({ data }) => {
+      if (!vivo) return
+      if (!data?.session) {
+        // Usuario guardado sem sessao no servidor nao vale mais nada.
+        try { localStorage.removeItem('auth-user') } catch { /* modo privado */ }
+        setCurrentUser(null)
+      }
+      setSessaoConferida(true)
+    }).catch(e => { console.error('[auth] falha ao conferir a sessao:', e); if (vivo) setSessaoConferida(true) })
+
+    const { data: sub } = supabase.auth.onAuthStateChange((evento, sessao) => {
+      if (evento === 'SIGNED_OUT' || (!sessao && evento !== 'INITIAL_SESSION')) {
+        try { localStorage.removeItem('auth-user') } catch { /* modo privado */ }
+        setCurrentUser(null)
+      }
+    })
+    return () => { vivo = false; sub?.subscription?.unsubscribe?.() }
+  }, [])
 
   function temPermissao(menu) {
     if (!currentUser) return false
@@ -140,7 +173,7 @@ export function AuthProvider({ children }) {
   const podeVerFinanceiro = !!currentUser?.permissoes?.verFinanceiro
 
   return (
-    <AuthContext.Provider value={{
+    <AuthContext.Provider value={{ sessaoConferida,
       currentUser, login, logout, temPermissao, refreshPermissoes, MODELOS,
       podeVerPrecos, podeVerFinanceiro,
     }}>

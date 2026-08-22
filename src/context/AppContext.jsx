@@ -724,10 +724,25 @@ export function AppProvider({ children }) {
       .finally(() => fimGravando(tabela))
   }
 
-  // Carrega todos os dados ao montar
+  // Carrega os dados DEPOIS de alguem entrar — nunca antes.
+  //
+  // Isto era um vazamento pela porta da frente: o provedor carregava as 17
+  // tabelas ao montar, e ele monta na tela de LOGIN. Medido no site publicado:
+  // abrir o endereco da oficina, sem digitar nada, baixava clientes com CPF,
+  // financeiro, caixa e a tabela de funcionarios. Qualquer pessoa, so por
+  // conhecer o endereco.
+  //
+  // Carregar so com usuario tambem e o que a tranca do banco vai exigir: sem
+  // sessao, a leitura volta vazia, e lista vazia neste sistema tem efeito ruim.
+  const jaCarregou = useRef(false)
   useEffect(() => {
     // Tela do cliente: nao le nada e nao assina realtime.
     if (ehTelaDoCliente()) return
+    if (!currentUser) return
+    // Trocar de usuario nao recarrega: seriam ~30s de espera a cada troca de
+    // mao no tablet, e a equipe passaria a deixar um so logado o dia todo.
+    if (jaCarregou.current) return
+    jaCarregou.current = true
 
     async function init() {
       const [
@@ -946,7 +961,8 @@ export function AppProvider({ children }) {
       } catch (e) { console.error('[configuracoes] Erro:', e) }
     }
     init().catch(e => { console.error(e); setCarregando(false) })
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser])
 
   // Sincronização em tempo real via Supabase Realtime.
   // O evento traz a linha alterada e só ela é aplicada (realtime cirúrgico) —

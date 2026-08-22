@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Wrench, Eye, EyeOff, ArrowLeft, LogIn, Sun, Moon } from 'lucide-react'
-import { useApp } from '../context/AppContext'
+import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 
@@ -14,7 +14,6 @@ const PERFIL_COR = {
 const PERFIL_LABEL = { admin: 'Administrador', reparador: 'Reparador', recepcao: 'Recepção', personalizado: 'Personalizado' }
 
 export default function PinLogin() {
-  const { funcionarios, carregando, funcionariosCarregados } = useApp()
   const { login } = useAuth()
   const { dark, toggle } = useTheme()
   const navigate = useNavigate()
@@ -24,13 +23,32 @@ export default function PinLogin() {
   const [mostrar, setMostrar] = useState(false)
   const [erro, setErro] = useState('')
   const [tentativas, setTentativas] = useState(0)
+  const [entrando, setEntrando] = useState(false)
+  const [pessoas, setPessoas] = useState(null)   // null = ainda carregando
+  const [erroLista, setErroLista] = useState('')
   const inputRef = useRef(null)
 
-  // Desativado nao aparece na tela de login. Enquanto a tranca do banco nao
-  // entra, este filtro e a barreira; depois dela, quem for desativado passa a
-  // ser recusado pelo proprio banco, em todos os aparelhos ao mesmo tempo.
-  // `ativo !== false` porque cadastro antigo, feito antes deste campo, e ativo.
-  const funcionariosComSenha = funcionarios.filter(f => f.pin && f.perfil && f.ativo !== false)
+  // A lista de nomes vem de uma janelinha do banco que devolve SO numero, nome,
+  // perfil e e-mail — nunca o PIN. Antes esta tela lia a tabela inteira de
+  // funcionarios, com os PINs em texto puro, para quem nem tinha entrado.
+  useEffect(() => {
+    let vivo = true
+    supabase.rpc('funcionarios_para_login').then(({ data, error }) => {
+      if (!vivo) return
+      if (error) {
+        console.error('[login] nao consegui carregar a lista de usuarios:', error)
+        setErroLista('Não consegui carregar a lista de usuários.')
+        setPessoas([])
+        return
+      }
+      setPessoas(data || [])
+    })
+    return () => { vivo = false }
+  }, [])
+
+  // A janelinha ja devolve so quem esta ativo e tem e-mail de acesso.
+  const funcionariosComSenha = pessoas || []
+  const carregando = pessoas === null
 
   useEffect(() => {
     if (selecionado) setTimeout(() => inputRef.current?.focus(), 100)
@@ -49,23 +67,70 @@ export default function PinLogin() {
     setErro('')
   }
 
-  function entrar() {
+  // Quem confere a senha agora e o SERVIDOR.
+  //
+  // Antes a comparacao era `senha === selecionado.pin`, dentro do navegador,
+  // contra um PIN em texto puro que a propria tela tinha baixado. Isso nunca foi
+  // autenticacao: qualquer pessoa com o endereco do site lia o PIN de todo
+  // mundo. E, para o banco, todo aparelho da oficina continuava sendo um
+  // visitante anonimo — por isso nao havia como trancar nada.
+  async function entrar() {
     if (!senha) return setErro('Digite sua senha.')
-    if (senha === selecionado.pin) {
-      login(selecionado)
+    if (!selecionado?.email) return setErro('Este usuário não tem e-mail de acesso cadastrado. Avise o responsável pelo sistema.')
+
+    setEntrando(true)
+    setErro('')
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: selecionado.email,
+        // Espaco no fim e a fonte classica de "senha incorreta" no teclado do
+        // tablet, que ainda insiste em completar palavra.
+        password: senha.trim(),
+      })
+
+      if (error) {
+        const msg = String(error.message || '').toLowerCase()
+        if (msg.includes('email not confirmed')) {
+          setErro('Esta conta ainda não foi liberada. Avise o responsável pelo sistema.')
+        } else if (msg.includes('invalid login')) {
+          const novas = tentativas + 1
+          setTentativas(novas)
+          setSenha('')
+          setErro(novas >= 3
+            ? `Senha incorreta. ${novas} tentativa(s) — verifique com o administrador.`
+            : 'Senha incorreta. Tente novamente.')
+        } else {
+          console.error('[login] falha ao entrar:', error)
+          setErro('Não consegui falar com o servidor. Verifique a internet e tente de novo.')
+        }
+        return
+      }
+
+      // A sessao existe; agora busca o cadastro completo (permissoes, nome
+      // financeiro). Sem cadastro, NAO entra: conta solta no servidor, sem
+      // funcionario correspondente, entraria assumindo permissoes padrao.
+      const { data: linha, error: erroCadastro } = await supabase
+        .from('funcionarios').select('id, data').eq('id', selecionado.id).maybeSingle()
+
+      if (erroCadastro || !linha?.data) {
+        console.error('[login] entrou mas nao achei o cadastro do funcionario', erroCadastro)
+        await supabase.auth.signOut({ scope: 'local' })
+        setErro('Sua conta entrou, mas não encontrei seu cadastro de funcionário. Avise o responsável pelo sistema.')
+        return
+      }
+
+      login({ id: linha.id, ...linha.data })
       navigate('/', { replace: true })
-    } else {
-      const novas = tentativas + 1
-      setTentativas(novas)
-      setSenha('')
-      setErro(novas >= 3
-        ? `Senha incorreta. ${novas} tentativa(s) — verifique com o administrador.`
-        : 'Senha incorreta. Tente novamente.')
+    } catch (e) {
+      console.error('[login] erro inesperado:', e)
+      setErro('Não consegui falar com o servidor. Verifique a internet e tente de novo.')
+    } finally {
+      setEntrando(false)
     }
   }
 
   function onKeyDown(e) {
-    if (e.key === 'Enter') entrar()
+    if (e.key === 'Enter' && !entrando) entrar()
   }
 
   // Classes que mudam com o tema
@@ -115,7 +180,7 @@ export default function PinLogin() {
               <div className="w-8 h-8 mx-auto border-4 border-slate-200 border-t-primary-500 rounded-full animate-spin" />
               <p className={txtSub}>Carregando usuários...</p>
             </div>
-          ) : !funcionariosCarregados ? (
+          ) : erroLista ? (
             /* Lista vazia SEM leitura confirmada nao e "oficina nova": e leitura
                que falhou. O servidor devolve lista vazia — sem erro — quando uma
                politica do banco esconde a tabela, e era exatamente nesse caso
@@ -123,7 +188,7 @@ export default function PinLogin() {
                qualquer um que abrisse o site. Sem confirmacao de leitura, a
                porta fica fechada. */
             <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
-              <p className={txtSub}>Não consegui ler a lista de usuários do servidor.</p>
+              <p className={txtSub}>{erroLista}</p>
               <button
                 onClick={() => window.location.reload()}
                 className="w-full bg-primary-500 hover:bg-primary-600 text-white py-3 rounded-xl font-medium text-sm transition-colors"
@@ -204,9 +269,12 @@ export default function PinLogin() {
                 {erro && <p className="text-red-500 text-xs mt-2">{erro}</p>}
               </div>
 
-              <button onClick={entrar}
-                className="w-full bg-primary-500 hover:bg-primary-600 text-white py-3 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2">
-                <LogIn size={16} /> Entrar
+              {/* Trava no primeiro toque: agora o login vai ao servidor e pode
+                  demorar. Sem isto, a tela fica parada e calada e a pessoa
+                  aperta mais quatro vezes achando que travou. */}
+              <button onClick={entrar} disabled={entrando}
+                className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2">
+                <LogIn size={16} /> {entrando ? 'Entrando…' : 'Entrar'}
               </button>
             </div>
 
