@@ -26,7 +26,11 @@ export default function PinLogin() {
   const [tentativas, setTentativas] = useState(0)
   const inputRef = useRef(null)
 
-  const funcionariosComSenha = funcionarios.filter(f => f.pin && f.perfil)
+  // Desativado nao aparece na tela de login. Enquanto a tranca do banco nao
+  // entra, este filtro e a barreira; depois dela, quem for desativado passa a
+  // ser recusado pelo proprio banco, em todos os aparelhos ao mesmo tempo.
+  // `ativo !== false` porque cadastro antigo, feito antes deste campo, e ativo.
+  const funcionariosComSenha = funcionarios.filter(f => f.pin && f.perfil && f.ativo !== false)
 
   useEffect(() => {
     if (selecionado) setTimeout(() => inputRef.current?.focus(), 100)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Phone, Wrench, Trash2, ClipboardList, Shield, Eye, EyeOff, Pencil, Check, DollarSign } from 'lucide-react'
+import { Plus, Phone, Wrench, Trash2, ClipboardList, Shield, Eye, EyeOff, Pencil, Check, DollarSign, Ban } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
 import { MODELOS, useAuth } from '../context/AuthContext'
@@ -76,7 +76,7 @@ const PERMISSOES_ESPECIAIS = [
   { id: 'gerenciarFuncionarios', label: 'Gerenciar funcionários e permissões' },
 ]
 
-const vazioForm = { nome: '', nomeFinanceiro: '', cargo: '', telefone: '', email: '', especialidade: '', pin: '', perfil: 'personalizado' }
+const vazioForm = { nome: '', nomeFinanceiro: '', cargo: '', telefone: '', email: '', especialidade: '', pin: '', perfil: 'personalizado', ativo: true }
 const vazioPermissoes = { menus: ['dashboard'], verPrecos: false, verFinanceiro: false, editarConfigs: false, gerenciarFuncionarios: false }
 
 export default function Funcionarios() {
@@ -96,6 +96,19 @@ export default function Funcionarios() {
     setModal(true)
   }
 
+  // Desativar corta o acesso; excluir apaga o autor do historico. Sao coisas
+  // diferentes, e quase sempre o que se quer e a primeira.
+  function alternarAtivo(f) {
+    const desativando = f.ativo !== false
+    const aviso = desativando
+      ? `Desativar o acesso de ${f.nome}?
+
+Ele deixa de conseguir entrar no sistema. O historico e as OS dele continuam intactos, e voce pode reativar quando quiser.`
+      : `Reativar o acesso de ${f.nome}?`
+    if (!confirm(aviso)) return
+    setFuncionarios(prev => prev.map(x => x.id === f.id ? { ...x, ativo: !desativando } : x))
+  }
+
   function abrirEditar(f) {
     setEditando(f.id)
     setForm({
@@ -104,6 +117,8 @@ export default function Funcionarios() {
       cargo: f.cargo || '',
       telefone: f.telefone || '',
       email: f.email || '',
+      // Funcionario antigo, cadastrado antes deste campo, e ativo.
+      ativo: f.ativo !== false,
       especialidade: f.especialidade || '',
       pin: f.pin || '',
       perfil: f.perfil || 'personalizado',
@@ -165,7 +180,12 @@ export default function Funcionarios() {
           const menusCount = f.permissoes?.menus?.length || 0
 
           return (
-            <div key={f.id} className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+            <div key={f.id} className={`bg-white rounded-xl shadow-sm border p-5 ${f.ativo === false ? 'border-amber-200 opacity-60' : 'border-slate-100'}`}>
+              {f.ativo === false && (
+                <p className="mb-3 text-xs font-semibold text-amber-600 flex items-center gap-1">
+                  <Ban size={12} /> Acesso desativado — nao entra no sistema
+                </p>
+              )}
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${avatarCor}`}>
@@ -184,6 +204,20 @@ export default function Funcionarios() {
                 <div className="flex gap-1">
                   <button onClick={() => abrirEditar(f)} className="p-1.5 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400 transition-colors">
                     <Pencil size={14} />
+                  </button>
+                  {/* Desativar em vez de excluir. Excluir deixa todo o historico
+                      dele apontando para um numero que nao existe mais — as OS
+                      que ele fez perdem o autor. E, com a tranca do banco
+                      ligada, desativar CORTA O ACESSO de verdade, na hora, em
+                      todos os aparelhos dele. */}
+                  <button
+                    onClick={() => alternarAtivo(f)}
+                    title={f.ativo === false ? 'Reativar acesso' : 'Desativar acesso'}
+                    className={`p-1.5 rounded transition-colors ${f.ativo === false
+                      ? 'hover:bg-green-50 text-green-500 hover:text-green-600'
+                      : 'hover:bg-amber-50 text-slate-300 hover:text-amber-500'}`}
+                  >
+                    {f.ativo === false ? <Check size={14} /> : <Ban size={14} />}
                   </button>
                   <button onClick={() => excluir(f.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
                     <Trash2 size={14} />
