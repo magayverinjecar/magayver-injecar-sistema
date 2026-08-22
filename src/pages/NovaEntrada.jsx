@@ -430,6 +430,9 @@ export default function NovaEntrada() {
       veiculoPlaca: veiculo.placa,
       clienteNome: cliente.nome,
     })
+    // `novaOrdem` devolve null quando se recusa a numerar: leitura
+    // incompleta numeraria por cima de uma OS que ja existe.
+    if (!osId) return
 
     // O cliente costuma abrir o link do WhatsApp depois que a recepção já
     // finalizou. Apagar o rascunho matava o link ("Registro não encontrado"):

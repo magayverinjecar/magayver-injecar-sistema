@@ -267,6 +267,15 @@ export function AppProvider({ children }) {
       const { data, error } = await supabase.from('configuracoes').select('id, data').eq('id', 'config-oficina')
       // Mesmo motivo: config vazia apagaria as maquininhas da tela de venda.
       if (error) { console.error('[configuracoes] Erro ao recarregar:', error); return }
+      // Linha ausente para uma config que JA existia nao e "config apagada": e
+      // leitura incompleta. Aplicar o vazio tiraria o cabecalho e o CNPJ do
+      // orcamento impresso na frente do cliente, e as maquininhas da tela de
+      // venda — e `print.js` le a copia local, entao o estrago sai no papel.
+      if (!data?.[0]?.data && Object.keys(r.current.config || {}).length > 0) {
+        console.error('[configuracoes] servidor devolveu vazio para uma config que existe — ignorando')
+        setLeituraSuspeita(true)
+        return
+      }
       const configData = data?.[0]?.data || {}
       r.current.config = configData; _setConfig(configData)
       try { localStorage.setItem('config-oficina', JSON.stringify(configData)) } catch {}
@@ -1117,12 +1126,36 @@ export function AppProvider({ children }) {
   // Sequencial a partir do maior número existente: a próxima OS é sempre a
   // anterior + 1. Os números antigos eram sorteados e ninguém conseguia saber
   // qual OS veio antes de qual só de olhar o número.
+  // Marca d'agua do maior numero de OS ja visto neste aparelho.
+  //
+  // A numeracao sai do MAIOR numero da lista em memoria. Se a lista vier vazia
+  // — e ela vem vazia quando uma politica do banco esconde a tabela, sem erro
+  // nenhum — o calculo daria #1, e a OS nova seria gravada POR CIMA da OS #1
+  // de verdade, levando junto as pecas e o historico do carro antigo. Depois a
+  // #2, a #3. Sem uma linha de erro na tela.
+  //
+  // Guardar a marca no proprio aparelho resolve independente do MOTIVO de a
+  // lista estar curta: se o que esta em memoria daria um numero menor do que
+  // um que ja existiu, a leitura nao e confiavel e nao se numera nada.
+  const CHAVE_MARCA_OS = 'maior-numero-os'
+
+  function lerMarcaOS() {
+    try { return Number(localStorage.getItem(CHAVE_MARCA_OS)) || 0 } catch { return 0 }
+  }
+
   function gerarNumeroOS() {
     let max = 0
     for (const o of r.current.ordens) {
       const m = String(o.id || '').match(/^#(\d+)$/)
       if (m) max = Math.max(max, Number(m[1]))
     }
+    const marca = lerMarcaOS()
+    if (max < marca) {
+      console.error(`[gerarNumeroOS] a lista em memoria daria #${max + 1}, mas este aparelho ja viu #${marca}. Leitura incompleta — recusando numerar.`)
+      throw new Error('LEITURA_INCOMPLETA')
+    }
+    if (max > marca) { try { localStorage.setItem(CHAVE_MARCA_OS, String(max)) } catch { /* cota cheia */ } }
+
     let n = max + 1
     const existentes = new Set(r.current.ordens.map(o => String(o.id)))
     while (existentes.has('#' + n)) n++
@@ -1207,7 +1240,15 @@ export function AppProvider({ children }) {
 
   // --- ORDENS DE SERVIÇO ---
   function novaOrdem(dados) {
-    const id = gerarNumeroOS()
+    // Recusar a abrir OS e MUITO melhor que abrir com numero repetido: numero
+    // repetido grava por cima de uma OS existente e ninguem descobre.
+    let id
+    try {
+      id = gerarNumeroOS()
+    } catch {
+      alert('Nao consegui abrir a OS agora.\n\nO sistema nao conseguiu ler a lista completa de ordens de servico, e abrir assim criaria uma OS por cima de outra que ja existe.\n\nRecarregue a pagina e tente de novo. Se continuar, avise o responsavel pelo sistema.')
+      return null
+    }
     const hoje = new Date().toLocaleDateString('pt-BR')
     const nova = {
       id,
@@ -1877,10 +1918,31 @@ export function AppProvider({ children }) {
   function pNum(v) { return parseBR(v) }
   function horaAgora() { return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
 
-  function abrirCaixa(saldoInicial, operador) {
+  // Abrir caixa RELE o banco antes de criar turno novo.
+  //
+  // O turno e linha unica: abrir por cima de um turno existente apaga as vendas
+  // e os movimentos do dia, sem erro e sem historico. E o estado local pode
+  // dizer "nao ha turno" por dois motivos opostos — nao ha mesmo, ou a leitura
+  // veio vazia (que e o que uma politica de banco devolve). Perguntar ao
+  // servidor na hora e o unico jeito de separar os dois.
+  async function abrirCaixa(saldoInicial, operador) {
+    const { data, error } = await supabase.from('caixa_turno').select('data').eq('id', 'caixa-turno').maybeSingle()
+    if (error) {
+      console.error('[abrirCaixa] nao consegui conferir se ja existe turno aberto:', error)
+      alert('Nao consegui falar com o servidor para conferir se o caixa ja esta aberto.\n\nNao vou abrir as cegas, para nao apagar o turno do dia. Verifique a internet e tente de novo.')
+      return { ok: false }
+    }
+    if (data?.data) {
+      console.error('[abrirCaixa] ja existe turno aberto no servidor — recusando abrir por cima')
+      alert('Ja existe um caixa aberto no servidor.\n\nA tela estava desatualizada. Recarregue a pagina para ver o turno que ja esta aberto.')
+      return { ok: false, jaAberto: true }
+    }
+
     setCaixaTurno({
       id: 'caixa-turno',
-      operador: operador || 'Magayver Torres',
+      // Sem o nome de quem abriu, todo caixa da oficina ficava registrado como
+      // 'Magayver Torres' — o rastro nao era ausente, era falso.
+      operador: operador || currentUser?.nome || 'Nao identificado',
       dataAbertura: new Date().toLocaleDateString('pt-BR'),
       horaAbertura: horaAgora(),
       saldoInicial: pNum(saldoInicial),
@@ -1888,6 +1950,7 @@ export function AppProvider({ children }) {
       vendas: [],
       movimentos: [],
     })
+    return { ok: true }
   }
 
   function registrarVendaCaixa(venda) {

@@ -192,6 +192,9 @@ export default function ChecklistDetalhe() {
       observacoes: obsTenicas,
       status: 'Aberta',
     })
+    // `novaOrdem` devolve null quando se recusa a numerar: leitura
+    // incompleta numeraria por cima de uma OS que ja existe.
+    if (!osId) return
 
     setChecklists(prev => prev.map(c => c.id === ck.id ? { ...c, osId } : c))
     navigate(`/ordens-servico/${encodeURIComponent(osId)}`)

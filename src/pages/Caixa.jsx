@@ -28,6 +28,7 @@ export default function Caixa() {
   const [justificativa, setJustificativa] = useState('')
   const [bancoConferido, setBancoConferido] = useState(false)
   const [fechando, setFechando] = useState(false)
+  const [abrindo, setAbrindo] = useState(false)
   const [aba, setAba] = useState('vendas')
 
   // ===== AINDA CARREGANDO =====
@@ -72,7 +73,15 @@ export default function Caixa() {
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" autoFocus />
             <div className="flex gap-3 justify-end mt-5">
               <button onClick={() => setModalAbrir(false)} className="border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-              <button onClick={() => { abrirCaixa(saldoInicial); setModalAbrir(false) }} className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">Abrir Caixa</button>
+              {/* Espera a confirmacao: `abrirCaixa` agora confere no servidor se ja
+                  existe turno aberto antes de criar um novo. Fechar o modal
+                  antes esconderia a recusa. */}
+              <button onClick={async () => {
+                setAbrindo(true)
+                const res = await abrirCaixa(saldoInicial)
+                setAbrindo(false)
+                if (res?.ok) setModalAbrir(false)
+              }} disabled={abrindo} className="bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">{abrindo ? 'Abrindo…' : 'Abrir Caixa'}</button>
             </div>
           </ModalBase>
         )}

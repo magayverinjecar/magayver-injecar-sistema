@@ -80,11 +80,6 @@ export default function PinLogin() {
     ? 'text-slate-400 hover:text-white'
     : 'text-slate-400 hover:text-slate-700'
 
-  const adminPermissoes = {
-    menus: ['patio','dashboard','agenda','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','gastos','configuracoes'],
-    verPrecos: true, verFinanceiro: true, editarConfigs: true, gerenciarFuncionarios: true,
-  }
-
   return (
     <div className={`min-h-screen ${bg} flex flex-col items-center justify-center p-4 relative transition-colors duration-300`}>
 
@@ -134,15 +129,26 @@ export default function PinLogin() {
               <p className={`text-xs ${txtSub}`}>Verifique a internet. Se continuar, avise o responsável pelo sistema.</p>
             </div>
           ) : funcionariosComSenha.length === 0 ? (
+            /* NAO existe mais acesso de administrador sem senha aqui.
+               Ele servia para a primeira instalacao, quando ainda nao ha
+               ninguem cadastrado — e entregava o sistema INTEIRO, com
+               financeiro e cadastro de funcionarios, para quem clicasse.
+               O gatilho era "lista de funcionarios vazia", e lista vazia
+               e exatamente o que o banco devolve quando uma politica
+               esconde a tabela: sem erro, com sucesso. A guarda de leitura
+               confirmada nao resolve, porque leitura bloqueada CONFIRMA.
+               Com a oficina ja cadastrada, essa porta era so risco. */
             <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
               <p className={txtSub}>Nenhum funcionário com senha configurada.</p>
+              <p className={`text-xs ${txtSub}`}>
+                Cadastre um funcionário com PIN pelo painel do Supabase para poder entrar.
+              </p>
               <button
-                onClick={() => { login({ id: 0, nome: 'Administrador', perfil: 'admin', pin: '', permissoes: adminPermissoes }); navigate('/', { replace: true }) }}
-                className="w-full bg-primary-500 hover:bg-primary-600 text-white py-3 rounded-xl font-medium text-sm transition-colors"
+                onClick={() => window.location.reload()}
+                className="w-full border border-slate-600 text-slate-300 py-3 rounded-xl font-medium text-sm hover:bg-slate-800 transition-colors"
               >
-                Primeiro Acesso — Entrar como Admin
+                Tentar de novo
               </button>
-              <p className={`text-xs ${txtSub}`}>Configure os funcionários em Funcionários.</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">

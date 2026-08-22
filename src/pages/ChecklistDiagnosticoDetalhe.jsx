@@ -109,6 +109,9 @@ export default function ChecklistDiagnosticoDetalhe() {
       kmEntrada: ck.kmEntrada,
       descricaoProblema: ck.relatoCliente || '',
     })
+    // `novaOrdem` devolve null quando se recusa a numerar: leitura
+    // incompleta numeraria por cima de uma OS que ja existe.
+    if (!osId) return
     if (osId) {
       setChecklists(prev => prev.map(c => c.id === ck.id ? { ...c, osId } : c))
       navigate(`/ordens-servico/${encodeURIComponent(osId)}`)

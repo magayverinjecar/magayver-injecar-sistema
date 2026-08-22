@@ -347,6 +347,9 @@ export default function Orcamentos() {
       orcamentoId: orc.id,
       orcamentoNumero: orc.numero,
     })
+    // `novaOrdem` devolve null quando se recusa a numerar: leitura
+    // incompleta numeraria por cima de uma OS que ja existe.
+    if (!osId) return
     // Guarda o vínculo nos dois sentidos para dar rastreabilidade
     setOrcamentos(prev => prev.map(o => o.id === orc.id
       ? { ...o, status: 'Convertido', osId, convertidoEm: new Date().toLocaleString('pt-BR') }

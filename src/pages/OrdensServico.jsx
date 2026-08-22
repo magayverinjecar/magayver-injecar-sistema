@@ -120,6 +120,9 @@ export default function OrdensServico() {
       mecanicoId: form.mecanicoId ? Number(form.mecanicoId) : null,
       descricaoProblema: form.descricaoProblema,
     })
+    // `novaOrdem` devolve null quando se recusa a numerar: leitura
+    // incompleta numeraria por cima de uma OS que ja existe.
+    if (!id) return
     localStorage.removeItem(RASCUNHO_KEY)
     setForm(vazio)
     setModal(false)
