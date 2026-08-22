@@ -1,5 +1,5 @@
-import { Bell, LogOut, Sun, Moon, Menu } from 'lucide-react'
-import { useLocation } from 'react-router-dom'
+import { Bell, LogOut, Sun, Moon, Menu, KeyRound } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 
@@ -35,6 +35,7 @@ const PERFIL_COR = { admin: 'bg-orange-500', mecanico: 'bg-blue-500', recepcao: 
 export default function Header({ onMenuClick }) {
   const { pathname } = useLocation()
   const { currentUser, logout } = useAuth()
+  const navigate = useNavigate()
   const { dark, toggle } = useTheme()
   const title = titles[pathname]
     || (pathname.startsWith('/checklist/fotos/') ? 'Fotos e Vistoria' : null)
@@ -81,6 +82,16 @@ export default function Header({ onMenuClick }) {
             <p className="text-xs text-slate-400 leading-tight">{PERFIL_LABEL[currentUser?.perfil] || '—'}</p>
           </div>
         </div>
+
+        {/* Trocar a propria senha fica ao lado do Sair: e onde a pessoa procura,
+            e nao esconde numa tela de configuracao que so o admin abre. */}
+        <button
+          onClick={() => navigate('/minha-senha')}
+          title="Minha senha"
+          className="p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+        >
+          <KeyRound size={18} />
+        </button>
 
         <button
           onClick={logout}

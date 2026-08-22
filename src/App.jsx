@@ -35,6 +35,7 @@ import ChecklistDiagnosticoDetalhe from './pages/ChecklistDiagnosticoDetalhe'
 import ChecklistGerenciar from './pages/ChecklistGerenciar'
 import ChecklistDetalhe from './pages/ChecklistDetalhe'
 import ClienteAssinatura from './pages/ClienteAssinatura'
+import MinhaSenha from './pages/MinhaSenha'
 import VistoriaCliente from './pages/VistoriaCliente'
 import PatioQuadro from './pages/PatioQuadro'
 import PatioLimpeza from './pages/PatioLimpeza'
@@ -105,6 +106,7 @@ export default function App() {
           <Route path="oficina/vistoria/:id"  element={<Rota perm="checklist-fotos"><VistoriaEntrada /></Rota>} />
           <Route path="oficina/reparo/:id"    element={<Rota perm="checklist-fotos"><FotosReparo /></Rota>} />
           <Route path="dashboard"           element={<Rota perm="dashboard"><Dashboard /></Rota>} />
+          <Route path="minha-senha" element={<MinhaSenha />} />
           <Route path="clientes"            element={<Rota perm="clientes"><Clientes /></Rota>} />
           <Route path="veiculos"            element={<Rota perm="veiculos"><Veiculos /></Rota>} />
           <Route path="agenda"              element={<Rota perm="agenda"><Agenda /></Rota>} />
