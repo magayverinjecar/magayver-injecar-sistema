@@ -2178,6 +2178,40 @@ export function AppProvider({ children }) {
     const compra = r.current.compras.find(c => c.id === id)
     if (!compra || compra.recebida) return
 
+    // CUSTO MÉDIO PONDERADO: receber compra atualiza o custo da peça já
+    // cadastrada — antes não atualizava, e margem e CMV seguiam com o custo de
+    // meses atrás. A conta é a do mercado: (saldo × custo antigo + entrada ×
+    // custo pago) ÷ (saldo + entrada), sobre o saldo ANTES da entrada. Sem
+    // saldo ou sem custo antigo, o custo da compra vira o custo da peça.
+    //
+    // ANTES da entrada, de propósito: movimentarEstoque soma o saldo local na
+    // hora, e ler o saldo depois faria a conta com a peça já dentro do estoque.
+    const custoNovoPorPeca = new Map()
+    for (const i of compra.itens) {
+      if (!i.produtoId || i.cadastrarNova) continue
+      const qtd = parseBR(i.quantidade) || 0
+      const custoCompra = parseBR(i.valorUnitario)
+      if (qtd <= 0 || custoCompra <= 0) continue
+      const k = String(i.produtoId)
+      const peca = r.current.estoque.find(p => String(p.id) === k)
+      if (!peca) continue
+      const jaContado = custoNovoPorPeca.get(k)
+      const saldoBase = jaContado ? jaContado.saldo : (Number(peca.estoque) || 0)
+      const custoBase = jaContado ? jaContado.custo : parseBR(peca.precoCusto)
+      const saldoFinal = saldoBase + qtd
+      const custo = (custoBase > 0 && saldoBase > 0)
+        ? ((saldoBase * custoBase) + (qtd * custoCompra)) / saldoFinal
+        : custoCompra
+      custoNovoPorPeca.set(k, { saldo: saldoFinal, custo })
+    }
+    if (custoNovoPorPeca.size > 0) {
+      setEstoque(prev => prev.map(p => {
+        const novo = custoNovoPorPeca.get(String(p.id))
+        if (!novo) return p
+        return { ...p, precoCusto: novo.custo.toFixed(2).replace('.', ',') }
+      }))
+    }
+
     // Entrada dos itens já cadastrados: um movimento POR LINHA da compra — a
     // mesma peça em duas linhas entra duas vezes (o find antigo via só a
     // primeira, e o dinheiro da segunda virava despesa sem peça).

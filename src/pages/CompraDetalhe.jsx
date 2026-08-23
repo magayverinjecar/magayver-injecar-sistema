@@ -84,7 +84,11 @@ export default function CompraDetalhe() {
         produtoId: String(found.id),
         descricao: found.nome,
         codigo: found.codigo,
-        valorUnitario: String(found.preco || ''),
+        // CUSTO, nunca o preço de venda: este campo é quanto a oficina PAGA no
+        // fornecedor. Vinha com `preco` (venda) e, quem não digitasse por cima,
+        // registrava a compra pelo valor de venda — despesa inflada e margem
+        // zerada. Sem custo cadastrado, fica vazio para o dono digitar.
+        valorUnitario: String(found.precoCusto || ''),
       }))
     } else {
       setItemEncontrado(null)
@@ -437,7 +441,7 @@ export default function CompraDetalhe() {
                     <CheckCircle2 size={16} className="text-green-500 flex-shrink-0" />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-green-800">{itemEncontrado.nome}</p>
-                      <p className="text-xs text-green-600">Estoque atual: {itemEncontrado.estoque} un. · Preço: {fmt(itemEncontrado.preco || 0)}</p>
+                      <p className="text-xs text-green-600">Estoque atual: {itemEncontrado.estoque} un. · Último custo: {fmt(itemEncontrado.precoCusto || 0)} · Venda: {fmt(itemEncontrado.preco || 0)}</p>
                     </div>
                   </div>
                 )}
@@ -561,7 +565,7 @@ export default function CompraDetalhe() {
                       const p = estoque.find(x => x.id === Number(pid))
                       if (p) {
                         setItemEncontrado(p)
-                        setItem(it => ({ ...it, produtoId: pid, descricao: p.nome, codigo: p.codigo, valorUnitario: String(p.preco || '') }))
+                        setItem(it => ({ ...it, produtoId: pid, descricao: p.nome, codigo: p.codigo, valorUnitario: String(p.precoCusto || '') }))
                         setBuscarCodigo(p.codigo || '')
                       }
                     }}
