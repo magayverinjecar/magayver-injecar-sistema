@@ -342,13 +342,15 @@ export default function NovaEntrada() {
     }
   }
 
-  function validar() {
+  // No computador tudo está na tela ao mesmo tempo, então a conferência é de
+  // tudo; no celular, só do passo em que a pessoa está.
+  function validar(tudo = false) {
     const e = {}
-    if (passo === 1) {
+    if (tudo || passo === 1) {
       if (!cliente.nome.trim()) e.nome = 'Nome obrigatório'
       if (!cliente.telefone.trim()) e.telefone = 'Telefone obrigatório'
     }
-    if (passo === 2) {
+    if (tudo || passo === 2) {
       if (!veiculo.modelo.trim()) e.modelo = 'Modelo obrigatório'
       if (!veiculo.placa.trim()) e.placa = 'Placa obrigatória'
     }
@@ -356,12 +358,26 @@ export default function NovaEntrada() {
     return Object.keys(e).length === 0
   }
 
+  // O que ainda falta, dito no rodapé em vez de barrar o caminho. A recepção
+  // preenche na ordem da conversa — o cliente fala a placa antes do CPF —,
+  // então travar por campo vazio atrapalha mais do que ajuda.
+  const faltando = [
+    !cliente.nome.trim() && 'nome',
+    !cliente.telefone.trim() && 'telefone',
+    !veiculo.modelo.trim() && 'modelo',
+    !veiculo.placa.trim() && 'placa',
+  ].filter(Boolean)
+
   function proximo() {
     if (validar()) { setPasso(p => p + 1); setErros({}) }
   }
   function anterior() { setPasso(p => p - 1); setErros({}) }
 
   async function finalizar() {
+    if (!validar(true)) {
+      alert('Faltam dados obrigatórios: ' + faltando.join(', ') + '.')
+      return
+    }
     clearTimeout(rascunhoRef.current)
 
     // O cliente pode ter assinado pelo celular enquanto a recepção ainda
@@ -459,7 +475,7 @@ export default function NovaEntrada() {
   const veiculosCliente = clienteId ? veiculosPorCliente(clienteId) : []
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 max-w-2xl lg:max-w-none mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => navigate(-1)} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">
           <ArrowLeft size={18} />
@@ -470,7 +486,9 @@ export default function NovaEntrada() {
         </div>
       </div>
 
-      <div className="flex items-center mb-7">
+      {/* A trilha de passos é do celular: no computador tudo aparece de uma
+          vez, então numerar etapas só ocuparia espaço. */}
+      <div className="flex items-center mb-7 lg:hidden">
         {PASSOS.map((p, idx) => {
           const ativo = passo === p.num
           const concluido = passo > p.num
@@ -495,14 +513,16 @@ export default function NovaEntrada() {
         })}
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
+      {/* Modelo A: no computador as quatro seções ficam à vista, cliente e
+          veículo lado a lado — a recepção preenche na ordem que a conversa dá.
+          No celular continua um passo por vez, que é o que cabe na mão. */}
+      <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
 
-        {passo === 1 && (
-          <>
-            <div>
-              <h3 className="text-xl font-bold text-slate-800 mb-0.5">Dados do Cliente</h3>
-              <p className="text-sm text-slate-400">Identificação e contato para cadastro</p>
-            </div>
+        <div className={`bg-white border border-slate-200 rounded-2xl p-6 space-y-5 ${passo === 1 ? '' : 'hidden'} lg:block lg:p-4`}>
+          <div>
+            <h3 className="text-xl lg:text-sm lg:font-semibold text-slate-800 mb-0.5">Dados do Cliente</h3>
+            <p className="text-sm text-slate-400 lg:hidden">Identificação e contato para cadastro</p>
+          </div>
 
             <div className="relative">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Buscar cliente existente</label>
@@ -588,15 +608,13 @@ export default function NovaEntrada() {
                   placeholder="email@exemplo.com" type="email" inputMode="email" />
               </div>
             </div>
-          </>
-        )}
+        </div>
 
-        {passo === 2 && (
-          <>
-            <div>
-              <h3 className="text-xl font-bold text-slate-800 mb-0.5">Ficha do Veículo</h3>
-              <p className="text-sm text-slate-400">Características e estado no recebimento</p>
-            </div>
+        <div className={`bg-white border border-slate-200 rounded-2xl p-6 space-y-5 ${passo === 2 ? '' : 'hidden'} lg:block lg:p-4 mt-0 lg:mt-0`}>
+          <div>
+            <h3 className="text-xl lg:text-sm lg:font-semibold text-slate-800 mb-0.5">Ficha do Veículo</h3>
+            <p className="text-sm text-slate-400 lg:hidden">Características e estado no recebimento</p>
+          </div>
             {veiculosCliente.length > 0 && (
               <div>
                 <p className="text-xs text-slate-500 font-medium mb-2">Veículos de {cliente.nome.split(' ')[0]}:</p>
@@ -683,27 +701,23 @@ export default function NovaEntrada() {
                 </div>
               </div>
             </div>
-          </>
-        )}
+        </div>
 
-        {passo === 3 && (
-          <>
-            <div>
-              <h3 className="text-xl font-bold text-slate-800 mb-0.5">Motivo da Entrada</h3>
-              <p className="text-sm text-slate-400">Relato do cliente para orientação do reparador</p>
-            </div>
+        <div className={`bg-white border border-slate-200 rounded-2xl p-6 space-y-5 ${passo === 3 ? '' : 'hidden'} lg:block lg:p-4 lg:mt-3`}>
+          <div>
+            <h3 className="text-xl lg:text-sm lg:font-semibold text-slate-800 mb-0.5">Motivo da Entrada</h3>
+            <p className="text-sm text-slate-400 lg:hidden">Relato do cliente para orientação do reparador</p>
+          </div>
             <textarea rows={10} value={relatoCliente}
               onChange={e => setRelatoCliente(e.target.value.toUpperCase())}
               placeholder="DESCREVA O DEFEITO RELATADO OU SERVIÇO SOLICITADO..."
-              className="w-full border border-slate-200 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none uppercase leading-relaxed" />
-          </>
-        )}
+              className="w-full lg:rows-4 border border-slate-200 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none uppercase leading-relaxed" />
+        </div>
 
-        {passo === 4 && (
-          <>
-            <div className="text-center mb-2">
-              <h3 className="text-xl font-bold text-slate-800 mb-1">Autorização de Entrada</h3>
-            </div>
+        <div className={`bg-white border border-slate-200 rounded-2xl p-6 space-y-5 ${passo === 4 ? '' : 'hidden'} lg:block lg:p-4 lg:mt-3`}>
+          <div className="text-center lg:text-left mb-2">
+            <h3 className="text-xl lg:text-sm lg:font-semibold text-slate-800 mb-1">Autorização de Entrada</h3>
+          </div>
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-600 leading-relaxed text-justify">
               "Autorizo a <strong>Magayver Injecar</strong> a realizar o diagnóstico técnico eletrônico
               (injeção eletrônica e sistemas eletrônicos) do meu veículo. Declaro que recebi informações
@@ -739,11 +753,25 @@ export default function NovaEntrada() {
                 A assinatura é opcional, mas recomendada para autorização formal.
               </p>
             )}
-          </>
-        )}
+        </div>
       </div>
 
-      <div className="flex items-center justify-between mt-5 gap-2 flex-wrap">
+      {/* Computador: uma barra só, com o que falta à esquerda e o botão de
+          gravar à direita — sem passo nenhum para percorrer. */}
+      <div className="hidden lg:flex items-center justify-between gap-4 mt-3 px-3 py-2 bg-slate-100 border border-slate-300 rounded text-[11px] text-slate-600">
+        <span>
+          {faltando.length > 0
+            ? <>Faltam: <strong className="font-medium text-amber-700">{faltando.join(', ')}</strong></>
+            : <span className="text-green-700">Tudo preenchido{!assinatura && ' — falta só a assinatura, que é opcional'}</span>}
+        </span>
+        <button onClick={finalizar}
+          className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white px-5 py-1.5 rounded text-xs font-semibold transition-colors">
+          <Check size={14} /> Registrar Entrada
+        </button>
+      </div>
+
+      {/* Celular: os passos de sempre. */}
+      <div className="flex lg:hidden items-center justify-between mt-5 gap-2 flex-wrap">
         <button onClick={anterior} disabled={passo === 1}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
           <ArrowLeft size={16} /> Anterior
