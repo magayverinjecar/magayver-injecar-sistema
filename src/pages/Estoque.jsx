@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
-import { Search, Plus, AlertTriangle, Trash2, Pencil, Package, Boxes, History, RefreshCw } from 'lucide-react'
+import { Search, Plus, AlertTriangle, Trash2, Pencil, Package, Boxes, History, RefreshCw, Merge, EyeOff } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../supabase'
 import gerarId from '../utils/id'
 import Modal from '../components/ui/Modal'
 import AbaKits from '../components/AbaKits'
+import AbaDuplicadas from '../components/AbaDuplicadas'
 import { kitsDoConfig } from '../utils/kits'
 import { rotuloDoTipo, rotuloDaOrigem, mensagemErroExtrato } from '../utils/movimentos'
+import { pecaComCodigo, pecaAtiva, gruposDuplicados } from '../utils/pecas'
 
 const vazio = { codigo: '', nome: '', categoria: '', estoque: '', minimo: '', precoCusto: '', preco: '' }
 
@@ -114,16 +116,29 @@ export default function Estoque() {
   const [editando, setEditando] = useState(null) // item sendo editado
   const [ajustando, setAjustando] = useState(null) // { item, valor, motivo }
   const [extratoDe, setExtratoDe] = useState(null) // item com extrato aberto
+  const [mostrarInativas, setMostrarInativas] = useState(false)
 
-  const filtrados = estoque.filter(i =>
+  // Peça desativada (juntada em outra, fora de linha) sai da lista, mas
+  // continua no banco e no extrato — o interruptor traz de volta para conferir.
+  const visiveis = mostrarInativas ? estoque : estoque.filter(pecaAtiva)
+  const filtrados = visiveis.filter(i =>
     (i.nome || '').toLowerCase().includes(busca.toLowerCase()) ||
     (i.codigo || '').toLowerCase().includes(busca.toLowerCase())
   )
+  const qtdInativas = estoque.length - estoque.filter(pecaAtiva).length
 
-  const emFalta = estoque.filter(i => Number(i.estoque) <= Number(i.minimo)).length
+  const emFalta = estoque.filter(i => pecaAtiva(i) && Number(i.estoque) <= Number(i.minimo)).length
 
   function salvar() {
     if (!form.nome.trim()) return
+    // Codigo repetido nao entra: e assim que a mesma vela virou sete cadastros,
+    // com o saldo real espalhado em sete linhas. A comparacao perdoa espaco,
+    // hifen, barra, ponto e acento — "FLU/DS/280" e "flu ds 280" sao a mesma.
+    const jaExiste = pecaComCodigo(estoque, form.codigo)
+    if (jaExiste) {
+      alert(`O código ${form.codigo} já está cadastrado em:\n\n${jaExiste.nome}\n\nSe for a mesma peça, use a peça que já existe (dá para editar o nome nela). Se for outra peça, corrija o código.`)
+      return
+    }
     // Maiúscula só ao salvar — em caps enquanto digita, o corretor do navegador
     // pula as palavras achando que é sigla.
     //
@@ -152,6 +167,11 @@ export default function Estoque() {
 
   function salvarEdicao() {
     if (!editando.nome.trim()) return
+    const jaExiste = pecaComCodigo(estoque, editando.codigo, { ignorarId: editando.id })
+    if (jaExiste) {
+      alert(`O código ${editando.codigo} já está cadastrado em:\n\n${jaExiste.nome}\n\nDuas peças com o mesmo código dividem o saldo e o alerta de mínimo.`)
+      return
+    }
     // O saldo NÃO passa por aqui: editar cadastro mexe em nome, código, preços
     // e mínimo. Saldo muda por movimentação (botões −/+ com motivo), senão a
     // foto do formulário apagaria baixas feitas em outro aparelho.
@@ -248,6 +268,7 @@ export default function Estoque() {
   )
 
   const qtdKits = kitsDoConfig(config).length
+  const qtdDuplicadas = gruposDuplicados(estoque.filter(pecaAtiva)).length
 
   return (
     <div className="space-y-4">
@@ -265,9 +286,19 @@ export default function Estoque() {
             <span className="text-[10px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">{qtdKits}</span>
           )}
         </button>
+        {/* A aba só existe enquanto houver o que juntar: some sozinha quando o
+            cadastro estiver limpo. */}
+        {qtdDuplicadas > 0 && (
+          <button onClick={() => setAba('duplicadas')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === 'duplicadas' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <Merge size={14} />Duplicadas
+            <span className="text-[10px] font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full">{qtdDuplicadas}</span>
+          </button>
+        )}
       </div>
 
       {aba === 'kits' && <AbaKits />}
+      {aba === 'duplicadas' && <AbaDuplicadas />}
 
       {aba === 'pecas' && (<>
       <div className="flex items-center justify-between">
@@ -276,9 +307,18 @@ export default function Estoque() {
           <input type="text" placeholder="Buscar peça ou código..." value={busca} onChange={e => setBusca(e.target.value)}
             className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 w-64" />
         </div>
-        <button onClick={() => { setForm(vazio); setModal(true) }} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-          <Plus size={16} />Nova Peça
-        </button>
+        <div className="flex items-center gap-3">
+          {qtdInativas > 0 && (
+            <button onClick={() => setMostrarInativas(v => !v)}
+              title="Peças desativadas continuam no histórico e no extrato, mas não podem ser lançadas"
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${mostrarInativas ? 'bg-slate-200 text-slate-700' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}>
+              <EyeOff size={15} />{mostrarInativas ? 'Ocultar' : 'Mostrar'} inativas ({qtdInativas})
+            </button>
+          )}
+          <button onClick={() => { setForm(vazio); setModal(true) }} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <Plus size={16} />Nova Peça
+          </button>
+        </div>
       </div>
 
       {emFalta > 0 && (
@@ -309,10 +349,18 @@ export default function Estoque() {
               // quando existe — a coluna continua sendo o saldo físico.
               const reservado = reservadoDe(item.id)
               const disponivel = (Number(item.estoque) || 0) - reservado
+              const inativa = !pecaAtiva(item)
               return (
-                <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={item.id} className={`transition-colors ${inativa ? 'bg-slate-50/70 opacity-60' : 'hover:bg-slate-50'}`}>
                   <td className="px-5 py-3.5 text-sm font-mono text-slate-500">{item.codigo || '—'}</td>
-                  <td className="px-5 py-3.5 text-sm font-medium text-slate-800">{item.nome}</td>
+                  <td className="px-5 py-3.5 text-sm font-medium text-slate-800">
+                    {item.nome}
+                    {inativa && (
+                      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600" title={item.fundidaEm ? 'Juntada em outra peça' : 'Peça desativada'}>
+                        {item.fundidaEm ? 'juntada' : 'inativa'}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-5 py-3.5"><span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{item.categoria || '—'}</span></td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">

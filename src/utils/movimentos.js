@@ -71,6 +71,7 @@ export const TIPOS_MOV = {
   estorno_compra: 'Estorno de compra',
   ajuste:         'Ajuste manual',
   saldo_inicial:  'Saldo inicial',
+  fusao:          'Peças juntadas',
 }
 
 export function rotuloDoTipo(tipo) {

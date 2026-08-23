@@ -1723,6 +1723,66 @@ export function AppProvider({ children }) {
     return setOrdens(prev => prev.map(o => o.id === id ? { ...o, itens: [...(o.itens || []), ...novos] } : o))
   }
 
+  // JUNTAR PEÇAS DUPLICADAS.
+  //
+  // O cadastro nunca bloqueou código repetido, então a mesma peça virou vários
+  // cadastros e o saldo real ficou espalhado. Juntar não é apagar: as OS, o
+  // extrato e os kits antigos apontam para o id de cada uma. Aqui o saldo das
+  // perdedoras é transferido para a vencedora POR MOVIMENTO (o extrato conta a
+  // história) e elas ficam INATIVAS apontando para a vencedora — somem da
+  // busca e do lançamento, mas nada do passado quebra.
+  function juntarPecas(idVencedora, idsPerdedoras) {
+    const vencedora = r.current.estoque.find(p => String(p.id) === String(idVencedora))
+    if (!vencedora) return Promise.resolve({ ok: false, motivo: 'peça que fica não encontrada' })
+    const perdedoras = (idsPerdedoras || [])
+      .map(id => r.current.estoque.find(p => String(p.id) === String(id)))
+      .filter(p => p && String(p.id) !== String(idVencedora))
+    if (perdedoras.length === 0) return Promise.resolve({ ok: false, motivo: 'nenhuma peça a juntar' })
+
+    const movs = []
+    for (const p of perdedoras) {
+      const saldo = Number(p.estoque) || 0
+      if (saldo === 0) continue
+      movs.push({
+        pecaId: p.id, qtd: -saldo, tipo: 'fusao',
+        motivo: `Saldo transferido para ${vencedora.nome}`,
+        chave: ['fusao_saida', p.id, idVencedora],
+      })
+      movs.push({
+        pecaId: idVencedora, qtd: saldo, tipo: 'fusao',
+        motivo: `Recebido de ${p.nome}${p.codigo ? ` (${p.codigo})` : ''}`,
+        custoUnit: p.precoCusto,
+        chave: ['fusao_entrada', idVencedora, p.id],
+      })
+    }
+
+    // Custo médio ponderado da fusão: o custo da vencedora passa a valer pelo
+    // conjunto, senão o CMV pularia por causa de uma linha que sumiu da vista.
+    const saldoV = Number(vencedora.estoque) || 0
+    const custoV = parseBR(vencedora.precoCusto)
+    let somaValor = saldoV * (custoV > 0 ? custoV : 0)
+    let somaQtd = custoV > 0 ? saldoV : 0
+    for (const p of perdedoras) {
+      const c = parseBR(p.precoCusto)
+      const q = Number(p.estoque) || 0
+      if (c > 0 && q > 0) { somaValor += c * q; somaQtd += q }
+    }
+    const custoNovo = somaQtd > 0 ? somaValor / somaQtd : null
+
+    const idsPerd = new Set(perdedoras.map(p => String(p.id)))
+    setEstoque(prev => prev.map(p => {
+      if (idsPerd.has(String(p.id))) {
+        return { ...p, ativo: false, fundidaEm: idVencedora, fundidaQuando: Date.now() }
+      }
+      if (String(p.id) === String(idVencedora)) {
+        return custoNovo != null ? { ...p, precoCusto: custoNovo.toFixed(2).replace('.', ',') } : p
+      }
+      return p
+    }))
+
+    return movs.length > 0 ? movimentarEstoque(movs) : Promise.resolve({ ok: true, vazio: true })
+  }
+
   function removerItemOrdem(id, itemId) {
     // Se o item estava baixado, a regra em setOrdens devolve ao saldo; se só
     // reservado, a reserva some com ele.
@@ -2753,7 +2813,7 @@ export function AppProvider({ children }) {
       aprovarOrcamento, recusarOrcamento, fecharRecusa,
       iniciarReparo, marcarAguardandoPeca, pecaChegou, concluirReparo,
       liberarConferencia, reprovarConferencia, criarOSGarantia,
-      estoque, setEstoque, movimentarEstoque, reservas, reservadoDe, disponivelDe,
+      estoque, setEstoque, movimentarEstoque, reservas, reservadoDe, disponivelDe, juntarPecas,
       financeiro, setFinanceiro, adicionarLancamento,
       agenda, setAgenda,
       funcionarios, setFuncionarios,

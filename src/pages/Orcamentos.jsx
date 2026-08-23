@@ -8,6 +8,7 @@ import { parseValorBR } from '../utils/numero'
 import PainelAdicionarItem from '../components/PainelAdicionarItem'
 import SeletorKit from '../components/SeletorKit'
 import { avisoDeFalta, pecaSemEstoque } from '../utils/kits'
+import { pecaComCodigo } from '../utils/pecas'
 
 const statusColor = {
   Pendente: 'bg-yellow-100 text-yellow-700',
@@ -206,6 +207,15 @@ export default function Orcamentos() {
   // devolve o registro para o painel já selecionar.
   function salvarNovo() {
     if (!novoForm.nome.trim()) return
+    // Mesma trava do cadastro de Estoque: codigo repetido divide o saldo em
+    // duas linhas e nunca mais fecha com a prateleira.
+    if (tipoPainel !== 'servico') {
+      const jaExiste = pecaComCodigo(estoque, novoForm.codigo)
+      if (jaExiste) {
+        alert(`O código ${novoForm.codigo} já está cadastrado em:\n\n${jaExiste.nome}\n\nProcure essa peça na busca em vez de cadastrar de novo.`)
+        return
+      }
+    }
     const id = gerarId()
     if (tipoPainel === 'servico') {
       const novo = { id, nome: novoForm.nome, categoria: novoForm.categoria || '', preco: novoForm.preco || '0', tempo: novoForm.tempo || '' }

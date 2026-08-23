@@ -13,6 +13,7 @@
 // É lista pequena, editada raramente — não vale tabela nova.
 
 import { parseValorBR } from './numero'
+import { pecaAtiva } from './pecas'
 
 // Ids do cadastro às vezes chegam como número e às vezes como texto (o
 // orçamento guarda refId como string). Comparar por String evita o "não achei

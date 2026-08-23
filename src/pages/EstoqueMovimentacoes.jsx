@@ -16,6 +16,7 @@ const COR_TIPO = {
   saida_venda: 'bg-red-50 text-red-600',
   estorno_compra: 'bg-red-50 text-red-600',
   ajuste: 'bg-slate-100 text-slate-600',
+  fusao: 'bg-blue-50 text-blue-700',
 }
 
 // Visão geral do kardex: as últimas movimentações de TODAS as peças, lidas sob

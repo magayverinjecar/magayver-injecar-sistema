@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, X, Trash2, Package, Save, Search, CheckCircle2, AlertT
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
 import { parseValorBR } from '../utils/numero'
+import { pecaComCodigo, pecaAtiva } from '../utils/pecas'
 
 const statusColor = {
   Rascunho: 'bg-slate-100 text-slate-600',
@@ -74,9 +75,9 @@ export default function CompraDetalhe() {
       setItem(VAZIO_ITEM)
       return
     }
-    const found = estoque.find(p =>
-      (p.codigo || '').trim().toLowerCase() === codigo.trim().toLowerCase()
-    )
+    // Busca perdoa espaço, hífen, barra, ponto e acento — e nunca devolve peça
+    // desativada (juntada em outra): a entrada tem que cair no cadastro vivo.
+    const found = pecaComCodigo(estoque, codigo)
     if (found) {
       setItemEncontrado(found)
       setItem(it => ({
@@ -110,6 +111,16 @@ export default function CompraDetalhe() {
     // navegador pula as palavras achando que é sigla.
     const descricao = (cadastrarNova ? novoItemDados.nome : item.descricao).toUpperCase()
     if (!descricao.trim()) return
+    // Cadastrar peca nova durante a compra e o caminho mais rapido para criar
+    // duplicata: o codigo digitado aqui pode ser o de uma peca que ja existe
+    // com outro nome.
+    if (cadastrarNova) {
+      const jaExiste = pecaComCodigo(estoque, novoItemDados.codigo)
+      if (jaExiste) {
+        alert(`O código ${novoItemDados.codigo} já está cadastrado em:\n\n${jaExiste.nome}\n\nApague o código do formulário e busque a peça pelo código no campo de cima — a entrada vai somar no cadastro que já existe.`)
+        return
+      }
+    }
     const novoItem = {
       ...item,
       descricao,
