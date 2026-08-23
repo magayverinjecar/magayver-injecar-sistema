@@ -7,9 +7,18 @@ import { resumoDoTurno, divergenciaGaveta, FORMA_DINHEIRO } from '../utils/caixa
 import { parseValorBR } from '../utils/numero'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Dentro de coluna de dinheiro o "R$" sai: o cabeçalho já diz a moeda, e o
+// prefixo repetido em toda linha dá larguras diferentes — é ele que impede a
+// coluna de alinhar na vírgula, que é o que se confere de cima para baixo.
+const fmtNum = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 // Parser unico em utils/numero.js — cada tela tinha a propria copia, e a
 // versao antiga lia "1.500" como 1,5.
 const pNum = parseValorBR
+
+// Como a venda foi paga já está gravada em cada pagamento — só não aparecia na
+// lista. Para saber se aquela venda entrou na gaveta ou caiu no banco era
+// preciso trocar para a aba Movimentos e caçar pelo nome do cliente.
+const formasDaVenda = (v) => [...new Set((v.pagamentos || []).map(p => p.forma).filter(Boolean))].join(' · ')
 
 
 export default function Caixa() {
@@ -127,6 +136,23 @@ export default function Caixa() {
       hora: m.hora,
     })),
   ].sort((a, b) => b.hora.localeCompare(a.hora))
+
+  // Somas do RODAPÉ de cada lista — só o que está na tela, nada além disso.
+  // São propositalmente separadas do `resumo`: aquele responde "onde o dinheiro
+  // está" (gaveta ou banco) e é o que fecha o caixa; estas respondem "o que
+  // essa lista aqui somou", que é a conferência de olho, linha por linha.
+  const vendasTotal = t.vendas.reduce((s, v) => s + (Number(v.total) || 0), 0)
+  const vendasRecebido = t.vendas.reduce((s, v) => s + (Number(v.recebido) || 0), 0)
+  // O que foi vendido e ainda não entrou: é o "pagar depois" do dia somado, o
+  // número que some quando ninguém olha a coluna Status uma por uma.
+  const vendasEmAberto = vendasTotal - vendasRecebido
+  const vendasPendentes = t.vendas.filter(v => v.status !== 'Paga').length
+
+  const movEntradas = movimentosCompletos.filter(m => m.tipo !== 'sangria').reduce((s, m) => s + (Number(m.valor) || 0), 0)
+  const movSaidas = movimentosCompletos.filter(m => m.tipo === 'sangria').reduce((s, m) => s + (Number(m.valor) || 0), 0)
+  // Taxa da maquininha: aparece solta em cada linha, mas o que interessa é o
+  // tanto que o dia inteiro deixou na adquirente.
+  const movTaxas = movimentosCompletos.reduce((s, m) => s + (Number(m.taxa) || 0), 0)
 
   // Gaveta e banco são coisas diferentes: o dinheiro em espécie se conta, o
   // que caiu na conta se confere contra o extrato.
@@ -259,13 +285,16 @@ export default function Caixa() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           {t.vendas.length === 0 ? (
             <p className="text-center text-sm text-slate-400 py-12">Nenhuma venda neste turno</p>
-          ) : (
+          ) : (<>
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cliente</th>
-                  <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total</th>
+                  <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total (R$)</th>
+                  {/* Forma de pagamento só no computador: no celular a linha já
+                      está no limite, e lá a venda se abre no recibo. */}
+                  <th className="hidden lg:table-cell text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Forma</th>
                   <th className="text-center px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Hora</th>
                   <th className="px-5 py-3"></th>
@@ -276,7 +305,10 @@ export default function Caixa() {
                   <tr key={v.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-5 py-3.5 text-sm font-mono text-slate-500">{v.numero}</td>
                     <td className="px-5 py-3.5 text-sm font-medium text-slate-800">{v.clienteNome || 'Consumidor'}</td>
-                    <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-700">{fmt(v.total)}</td>
+                    <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-700 tabular-nums">{fmtNum(v.total)}</td>
+                    <td className="hidden lg:table-cell px-5 py-3.5 text-sm text-slate-500">
+                      {formasDaVenda(v) || <span className="text-slate-300">—</span>}
+                    </td>
                     <td className="px-5 py-3.5 text-center">
                       <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${v.status === 'Paga' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>{v.status}</span>
                     </td>
@@ -291,7 +323,26 @@ export default function Caixa() {
                 ))}
               </tbody>
             </table>
-          )}
+            {/* Rodapé de sistema: fecha a lista com quanto o turno vendeu e
+                quanto de fato entrou. A diferença entre os dois é o que saiu
+                daqui sem pagar — hoje só dá para saber somando a coluna Status
+                venda por venda. */}
+            <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+              <span>
+                {t.vendas.length} {t.vendas.length === 1 ? 'venda' : 'vendas'}
+                {vendasPendentes > 0 && (
+                  <span className="ml-2 text-yellow-700">· {vendasPendentes} {vendasPendentes === 1 ? 'pendente' : 'pendentes'}</span>
+                )}
+              </span>
+              <span className="flex items-center gap-4 tabular-nums">
+                <span>Vendido: <strong className="font-medium">{fmt(vendasTotal)}</strong></span>
+                <span>Recebido: <strong className="font-medium">{fmt(vendasRecebido)}</strong></span>
+                {vendasEmAberto >= 0.01 && (
+                  <span className="text-yellow-700">Em aberto: <strong className="font-medium">{fmt(vendasEmAberto)}</strong></span>
+                )}
+              </span>
+            </div>
+          </>)}
         </div>
       )}
 
@@ -300,13 +351,13 @@ export default function Caixa() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           {movimentosCompletos.length === 0 ? (
             <p className="text-center text-sm text-slate-400 py-12">Nenhuma movimentação neste turno</p>
-          ) : (
+          ) : (<>
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Tipo</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Forma</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor</th>
+                  <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor (R$)</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Motivo</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Hora</th>
                   <th className="px-5 py-3"></th>
@@ -324,9 +375,9 @@ export default function Caixa() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-sm text-slate-700">{m.forma}</td>
-                      <td className="px-5 py-3.5 text-sm font-medium text-slate-700">
-                        {fmt(m.valor)}
-                        {m.taxa > 0 && <span className="text-red-500 text-xs"> (-{fmt(m.taxa)})</span>}
+                      <td className="px-5 py-3.5 text-right text-sm font-medium text-slate-700 tabular-nums">
+                        {fmtNum(m.valor)}
+                        {m.taxa > 0 && <span className="text-red-500 text-xs"> (−{fmtNum(m.taxa)})</span>}
                       </td>
                       <td className="px-5 py-3.5 text-sm text-slate-500">{m.motivo}</td>
                       <td className="px-5 py-3.5 text-sm text-slate-500">{m.hora}</td>
@@ -349,7 +400,24 @@ export default function Caixa() {
                 })}
               </tbody>
             </table>
-          )}
+            {/* Rodapé de sistema: entrou, saiu e quanto a maquininha levou. A
+                taxa está pingada linha a linha e ninguém soma sete parênteses
+                de cabeça — aqui ela vira um número só. */}
+            <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+              <span>
+                {movimentosCompletos.length} {movimentosCompletos.length === 1 ? 'lançamento' : 'lançamentos'}
+              </span>
+              <span className="flex items-center gap-4 tabular-nums">
+                <span className="text-green-700">Entradas: <strong className="font-medium">{fmt(movEntradas)}</strong></span>
+                <span className="text-red-600">Saídas: <strong className="font-medium">{fmt(movSaidas)}</strong></span>
+                {movTaxas >= 0.01 && (
+                  <span title="Taxa da maquininha — já vem descontada do que cai na conta">
+                    Taxas: <strong className="font-medium">{fmt(movTaxas)}</strong>
+                  </span>
+                )}
+              </span>
+            </div>
+          </>)}
         </div>
       )}
 

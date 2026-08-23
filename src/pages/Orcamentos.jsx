@@ -22,7 +22,13 @@ const VAZIO_ITEM = { tipo: 'Serviço', refId: '', descricao: '', quantidade: '1'
 
 // Parser único em utils/numero.js — a cópia local lia "1.500" como 1,5.
 const parseNum = parseValorBR
-const fmt = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Dentro da tabela o valor vai sem "R$": repetido em toda linha, o símbolo só
+// empurra o número para longe da vírgula da linha de cima. O cabeçalho diz que
+// aquela coluna é dinheiro.
+const fmtValor = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Fora da tabela o símbolo continua: em texto solto, no WhatsApp e no total do
+// rodapé o número aparece sozinho e precisa se apresentar.
+const fmt = (v) => 'R$ ' + fmtValor(v)
 
 export default function Orcamentos() {
   const navigate = useNavigate()
@@ -99,6 +105,14 @@ export default function Orcamentos() {
   }
 
   const totalGeral = itens.reduce((s, it) => s + (parseNum(it.valorUnitario) * parseNum(it.quantidade) - parseNum(it.desconto)), 0)
+
+  // Números do rodapé da lista. Separa o que está PENDENTE porque é o único
+  // bolo em que ainda dá para mexer: é dinheiro parado esperando o cliente
+  // responder. Aprovado, recusado e convertido já saíram da mesa. `Number(...)`
+  // porque orçamento antigo pode ter gravado o total como texto.
+  const totalSalvos = orcamentos.reduce((s, o) => s + (Number(o.total) || 0), 0)
+  const pendentes = orcamentos.filter(o => o.status === 'Pendente')
+  const totalPendente = pendentes.reduce((s, o) => s + (Number(o.total) || 0), 0)
 
   const veiculosCliente = dados.clienteId ? veiculosPorCliente(Number(dados.clienteId)) : []
 
@@ -425,13 +439,17 @@ export default function Orcamentos() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           {orcamentos.length === 0 ? (
             <p className="text-center text-sm text-slate-400 py-16">Nenhum orçamento salvo ainda.</p>
-          ) : (
+          ) : (<>
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cliente</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Veículo</th>
+                  {/* Quantos itens o orçamento tem só se sabia abrindo. É o que
+                      diz de cara se aquela linha é uma troca de óleo ou uma
+                      revisão de vinte itens — e no computador sobra largura. */}
+                  <th className="hidden lg:table-cell text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Itens</th>
                   <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Data</th>
@@ -444,7 +462,10 @@ export default function Orcamentos() {
                     <td className="px-5 py-3.5 text-sm font-mono text-slate-500">{o.numero}</td>
                     <td className="px-5 py-3.5 text-sm font-medium text-slate-800">{o.nome}</td>
                     <td className="px-5 py-3.5 text-sm text-slate-600">{o.veiculo} {o.placa && `(${o.placa})`}</td>
-                    <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-700">{fmt(o.total)}</td>
+                    <td className="hidden lg:table-cell px-5 py-3.5 text-right text-sm text-slate-500 tabular-nums">
+                      {o.itens?.length || <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-700 tabular-nums">{fmtValor(o.total)}</td>
                     <td className="px-5 py-3.5">
                       <select value={o.status} onChange={e => mudarStatus(o.id, e.target.value)}
                         className={`text-xs px-2 py-1 rounded-full font-medium border-0 cursor-pointer focus:outline-none ${statusColor[o.status]}`}>
@@ -472,7 +493,22 @@ export default function Orcamentos() {
                 ))}
               </tbody>
             </table>
-          )}
+            {/* Rodapé de sistema: o dono queria abrir a tela e já saber quanto
+                mandou de orçamento e quanto ainda está na mão do cliente, sem
+                somar linha por linha nem abrir relatório. */}
+            <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+              <span>
+                {orcamentos.length} {orcamentos.length === 1 ? 'orçamento' : 'orçamentos'}
+                {pendentes.length > 0 && (
+                  <span className="ml-2 text-yellow-700">· {pendentes.length} aguardando resposta</span>
+                )}
+              </span>
+              <span className="flex items-center gap-4 tabular-nums">
+                <span>Pendente: <strong className="font-medium">{fmt(totalPendente)}</strong></span>
+                <span>Total: <strong className="font-medium">{fmt(totalSalvos)}</strong></span>
+              </span>
+            </div>
+          </>)}
         </div>
       )}
 

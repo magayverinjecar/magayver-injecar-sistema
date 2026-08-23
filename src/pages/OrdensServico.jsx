@@ -29,12 +29,17 @@ export const statusColor = {
   'Em Andamento': 'bg-orange-100 text-orange-700',
 }
 
-const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Duas formas do mesmo número: dentro da coluna de dinheiro o "R$ " some
+// (repetido em 40 linhas ele vira ruído, e o cabeçalho já diz o que é);
+// no card do celular e no rodapé de totais ele fica, porque ali o número
+// aparece sozinho, sem coluna que o explique.
+const fmtNum = (v) => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmt = (v) => 'R$ ' + fmtNum(v)
 const vazio = { clienteId: '', veiculoId: '', kmEntrada: '', mecanicoId: '', descricaoProblema: '' }
 const RASCUNHO_KEY = 'nova-os-rascunho'
 
 export default function OrdensServico() {
-  const { ordens, novaOrdem, getCliente, getVeiculo, clientes, veiculosPorCliente, funcionarios, totalOrdem, checklists } = useApp()
+  const { ordens, novaOrdem, getCliente, getVeiculo, getFuncionario, clientes, veiculosPorCliente, funcionarios, totalOrdem, checklists } = useApp()
   const navigate = useNavigate()
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('Todos')
@@ -110,6 +115,13 @@ export default function OrdensServico() {
     const tB = b.etapaEm || b.historico?.at(0)?.id || 0
     return tB - tA
   })
+
+  // Números do rodapé. O total é sempre o do que está NA TELA: é filtrando por
+  // status que se vê quanto vale cada etapa (quanto está esperando aprovação,
+  // quanto já foi entregue). Em "Todos" ele soma até cancelada e rejeitada,
+  // porque elas continuam na lista — por isso o rodapé mostra o filtro junto.
+  const valorFiltradas = filtradas.reduce((s, o) => s + totalOrdem(o), 0)
+  const temFiltro = Boolean(busca.trim()) || filtroStatus !== 'Todos' || filtroMec !== 'Todos'
 
   function salvar() {
     if (!form.clienteId || !form.veiculoId) return
@@ -187,6 +199,10 @@ export default function OrdensServico() {
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Nº</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cliente</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Veículo</th>
+              {/* Quem está com o carro já está gravado na OS e nesta tela até se
+                  filtra por ele — mas só aparecia depois de abrir a ordem. Na
+                  lista, é o que responde "quem pega esse aí?" sem entrar em nada. */}
+              <th className="hidden lg:table-cell text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Mecânico</th>
               <th className="text-center px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
               <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Data</th>
@@ -198,15 +214,19 @@ export default function OrdensServico() {
               const cliente = getCliente(o.clienteId)
               const veiculo = getVeiculo(o.veiculoId)
               const total = totalOrdem(o)
+              const mecanico = o.mecanicoId ? getFuncionario(o.mecanicoId) : null
               return (
                 <tr key={o.id} onClick={() => navigate(`/ordens-servico/${encodeURIComponent(o.id)}`)} className="hover:bg-slate-50 transition-colors cursor-pointer">
                   <td className="px-5 py-3.5 text-sm font-mono font-medium text-slate-700">{o.id}</td>
                   <td className="px-5 py-3.5 text-sm font-medium text-slate-800">{cliente?.nome || '—'}</td>
                   <td className="px-5 py-3.5 text-sm text-slate-600">{veiculo ? `${veiculo.placa} ${veiculo.modelo}` : '—'}</td>
+                  {/* OS sem mecânico é traço apagado, e não vazio: assim a coluna
+                      mostra na hora quais ainda não têm dono. */}
+                  <td className="hidden lg:table-cell px-5 py-3.5 text-sm text-slate-600">{mecanico?.nome || <span className="text-slate-300">—</span>}</td>
                   <td className="px-5 py-3.5 text-center">
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusColor[o.status] || 'bg-slate-100 text-slate-600'}`}>{o.status}</span>
                   </td>
-                  <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-700">{total > 0 ? fmt(total) : '—'}</td>
+                  <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-700 tabular-nums">{total > 0 ? fmtNum(total) : <span className="text-slate-300">—</span>}</td>
                   <td className="px-5 py-3.5 text-sm text-slate-500">{o.data}</td>
                   <td className="px-5 py-3.5 text-right">
                     <button onClick={(e) => { e.stopPropagation(); navigate(`/ordens-servico/${encodeURIComponent(o.id)}`) }} className="text-xs text-primary-500 hover:text-primary-600 font-medium">Abrir</button>
@@ -217,6 +237,21 @@ export default function OrdensServico() {
           </tbody>
         </table>
         {filtradas.length === 0 && <p className="text-center text-sm text-slate-400 py-10">Nenhuma OS encontrada.</p>}
+        {/* Rodapé de sistema: quantas ordens a lista está mostrando e quanto
+            elas somam. O "(de N)" existe para ninguém ler o total do filtro
+            achando que é o total da oficina. */}
+        {filtradas.length > 0 && (
+          <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+            <span>
+              {filtradas.length} {filtradas.length === 1 ? 'ordem' : 'ordens'}
+              {temFiltro && ` (de ${ordens.length})`}
+              {filtroStatus !== 'Todos' && <span className="ml-2">· {filtroStatus}</span>}
+            </span>
+            <span className="flex items-center gap-4 tabular-nums">
+              <span>Valor somado: <strong className="font-medium">{fmt(valorFiltradas)}</strong></span>
+            </span>
+          </div>
+        )}
       </div>
 
       {modal && (

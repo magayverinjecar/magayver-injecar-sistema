@@ -17,6 +17,14 @@ export default function Fornecedores() {
     (f.cnpj || '').includes(busca)
   )
 
+  // Fornecedor só serve quando dá para acionar na hora do aperto: sem telefone
+  // e sem e-mail a linha existe, mas não resolve peça nenhuma. O rodapé mostra
+  // esse furo junto com ativos/inativos, senão ele só aparece abrindo ficha por
+  // ficha — que é justamente o que ninguém faz com a peça parada na bancada.
+  const ativos = filtrados.filter(f => f.ativo !== false).length
+  const inativos = filtrados.length - ativos
+  const semContato = filtrados.filter(f => !(f.telefone || '').trim() && !(f.email || '').trim()).length
+
   function abrirNovo() {
     setForm(VAZIO)
     setEditId(null)
@@ -62,7 +70,11 @@ export default function Fornecedores() {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
         {filtrados.length === 0 ? (
-          <p className="text-center text-sm text-slate-400 py-16">Nenhum fornecedor cadastrado.</p>
+          // Lista vazia com busca ativa não é cadastro vazio: dizer "nenhum
+          // cadastrado" faz a pessoa recadastrar quem já está lá dentro.
+          <p className="text-center text-sm text-slate-400 py-16">
+            {busca ? 'Nenhum fornecedor encontrado para esta busca.' : 'Nenhum fornecedor cadastrado.'}
+          </p>
         ) : (
           <>
             <table className="w-full">
@@ -72,6 +84,10 @@ export default function Fornecedores() {
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">CNPJ</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Contato</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Telefone</th>
+                  {/* E-mail já está na ficha e hoje só aparece para quem abre o
+                      cadastro — mas é por ele que sai pedido e volta nota. No
+                      computador sobra largura; no celular continua escondido. */}
+                  <th className="hidden lg:table-cell text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">E-mail</th>
                   <th className="text-center px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Ativo</th>
                   <th className="px-5 py-3"></th>
                 </tr>
@@ -83,6 +99,11 @@ export default function Fornecedores() {
                     <td className="px-5 py-3.5 text-sm text-slate-600">{f.cnpj || '—'}</td>
                     <td className="px-5 py-3.5 text-sm text-slate-600">{f.contato || '—'}</td>
                     <td className="px-5 py-3.5 text-sm text-slate-600">{f.telefone || '—'}</td>
+                    {/* Trunca em vez de esticar a coluna: e-mail comprido não
+                        pode empurrar nome e telefone para fora da tela. */}
+                    <td className="hidden lg:table-cell px-5 py-3.5 text-sm text-slate-600">
+                      <span className="block truncate max-w-[15rem]" title={f.email || undefined}>{f.email || '—'}</span>
+                    </td>
                     <td className="px-5 py-3.5 text-center">
                       {f.ativo !== false
                         ? <CheckCircle size={16} className="text-green-500 mx-auto" />
@@ -102,7 +123,22 @@ export default function Fornecedores() {
                 ))}
               </tbody>
             </table>
-            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 text-sm text-slate-500">
+            {/* Rodapé de sistema: o tamanho do cadastro e quantos dão para
+                acionar, sem abrir relatório. Substitui no computador a barra de
+                páginas abaixo, que nunca paginou de verdade (sempre 1/1) — ela
+                fica só no celular, onde o toque precisa de alvo grande. */}
+            <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+              <span>
+                {filtrados.length} {filtrados.length === 1 ? 'fornecedor' : 'fornecedores'}
+                {busca && ` (de ${fornecedores.length})`}
+                {semContato > 0 && <span className="ml-2 text-yellow-700">· {semContato} sem telefone nem e-mail</span>}
+              </span>
+              <span className="flex items-center gap-4 tabular-nums">
+                <span>Ativos: <strong className="font-medium">{ativos}</strong></span>
+                {inativos > 0 && <span>Inativos: <strong className="font-medium">{inativos}</strong></span>}
+              </span>
+            </div>
+            <div className="lg:hidden flex items-center justify-between px-5 py-3 border-t border-slate-100 text-sm text-slate-500">
               <span>1–{filtrados.length} de {filtrados.length}</span>
               <div className="flex items-center gap-2">
                 <span className="text-xs">Por página: 25</span>

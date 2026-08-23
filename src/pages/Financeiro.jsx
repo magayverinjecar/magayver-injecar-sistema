@@ -122,6 +122,11 @@ const pNum = parseValorBR
     [financeiro, intervalo],
   )
 
+  // Base do "(de N)" no rodapé: todo lançamento já realizado, sem recorte
+  // nenhum. Serve para o rodapé avisar que o período está escondendo coisa —
+  // sem isso, "12 lançamentos" parece ser tudo o que a oficina já lançou.
+  const totalRealizados = financeiro.filter(l => !l.pendente).length
+
   // Parcelas ainda não pagas de qualquer compra.
   //
   // Não filtra por `recebida` de propósito: na prática as compras são cadastradas
@@ -165,6 +170,21 @@ const pNum = parseValorBR
   })
 
   const totalAPagar = todasContasAPagar.reduce((s, p) => s + p.valor, 0)
+
+  // Recorte do que já venceu, só para o rodapé. O total a pagar sozinho não
+  // diferencia a conta que vence semana que vem da que está atrasada há um mês,
+  // e é a atrasada que muda o dia. Soma exatamente o que está na lista.
+  const vencidas = todasContasAPagar.filter(p => {
+    const d = diasVencimento(p.vencimento)
+    return d !== null && d < 0
+  })
+  const totalVencido = vencidas.reduce((s, p) => s + p.valor, 0)
+
+  // Mesma pergunta do outro lado: quanto do que se tem a receber já passou de
+  // 30 dias — que é onde a própria lista já pinta de vermelho.
+  const receberVencido = aReceber.itens
+    .filter(i => (diasEmAberto(i) ?? 0) >= 30)
+    .reduce((s, i) => s + (Number(i.saldo) || 0), 0)
 
   function abrirModalBoleto(p) {
     setFormaPagamento('PIX')
@@ -425,6 +445,19 @@ const pNum = parseValorBR
               <Plus size={14} />Novo
             </button>
           </div>
+          {/* Cabeçalho de coluna, só no computador: é ele que diz que a coluna
+              da direita é dinheiro — por isso as linhas param de repetir "R$".
+              O vão de 21px no fim é do tamanho da lixeira da linha; sem ele o
+              rótulo ficaria adiantado em relação aos valores que descreve. */}
+          {lancamentosDoPeriodo.length > 0 && (
+            <div className="hidden lg:flex items-center justify-between gap-4 px-5 py-1 bg-slate-100 border-b border-slate-300 text-[11px] font-medium text-slate-600">
+              <span>Descrição</span>
+              <span className="flex items-center gap-3">
+                <span>Valor (R$)</span>
+                <span className="w-[21px]" aria-hidden="true" />
+              </span>
+            </div>
+          )}
           <div className="divide-y divide-slate-50">
             {lancamentosDoPeriodo.length === 0 && (
               <p className="text-center text-sm text-slate-400 py-8">Nenhum lançamento em {intervalo.rotulo}.</p>
@@ -437,13 +470,22 @@ const pNum = parseValorBR
                     <p className="text-sm text-slate-700">{l.descricao}</p>
                     <p className="text-xs text-slate-400">
                       {l.data}
+                      {/* A categoria já vem gravada no lançamento (compra de
+                          peças, taxa de cartão, aluguel...) e até aqui não
+                          aparecia em tela nenhuma. É a resposta de "para onde
+                          foi o dinheiro" sem precisar abrir nada. */}
+                      {l.categoria && <span className="hidden lg:inline ml-2 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-medium">{l.categoria}</span>}
                       {l.formaPagamento && <span className="ml-2 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-medium">{l.formaPagamento}</span>}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className={`text-sm font-semibold ${l.tipo === 'receita' ? 'text-green-600' : 'text-red-500'}`}>
-                    {l.tipo === 'receita' ? '+' : '−'} R$ {l.valor}
+                  {/* A largura fixa é só do computador: no celular ela roubava
+                      espaço da descrição, que é o que se lê primeiro lá. */}
+                  <span className={`lg:min-w-[6.5rem] text-right whitespace-nowrap text-sm font-semibold tabular-nums ${l.tipo === 'receita' ? 'text-green-600' : 'text-red-500'}`}>
+                    {/* O "R$" sobrevive só no celular, onde não há cabeçalho de
+                        coluna dizendo o que é aquele número. */}
+                    {l.tipo === 'receita' ? '+' : '−'} <span className="lg:hidden">R$ </span>{l.valor}
                   </span>
                   <button onClick={() => excluir(l.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
                     <Trash2 size={13} />
@@ -452,6 +494,29 @@ const pNum = parseValorBR
               </div>
             ))}
           </div>
+          {/* Rodapé de sistema: a conta do que está na tela. Repete os números
+              dos cards de propósito — quem desceu até o fim da lista não vê mais
+              o topo, e é aqui que se confere se o que foi lançado fecha. */}
+          {lancamentosDoPeriodo.length > 0 && (
+            <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+              {/* O cabeçalho do card já diz quantos lançamentos e o período —
+                  repetir aqui só ocupa linha. O rodapé conta o que o cabeçalho
+                  não conta: quanto sobrou de filtro. */}
+              <span>
+                {lancamentosDoPeriodo.length !== totalRealizados
+                  ? `${lancamentosDoPeriodo.length} de ${totalRealizados} lançamentos`
+                  : `${lancamentosDoPeriodo.length} ${lancamentosDoPeriodo.length === 1 ? 'lançamento' : 'lançamentos'}`}
+              </span>
+              {/* Os MESMOS nomes dos cards do topo. Chamar de "Entradas" aqui o
+                  que lá em cima se chama "Receitas" faz o dono conferir dois
+                  números achando que são coisas diferentes. */}
+              <span className="flex items-center gap-4 tabular-nums">
+                <span>Receitas: <strong className="font-medium text-green-700">{fmt(resumo.receitas)}</strong></span>
+                <span>Despesas: <strong className="font-medium text-red-600">{fmt(resumo.despesas)}</strong></span>
+                <span>Lucro líquido: <strong className={`font-medium ${lucro < 0 ? 'text-red-600' : 'text-slate-700'}`}>{fmt(lucro)}</strong></span>
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -502,7 +567,7 @@ const pNum = parseValorBR
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-sm font-bold text-orange-600">{fmt(p.valor)}</span>
+                        <span className="text-sm font-bold text-orange-600 text-right tabular-nums">{fmt(p.valor)}</span>
                         <button onClick={() => abrirModalBoleto(p)}
                           className="flex items-center gap-1.5 text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
                           <CheckCircle2 size={12} />Dar Baixa
@@ -539,7 +604,7 @@ const pNum = parseValorBR
                       </div>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className="text-sm font-bold text-orange-600">{fmt(p.valor)}</span>
+                      <span className="text-sm font-bold text-orange-600 text-right tabular-nums">{fmt(p.valor)}</span>
                       <button onClick={() => abrirModalBoleto(p)}
                         className="flex items-center gap-1.5 text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
                         <CheckCircle2 size={12} />Dar Baixa
@@ -548,6 +613,25 @@ const pNum = parseValorBR
                   </div>
                 )
               })}
+            </div>
+          )}
+          {/* Rodapé de sistema: quantas contas e quanto some da conta bancária
+              se tudo for pago. O atrasado vem separado porque é ele que define
+              a ordem em que se paga. */}
+          {todasContasAPagar.length > 0 && (
+            <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+              <span>
+                {todasContasAPagar.length} {todasContasAPagar.length === 1 ? 'conta' : 'contas'}
+                {vencidas.length > 0 && (
+                  <span className="ml-2 text-red-600">· {vencidas.length} {vencidas.length === 1 ? 'vencida' : 'vencidas'}</span>
+                )}
+              </span>
+              <span className="flex items-center gap-4 tabular-nums">
+                {totalVencido > 0 && (
+                  <span>Vencido: <strong className="font-medium text-red-600">{fmt(totalVencido)}</strong></span>
+                )}
+                <span>Total a pagar: <strong className="font-medium">{fmt(totalAPagar)}</strong></span>
+              </span>
             </div>
           )}
         </div>
@@ -605,7 +689,7 @@ const pNum = parseValorBR
                     </p>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <p className="text-sm font-bold text-orange-600 tabular-nums">{fmt(item.saldo)}</p>
+                    <p className="text-sm font-bold text-orange-600 text-right tabular-nums">{fmt(item.saldo)}</p>
                     {item.origem === 'os' ? (
                       // O valor da OS é lançado na própria OS, que é onde o
                       // fluxo de pagamento e entrega existe.
@@ -624,6 +708,22 @@ const pNum = parseValorBR
               )
             })}
           </div>
+          {/* Rodapé de sistema: quantos devedores e quanto está na rua. O
+              recorte de 30 dias é o mesmo que a lista já pinta de vermelho —
+              essa é a parte que costuma virar prejuízo se ninguém ligar. */}
+          {aReceber.itens.length > 0 && (
+            <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+              <span>
+                {aReceber.itens.length} {aReceber.itens.length === 1 ? 'cobrança' : 'cobranças'}
+              </span>
+              <span className="flex items-center gap-4 tabular-nums">
+                {receberVencido > 0 && (
+                  <span>Há mais de 30 dias: <strong className="font-medium text-red-600">{fmt(receberVencido)}</strong></span>
+                )}
+                <span>Total a receber: <strong className="font-medium">{fmt(aReceber.total)}</strong></span>
+              </span>
+            </div>
+          )}
         </div>
       )}
 

@@ -7,7 +7,7 @@ import Modal from '../components/ui/Modal'
 const vazio = { nome: '', telefone: '', email: '' }
 
 export default function Clientes() {
-  const { clientes, setClientes, veiculosPorCliente, ordensPorCliente, getVeiculo } = useApp()
+  const { clientes, setClientes, veiculos, ordens, veiculosPorCliente, ordensPorCliente, getVeiculo } = useApp()
   const [busca, setBusca] = useState('')
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(vazio)
@@ -15,6 +15,16 @@ export default function Clientes() {
   const [detalhe, setDetalhe] = useState(null)
 
   const filtrados = clientes.filter(c => c.nome.toLowerCase().includes(busca.toLowerCase()))
+
+  // Totais do rodapé contados em UMA passada pelas listas inteiras, e não
+  // chamando veiculosPorCliente/ordensPorCliente cliente a cliente: com a
+  // carteira cheia isso varreria a tabela de ordens uma vez por linha da tela.
+  const idsNaTela = new Set(filtrados.map(c => c.id))
+  const totalVeiculos = veiculos.filter(v => idsNaTela.has(v.clienteId)).length
+  const totalOrdens = ordens.filter(o => idsNaTela.has(o.clienteId)).length
+  // Cliente sem telefone é o que trava o dia: o carro fica pronto e não tem
+  // como avisar. O rodapé mostra quantos são para não descobrir um por um.
+  const semTelefone = filtrados.filter(c => !String(c.telefone || '').trim()).length
 
   function salvar() {
     if (!form.nome.trim()) { setErroNome(true); return }
@@ -73,7 +83,7 @@ export default function Clientes() {
           {filtrados.length === 0 && <p className="text-center text-sm text-slate-400 py-8 bg-white rounded-xl border border-slate-100">Nenhum cliente encontrado.</p>}
           {filtrados.map(c => {
             const veics = veiculosPorCliente(c.id)
-            const ordens = ordensPorCliente(c.id)
+            const ordensDoCliente = ordensPorCliente(c.id)
             return (
               <div key={c.id} onClick={() => setDetalhe(detalhe === c.id ? null : c.id)}
                 className={`bg-white rounded-xl border border-slate-100 shadow-sm p-4 cursor-pointer transition-colors ${detalhe === c.id ? 'border-primary-300 bg-primary-50' : 'active:bg-slate-50'}`}>
@@ -104,18 +114,25 @@ export default function Clientes() {
               <tr className="border-b border-slate-100 bg-slate-50">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Nome</th>
                 {!detalhe && <>
+                  {/* Placa e modelo já estão carregados aqui, mas hoje só
+                      aparecem depois de abrir a ficha — e no balcão o cliente é
+                      lembrado pelo carro, não pelo sobrenome. Some quando o
+                      painel de detalhe abre, junto com telefone e e-mail. */}
+                  <th className="hidden lg:table-cell text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Veículo</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Telefone</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">E-mail</th>
                 </>}
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Veíc.</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">OS</th>
+                {/* Colunas de contagem à direita: número embaixo de número é o
+                    que deixa a coluna conferível de cima a baixo. */}
+                <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Veíc.</th>
+                <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">OS</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filtrados.map(c => {
                 const veics = veiculosPorCliente(c.id)
-                const ordens = ordensPorCliente(c.id)
+                const ordensDoCliente = ordensPorCliente(c.id)
                 return (
                   <tr key={c.id} className={`hover:bg-slate-50 transition-colors cursor-pointer ${detalhe === c.id ? 'bg-primary-50' : ''}`} onClick={() => setDetalhe(detalhe === c.id ? null : c.id)}>
                     <td className="px-5 py-3.5">
@@ -125,6 +142,19 @@ export default function Clientes() {
                       </div>
                     </td>
                     {!detalhe && <>
+                      {/* Mostra o primeiro carro e conta o resto: quem tem
+                          frota não pode esticar a linha e quebrar a tabela. O
+                          title traz a lista toda sem precisar abrir a ficha. */}
+                      <td className="hidden lg:table-cell px-5 py-3.5 text-sm text-slate-600"
+                        title={veics.length ? veics.map(v => [v.placa, v.modelo].filter(Boolean).join(' ')).join(' · ') : undefined}>
+                        {veics.length === 0 ? <span className="text-slate-300">—</span> : (
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-mono text-slate-500 whitespace-nowrap">{veics[0].placa || '—'}</span>
+                            <span className="text-slate-400 truncate max-w-[11rem]">{veics[0].modelo}</span>
+                            {veics.length > 1 && <span className="text-[11px] text-slate-400 whitespace-nowrap">+{veics.length - 1}</span>}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-5 py-3.5 text-sm text-slate-600">
                         <div className="flex items-center gap-1.5"><Phone size={13} className="text-slate-400" />{c.telefone || '—'}</div>
                       </td>
@@ -132,10 +162,10 @@ export default function Clientes() {
                         <div className="flex items-center gap-1.5"><Mail size={13} className="text-slate-400" />{c.email || '—'}</div>
                       </td>
                     </>}
-                    <td className="px-5 py-3.5 text-sm text-slate-600">
-                      <div className="flex items-center gap-1"><Car size={13} className="text-slate-400" />{veics.length}</div>
+                    <td className="px-5 py-3.5 text-sm text-slate-600 text-right tabular-nums">
+                      <div className="flex items-center justify-end gap-1"><Car size={13} className="text-slate-400" />{veics.length}</div>
                     </td>
-                    <td className="px-5 py-3.5 text-sm text-slate-600">{ordens.length}</td>
+                    <td className="px-5 py-3.5 text-sm text-slate-600 text-right tabular-nums">{ordensDoCliente.length}</td>
                     <td className="px-5 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={e => { e.stopPropagation(); excluir(c.id) }} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
@@ -150,6 +180,26 @@ export default function Clientes() {
             </tbody>
           </table>
           {filtrados.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum cliente encontrado.</p>}
+          {/* Rodapé de sistema: com a busca aberta a lista mente sobre o
+              tamanho da carteira, então ele diz quantos apareceram de quantos
+              existem — e quantos carros e OS esse recorte carrega. */}
+          {filtrados.length > 0 && (
+            <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+              <span>
+                {filtrados.length} {filtrados.length === 1 ? 'cliente' : 'clientes'}
+                {busca && ` (de ${clientes.length})`}
+                {semTelefone > 0 && (
+                  <span className="ml-2 text-slate-500" title="Sem telefone não dá para avisar que o carro ficou pronto">
+                    · {semTelefone} sem telefone
+                  </span>
+                )}
+              </span>
+              <span className="flex items-center gap-4 tabular-nums">
+                <span>Veículos: <strong className="font-medium">{totalVeiculos.toLocaleString('pt-BR')}</strong></span>
+                <span>OS: <strong className="font-medium">{totalOrdens.toLocaleString('pt-BR')}</strong></span>
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
