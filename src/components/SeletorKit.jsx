@@ -13,13 +13,13 @@ import { kitsDoConfig, montarItensDoKit, pecaSemEstoque, totalDoKit } from '../u
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function SeletorKit({ onAplicar, desabilitado = false, titulo = '' }) {
-  const { config, servicos, estoque } = useApp()
+  const { config, servicos, estoque, reservadoDe } = useApp()
   const kits = kitsDoConfig(config)
   const [aberto, setAberto] = useState(false)
 
   function escolher(kit) {
     setAberto(false)
-    const { itens, faltando } = montarItensDoKit(kit, { servicos, estoque })
+    const { itens, faltando } = montarItensDoKit(kit, { servicos, estoque, reservadoDe })
     if (!itens.length) {
       alert(`O kit "${kit.nome}" está vazio.`)
       return

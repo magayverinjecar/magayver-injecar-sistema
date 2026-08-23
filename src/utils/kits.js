@@ -74,7 +74,7 @@ function descricaoPeca(p) {
 // pedida. Elas SÃO lançadas assim mesmo — orçamento é proposta, não venda, e o
 // dono pode orçar peça que ainda vai comprar. O que ele não pode é mandar o
 // orçamento sem perceber que falta peça.
-export function montarItensDoKit(kit, { servicos = [], estoque = [] } = {}) {
+export function montarItensDoKit(kit, { servicos = [], estoque = [], reservadoDe = () => 0 } = {}) {
   const itens = []
   const faltando = []
 
@@ -83,7 +83,10 @@ export function montarItensDoKit(kit, { servicos = [], estoque = [] } = {}) {
 
     if (linha.tipo === 'peca') {
       const p = produtoDoCadastro(estoque, linha.produtoId)
-      const disponivel = p ? Number(p.estoque) || 0 : 0
+      // Disponível = saldo físico − o que outras OS já reservaram (bloco 02).
+      const saldo = p ? Number(p.estoque) || 0 : 0
+      const reservadas = p ? reservadoDe(p.id) : 0
+      const disponivel = saldo - reservadas
 
       if (!p) {
         // A peça saiu do cadastro depois que o kit foi montado. Entra pela
@@ -91,7 +94,7 @@ export function montarItensDoKit(kit, { servicos = [], estoque = [] } = {}) {
         // orçamento pedindo atenção do que sumir calada.
         faltando.push({ nome: linha.descricao || 'PEÇA REMOVIDA DO CADASTRO', pedido: qtd, disponivel: 0, semCadastro: true })
       } else if (disponivel < qtd) {
-        faltando.push({ nome: p.nome, pedido: qtd, disponivel })
+        faltando.push({ nome: p.nome, pedido: qtd, disponivel, saldo, reservadas })
       }
 
       itens.push({
@@ -128,9 +131,9 @@ export function montarItensDoKit(kit, { servicos = [], estoque = [] } = {}) {
 export function avisoDeFalta(faltando) {
   const linhas = faltando.map(f => f.semCadastro
     ? `• ${f.nome} — não está mais no cadastro`
-    : `• ${f.nome} — pedido ${f.pedido}, em estoque ${f.disponivel}`)
+    : `• ${f.nome} — pedido ${f.pedido}, disponível ${f.disponivel}${f.reservadas > 0 ? ` (${f.saldo} em saldo, ${f.reservadas} reservadas em OS ainda não aprovadas)` : ''}`)
   const n = faltando.length
-  return `${n} ${n === 1 ? 'peça deste kit está' : 'peças deste kit estão'} sem estoque suficiente:\n\n${linhas.join('\n')}\n\n`
-    + 'Elas serão lançadas do mesmo jeito (orçamento é proposta, não venda) e '
+  return `${n} ${n === 1 ? 'peça deste kit está' : 'peças deste kit estão'} sem estoque disponível:\n\n${linhas.join('\n')}\n\n`
+    + 'Elas serão lançadas do mesmo jeito (antes da aprovação a peça só fica reservada) e '
     + 'ficarão marcadas em vermelho na lista de itens.\n\nLançar o kit?'
 }

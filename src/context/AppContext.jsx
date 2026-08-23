@@ -8,6 +8,7 @@ import { parseValorBR } from '../utils/numero'
 import { intervaloDe, periodoAnteriorDe, resumirFinanceiro } from '../utils/periodo'
 import gerarId from '../utils/id'
 import { novoIdMovimento, idMovimentoDeterministico } from '../utils/movimentos'
+import { aplicarRegraNasOrdens, derivarMovimentosDaOS, reservasPorPeca } from '../utils/reserva'
 import {
   enfileirar as enfileirarPendencia,
   listar as listarPendencias,
@@ -111,7 +112,8 @@ async function loadTable(tableName) {
 // sai; o que OUTRO removeu não é ressuscitado.
 export function unirPorId(remoto, prevLoc, nextLoc) {
   const rem = remoto || [], pv = prevLoc || [], nx = nextLoc || []
-  const prevIds = new Set(pv.map(x => String(x?.id)))
+  const prevMap = new Map(pv.map(x => [String(x?.id), x]))
+  const prevIds = new Set(prevMap.keys())
   const nextMap = new Map(nx.map(x => [String(x?.id), x]))
   const saida = []
   const noRemoto = new Set()
@@ -119,7 +121,17 @@ export function unirPorId(remoto, prevLoc, nextLoc) {
     const k = String(it?.id)
     noRemoto.add(k)
     if (prevIds.has(k) && !nextMap.has(k)) continue        // este navegador removeu
-    saida.push(nextMap.has(k) ? nextMap.get(k) : it)       // editado aqui, ou intacto
+    // A versão local só vence se ESTE navegador mexeu no item (prev ≠ next).
+    // Antes ela vencia sempre que o item existisse aqui — e uma foto atrasada
+    // apagava, sem querer, a marca de estoque (estoqueBaixado) que outro
+    // aparelho acabara de gravar no mesmo item.
+    if (nextMap.has(k)) {
+      const loc = nextMap.get(k), ant = prevMap.get(k)
+      const mudouAqui = !ant || JSON.stringify(ant) !== JSON.stringify(loc)
+      saida.push(mudouAqui ? loc : it)
+    } else {
+      saida.push(it)                                       // intacto aqui: vale o remoto
+    }
   }
   for (const it of nx) {
     const k = String(it?.id)
@@ -727,7 +739,24 @@ export function AppProvider({ children }) {
             continue
           }
           if (rem?.data) {
-            rows.push({ id, data: tableName === 'ordens' ? mesclarOrdem(prevMap.get(id), item, rem.data) : mesclarPeca(item, rem.data) })
+            if (tableName === 'ordens') {
+              // A regra de estoque rodou sobre a foto LOCAL. A linha que vai
+              // ao banco é a MESCLA — pode trazer status aprovado por outro
+              // aparelho junto com um item que só este aparelho conhece.
+              // Reaplica a regra sobre (banco → mescla): o que faltar baixar
+              // sai aqui mesmo; o que já saiu tem chave igual e o banco ignora.
+              let mesclada = mesclarOrdem(prevMap.get(id), item, rem.data)
+              const custoDe = (produtoId) => r.current.estoque.find(p => String(p.id) === String(produtoId))?.precoCusto
+              const { osDepois, movimentos } = derivarMovimentosDaOS({ id: item.id, ...rem.data }, { id: item.id, ...mesclada }, custoDe)
+              if (movimentos.length > 0) {
+                movimentarEstoque(movimentos)
+                const { id: _id, ...semId } = osDepois
+                mesclada = semId
+              }
+              rows.push({ id, data: mesclada })
+            } else {
+              rows.push({ id, data: mesclarPeca(item, rem.data) })
+            }
           } else if (tableName === 'estoque') {
             // Peça NOVA no banco nasce com saldo zero, sempre: todo saldo
             // legítimo chega por movimento (saldo_inicial, entrada_compra).
@@ -1177,7 +1206,44 @@ export function AppProvider({ children }) {
 
   const setClientes     = makeSet('clientes',        'clientes',      _setClientes)
   const setVeiculos     = makeSet('veiculos',         'veiculos',      _setVeiculos)
-  const setOrdens       = makeSet('ordens',           'ordens',        _setOrdens)
+  // setOrdens NÃO é um makeSet comum: toda escrita de OS passa pela regra de
+  // estoque (utils/reserva.js) — peça em OS antes da aprovação fica reservada,
+  // OS aprovada baixa, cancelar/excluir/recusar devolve o que foi baixado. A
+  // regra compara a OS antes e depois, carimba as marcas nos itens e dispara
+  // os movimentos; não existe mais baixa/estorno escrito à mão em função
+  // nenhuma. A promessa devolvida é a da OS; a do estoque vai em `.estoque`.
+  const setOrdensBruto  = makeSet('ordens',           'ordens',        _setOrdens)
+  function setOrdens(valOrFn) {
+    const prev = r.current.ordens
+    const next0 = valOrFn instanceof Function ? valOrFn(prev) : valOrFn
+    const custoDe = (produtoId) => r.current.estoque.find(p => String(p.id) === String(produtoId))?.precoCusto
+    const { next: next1, movimentos } = aplicarRegraNasOrdens(prev, next0, custoDe)
+    // Deixa no histórico da OS o que a regra fez com as peças — o extrato do
+    // estoque tem o detalhe; aqui é o resumo, do lado de quem abre a OS.
+    let next = next1
+    if (movimentos.length > 0) {
+      const porOS = new Map()
+      for (const m of movimentos) {
+        const k = String(m.origem?.id)
+        const acc = porOS.get(k) || { baixas: 0, estornos: 0, motivo: m.motivo }
+        if (m.tipo === 'saida_os') acc.baixas++
+        else acc.estornos++
+        porOS.set(k, acc)
+      }
+      next = next1.map(o => {
+        const acc = porOS.get(String(o.id))
+        if (!acc) return o
+        const partes = []
+        if (acc.baixas) partes.push(`${acc.baixas} ${acc.baixas === 1 ? 'peça baixada' : 'peças baixadas'} do estoque`)
+        if (acc.estornos) partes.push(`${acc.estornos} ${acc.estornos === 1 ? 'peça devolvida' : 'peças devolvidas'} ao estoque`)
+        const texto = partes.join(' e ') + (acc.motivo ? ` — ${acc.motivo}` : '')
+        return { ...o, historico: [evento(texto), ...(o.historico || [])] }
+      })
+    }
+    const p = setOrdensBruto(next)
+    p.estoque = movimentos.length > 0 ? movimentarEstoque(movimentos) : Promise.resolve({ ok: true, vazio: true })
+    return p
+  }
   const setEstoque      = makeSet('estoque',          'estoque',       _setEstoque)
   const setFinanceiro   = makeSet('financeiro',       'financeiro',    _setFinanceiro)
   const setAgenda       = makeSet('agenda',           'agenda',        _setAgenda)
@@ -1529,7 +1595,6 @@ export function AppProvider({ children }) {
       // Preenchido quando a OS já nasce aprovada (veio de um orçamento fechado)
       aprovadoEm: dados.aprovadoEm ?? null,
       itens: dados.itens || [],
-      pecas: dados.pecas || [],
       fotos: dados.fotos || [],
       historico: [evento(dados.textoCriacao || 'OS criada')],
       pago: false,
@@ -1563,24 +1628,9 @@ export function AppProvider({ children }) {
       responsavelId: dados.responsavelId ?? null,
       responsavelNome: dados.responsavelNome || '',
     }
-    if (nova.pecas && nova.pecas.length > 0) {
-      // Cada linha vira um movimento próprio: a mesma peça em duas linhas do
-      // orçamento baixa duas vezes (o find antigo via só a primeira). E o id
-      // compara como texto — id numérico vs string não quebra mais a baixa.
-      movimentarEstoque(nova.pecas.map((p, i) => {
-        const prod = r.current.estoque.find(e => String(e.id) === String(p.estoqueId))
-        return {
-          pecaId: p.estoqueId,
-          qtd: -(parseBR(p.qtd) || 0),
-          tipo: 'saida_os',
-          origem: { tipo: 'os', id },
-          custoUnit: prod?.precoCusto,
-          // Id do item (único por aparelho) + orçamento de origem: duas OS que
-          // um dia recebam o mesmo número não colidem na chave.
-          chave: ['saida_os', id, 'conversao', p.itemId ?? i, dados.orcamentoId ?? ''],
-        }
-      }))
-    }
+    // O estoque é consequência do estado da OS (utils/reserva.js): OS nascida
+    // em 'Recepção' com peças RESERVA; nascida 'Aprovado' (orçamento já
+    // fechado) BAIXA. A regra roda dentro de setOrdens — nada a fazer aqui.
     setOrdens(prev => [nova, ...prev])
     return id
   }
@@ -1640,22 +1690,11 @@ export function AppProvider({ children }) {
       if (custo > 0) novo.custoUnitario = produto.precoCusto
     }
 
-    const resOS = await setOrdens(prev => prev.map(o => o.id === id ? { ...o, itens: [...(o.itens || []), novo] } : o))
-    // O item ficou na OS local de qualquer jeito (e na fila, se a OS não
-    // confirmou). A baixa acompanha o item: vai junto para a fila em vez de
-    // ser pulada — pular deixava o item cobrado sem saída no estoque, e um
-    // estorno futuro devolvia o que nunca saiu. O id determinístico
-    // (OS + item) garante que reenviar nunca baixa duas vezes.
-    const resEstoque = produto
-      ? await movimentarEstoque({
-          pecaId: item.produtoId,
-          qtd: -(Number(item.quantidade) || 1),
-          tipo: 'saida_os',
-          origem: { tipo: 'os', id },
-          custoUnit: produto.precoCusto,
-          chave: ['saida_os', id, novo.id],
-        })
-      : { ok: true }
+    // Reservar ou baixar é decisão da regra em setOrdens (depende do status
+    // da OS): antes da aprovação o item só reserva; OS aprovada baixa na hora.
+    const pOS = setOrdens(prev => prev.map(o => o.id === id ? { ...o, itens: [...(o.itens || []), novo] } : o))
+    const resOS = await pOS
+    const resEstoque = await pOS.estoque
     if (!resOS?.ok) {
       console.error('[adicionarItemOrdem] item nao confirmado na OS — ficou na fila junto com a baixa', resOS)
       return { ok: false, etapa: 'os' }
@@ -1667,76 +1706,37 @@ export function AppProvider({ children }) {
     return { ok: true }
   }
 
+  // Lança vários itens de uma vez (kit): UMA gravação da OS e UM registro no
+  // histórico, em vez de um por item. Mesmo congelamento de custo do caminho
+  // unitário; reservar ou baixar continua sendo decisão da regra em setOrdens.
+  function adicionarItensOrdem(id, itens) {
+    const novos = (itens || []).map(item => {
+      const novo = { ...item, id: gerarId() }
+      if (item.tipo === 'peca' && item.produtoId) {
+        const produto = r.current.estoque.find(p => String(p.id) === String(item.produtoId))
+        const custo = parseBR(produto?.precoCusto)
+        if (custo > 0) novo.custoUnitario = produto.precoCusto
+      }
+      return novo
+    })
+    if (novos.length === 0) return Promise.resolve({ ok: true })
+    return setOrdens(prev => prev.map(o => o.id === id ? { ...o, itens: [...(o.itens || []), ...novos] } : o))
+  }
+
   function removerItemOrdem(id, itemId) {
-    // O item é lido ANTES do updater — chamar movimentarEstoque de dentro do
-    // updater de setOrdens era um efeito colateral aninhado esperando acidente.
-    const o = r.current.ordens.find(x => x.id === id)
-    const item = (o?.itens || []).find(i => i.id === itemId)
+    // Se o item estava baixado, a regra em setOrdens devolve ao saldo; se só
+    // reservado, a reserva some com ele.
     setOrdens(prev => prev.map(x => x.id === id
       ? { ...x, itens: (x.itens || []).filter(i => i.id !== itemId) } : x))
-    if (item && item.tipo === 'peca' && item.produtoId) {
-      movimentarEstoque({
-        pecaId: item.produtoId,
-        qtd: Number(item.quantidade) || 1,
-        tipo: 'estorno_os',
-        motivo: 'Item removido da OS',
-        origem: { tipo: 'os', id },
-        chave: ['estorno_os', id, 'remover', itemId],
-      })
-    }
   }
 
   function editarItemOrdem(osId, itemId, dados) {
-    // Como no remover: lê o item antes, grava a OS, e o estoque anda por
-    // movimento — troca de peça devolve a antiga e baixa a nova; mudança de
-    // quantidade movimenta só a diferença.
-    const o = r.current.ordens.find(x => x.id === osId)
-    const antigo = (o?.itens || []).find(i => i.id === itemId)
+    // Quantidade ou peça trocada num item já baixado movimenta só a diferença;
+    // em item reservado não movimenta nada. Tudo derivado pela regra em setOrdens.
     setOrdens(prev => prev.map(x => x.id === osId
       ? { ...x, itens: (x.itens || []).map(i => i.id === itemId ? { ...i, ...dados } : i) } : x))
-    if (antigo && antigo.tipo === 'peca' && antigo.produtoId) {
-      const novoProdutoId = dados.produtoId ?? antigo.produtoId
-      const movs = []
-      if (String(antigo.produtoId) !== String(novoProdutoId)) {
-        movs.push({
-          pecaId: antigo.produtoId,
-          qtd: Number(antigo.quantidade) || 1,
-          tipo: 'estorno_os',
-          motivo: 'Peça trocada no item',
-          origem: { tipo: 'os', id: osId },
-        })
-        const prod = r.current.estoque.find(e => String(e.id) === String(novoProdutoId))
-        movs.push({
-          pecaId: novoProdutoId,
-          qtd: -(Number(dados.quantidade) || 1),
-          tipo: 'saida_os',
-          origem: { tipo: 'os', id: osId },
-          custoUnit: prod?.precoCusto,
-        })
-      } else {
-        const diff = (Number(dados.quantidade) || 1) - (Number(antigo.quantidade) || 1)
-        if (diff > 0) {
-          movs.push({
-            pecaId: antigo.produtoId,
-            qtd: -diff,
-            tipo: 'saida_os',
-            origem: { tipo: 'os', id: osId },
-          })
-        } else if (diff < 0) {
-          movs.push({
-            pecaId: antigo.produtoId,
-            qtd: -diff,
-            tipo: 'estorno_os',
-            motivo: 'Quantidade reduzida no item',
-            origem: { tipo: 'os', id: osId },
-          })
-        }
-      }
-      if (movs.length > 0) movimentarEstoque(movs)
-    }
   }
 
-  // Status a partir dos quais sair exige estorno do financeiro/caixa
   const STATUS_FINALIZADOS = ['Entregue', 'Concluída']
 
   function mudarStatusOrdem(id, novoStatus) {
@@ -1751,18 +1751,11 @@ export function AppProvider({ children }) {
     const voltandoParaAtivo = !STATUS_FINALIZADOS.includes(novoStatus) && novoStatus !== 'Cancelada'
     const precisaEstorno = saindoDeFinalizado && (voltandoParaAtivo || novoStatus === 'Cancelada')
 
-    // Estoque: cancelar devolve as peças ao saldo; reativar uma OS que já
-    // devolveu baixa de novo. A marca `estoqueEstornado` na própria OS impede
-    // devolver duas vezes (e vale também para o cancelamento feito no Pátio,
-    // que escreve o status por fora desta função).
-    const pecasDaOS = (o.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
-    const devolvePecas = novoStatus === 'Cancelada' && !o.estoqueEstornado && pecasDaOS.length > 0
-    const rebaixaPecas = o.estoqueEstornado && voltandoParaAtivo && pecasDaOS.length > 0
-
+    // Estoque: NÃO se decide aqui. A regra em setOrdens olha o status antes e
+    // depois e reserva/baixa/devolve por item (utils/reserva.js) — vale para o
+    // dropdown, para o Pátio e para qualquer outro caminho.
     const eventos = []
     if (precisaEstorno) eventos.push(evento('Estorno automático (saída de status finalizado)'))
-    if (devolvePecas) eventos.push(evento('Peças devolvidas ao estoque (OS cancelada)'))
-    if (rebaixaPecas) eventos.push(evento('Peças baixadas de novo do estoque (OS reativada)'))
     eventos.push(evento(`Status alterado para "${novoStatus}"`))
     const historico = [...eventos, ...(o.historico || [])]
 
@@ -1775,36 +1768,15 @@ export function AppProvider({ children }) {
       extra.pago = false
       extra.dataConclusao = ''
     }
-    // `estoqueCiclo` conta quantas vezes a OS já devolveu e rebaixou: entra na
-    // chave do id determinístico. Dois aparelhos cancelando a MESMA OS no
-    // mesmo ciclo geram o mesmo id e o banco devolve uma vez só; depois de
-    // reativar (ciclo + 1), um novo cancelamento devolve de novo, como deve.
-    const ciclo = o.estoqueCiclo || 0
-    if (devolvePecas) extra.estoqueEstornado = true
-    if (rebaixaPecas) { extra.estoqueEstornado = false; extra.estoqueCiclo = ciclo + 1 }
+    // Sair de "Entregue"/"Concluída" reativa as peças: limpa a marca de
+    // liberação (pecasLiberadas, ou estoqueEstornado do bloco 01), senão a
+    // regra continuaria tratando-as como liberadas.
+    if ((o.pecasLiberadas || o.estoqueEstornado) && !['Entregue', 'Concluída'].includes(novoStatus)) {
+      extra.pecasLiberadas = false
+      extra.estoqueEstornado = false
+    }
 
     setOrdens(prev => prev.map(x => x.id === id ? { ...x, status: novoStatus, historico, etapaEm: Date.now(), ...extra } : x))
-
-    if (devolvePecas) {
-      movimentarEstoque(pecasDaOS.map(p => ({
-        pecaId: p.produtoId,
-        qtd: Number(p.quantidade) || 1,
-        tipo: 'estorno_os',
-        motivo: 'OS cancelada',
-        origem: { tipo: 'os', id },
-        chave: ['estorno_os', id, 'cancelar', p.id, ciclo],
-      })))
-    }
-    if (rebaixaPecas) {
-      movimentarEstoque(pecasDaOS.map(p => ({
-        pecaId: p.produtoId,
-        qtd: -(Number(p.quantidade) || 1),
-        tipo: 'saida_os',
-        motivo: 'OS reativada',
-        origem: { tipo: 'os', id },
-        chave: ['saida_os', id, 'reativar', p.id, ciclo],
-      })))
-    }
 
     if (precisaEstorno) {
       setFinanceiro(fp => fp.filter(f => f.osId !== id))
@@ -1821,23 +1793,8 @@ export function AppProvider({ children }) {
   }
 
   function excluirOrdem(id) {
-    const o = r.current.ordens.find(x => x.id === id)
-    if (o) {
-      const pecas = (o.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
-      // OS cancelada já devolveu as peças (estoqueEstornado) — excluir depois
-      // do cancelamento não pode devolver de novo. E cada linha devolve a sua
-      // quantidade: a mesma peça em dois itens devolvia só a primeira.
-      if (pecas.length > 0 && !o.estoqueEstornado) {
-        movimentarEstoque(pecas.map(p => ({
-          pecaId: p.produtoId,
-          qtd: Number(p.quantidade) || 1,
-          tipo: 'estorno_os',
-          motivo: 'OS excluída',
-          origem: { tipo: 'os', id },
-          chave: ['estorno_os', id, 'excluir', p.id, o.estoqueCiclo || 0],
-        })))
-      }
-    }
+    // As peças que estavam baixadas voltam ao saldo pela regra em setOrdens
+    // (OS presente antes, ausente depois); as só reservadas somem sem movimento.
     setFinanceiro(fp => fp.filter(f => f.osId !== id))
     setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.osId !== id) } : t)
     setOrdens(prev => prev.filter(o => o.id !== id))
@@ -1851,25 +1808,10 @@ export function AppProvider({ children }) {
   function reabrirOrdem(osId) {
     const o = r.current.ordens.find(x => x.id === osId)
     if (!o) return
-    // OS que devolveu as peças (cancelada ou recusada) volta a usá-las ao
-    // reabrir: baixa de novo e limpa a marca.
-    const pecasDaOS = (o.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
-    const rebaixaPecas = o.estoqueEstornado && pecasDaOS.length > 0
-    const eventos = [evento('OS reaberta (estorno)')]
-    if (rebaixaPecas) eventos.push(evento('Peças baixadas de novo do estoque (OS reaberta)'))
-    const historico = [...eventos, ...(o.historico || [])]
-    const ciclo = o.estoqueCiclo || 0
-    setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Em Execução', pago: false, dataConclusao: '', historico, etapaEm: Date.now(), ...(rebaixaPecas ? { estoqueEstornado: false, estoqueCiclo: ciclo + 1 } : {}) } : x))
-    if (rebaixaPecas) {
-      movimentarEstoque(pecasDaOS.map(p => ({
-        pecaId: p.produtoId,
-        qtd: -(Number(p.quantidade) || 1),
-        tipo: 'saida_os',
-        motivo: 'OS reaberta',
-        origem: { tipo: 'os', id: osId },
-        chave: ['saida_os', osId, 'reativar', p.id, ciclo],
-      })))
-    }
+    // Reabrir põe a OS em execução: a regra em setOrdens baixa de novo o que
+    // tinha sido devolvido (recusa) e mantém o que já estava baixado.
+    const historico = [evento('OS reaberta (estorno)'), ...(o.historico || [])]
+    setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Em Execução', pago: false, dataConclusao: '', historico, etapaEm: Date.now(), ...((x.pecasLiberadas || x.estoqueEstornado) ? { pecasLiberadas: false, estoqueEstornado: false } : {}) } : x))
     setFinanceiro(fp => fp.filter(f => f.osId !== osId))
     setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.osId !== osId) } : t)
   }
@@ -2050,29 +1992,17 @@ export function AppProvider({ children }) {
     const texto = cobrar
       ? `Diagnóstico cobrado e veículo entregue (orçamento recusado)`
       : `Veículo entregue sem cobrança do diagnóstico (liberado por ${currentUser?.nome || 'usuário'})`
-    // As peças lançadas no diagnóstico não foram vendidas — voltam ao saldo.
-    // Antes elas ficavam baixadas para sempre: fora da prateleira no sistema,
-    // dentro dela na vida real. A marca impede devolver duas vezes.
-    const pecasDaOS = (o.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
-    const devolvePecas = pecasDaOS.length > 0 && !o.estoqueEstornado
+    // As peças desta OS não foram usadas: `pecasLiberadas` diz à regra em
+    // setOrdens que, apesar de "Entregue", nada fica baixado — o que estava
+    // baixado volta ao saldo, o que estava reservado é liberado.
     mudarOrdem(osId, {
       status: FLUXO.ENTREGUE,
       pago: !!cobrar,
       diagnosticoCobrado: !!cobrar,
       dataConclusao: o.dataConclusao || new Date().toLocaleDateString('pt-BR'),
       etapaEm: Date.now(),
-      ...(devolvePecas ? { estoqueEstornado: true } : {}),
+      pecasLiberadas: true,
     }, texto)
-    if (devolvePecas) {
-      movimentarEstoque(pecasDaOS.map(p => ({
-        pecaId: p.produtoId,
-        qtd: Number(p.quantidade) || 1,
-        tipo: 'estorno_os',
-        motivo: 'Orçamento recusado — peça de volta à prateleira',
-        origem: { tipo: 'os', id: osId },
-        chave: ['estorno_os', osId, 'recusa', p.id, o.estoqueCiclo || 0],
-      })))
-    }
     if (cobrar && parseBR(valorDiagnostico) > 0) {
       registrarVendaCaixa({
         osId,
@@ -2757,6 +2687,17 @@ export function AppProvider({ children }) {
 
   const estoqueAlerta = estoque.filter(i => Number(i.estoque) <= Number(i.minimo))
 
+  // Reservas: peças comprometidas em OS ainda não aprovadas (derivado das OS,
+  // nunca gravado — reserva não é movimento). Mapa String(pecaId) → quantidade.
+  // `disponivelDe` é o que dá para prometer: saldo físico menos o reservado.
+  const reservas = useMemo(() => reservasPorPeca(ordens), [ordens])
+  const reservadoDe = (pecaId) => reservas.get(String(pecaId)) || 0
+  const disponivelDe = (pecaId) => {
+    const p = estoque.find(e => String(e.id) === String(pecaId))
+    if (!p) return null
+    return (Number(p.estoque) || 0) - reservadoDe(pecaId)
+  }
+
   const getCliente = (id) => clientes.find(c => c.id === id)
   const getVeiculo = (id) => veiculos.find(v => v.id === id)
   const getFuncionario = (id) => funcionarios.find(f => f.id === id)
@@ -2769,7 +2710,7 @@ export function AppProvider({ children }) {
       clientes, setClientes,
       veiculos, setVeiculos,
       ordens, setOrdens, novaOrdem, pagarOrdem, reabrirOrdem, concluirOrdem, entregarOrdem, entregarSemCobrar,
-      atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
+      atualizarOrdem, adicionarItemOrdem, adicionarItensOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
       adicionarFotoOrdem, removerFotoOrdem, excluirOrdem, subtotalOrdem, totalOrdem,
       salvarDiagnostico, salvarVistoria, encontrarOSDaFicha,
       // Fluxo do pátio — o status é consequência destas ações
@@ -2778,7 +2719,7 @@ export function AppProvider({ children }) {
       aprovarOrcamento, recusarOrcamento, fecharRecusa,
       iniciarReparo, marcarAguardandoPeca, pecaChegou, concluirReparo,
       liberarConferencia, reprovarConferencia, criarOSGarantia,
-      estoque, setEstoque, movimentarEstoque,
+      estoque, setEstoque, movimentarEstoque, reservas, reservadoDe, disponivelDe,
       financeiro, setFinanceiro, adicionarLancamento,
       agenda, setAgenda,
       funcionarios, setFuncionarios,

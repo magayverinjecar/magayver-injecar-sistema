@@ -19,7 +19,7 @@ const PASSOS = ['Identificação', 'Itens', 'Pagamento', 'Confirmação', 'Concl
 
 export default function NovaVenda() {
   const navigate = useNavigate()
-  const { caixaTurno, caixaCarregado, registrarVendaCaixa, clientes, veiculosPorCliente, servicos, estoque, movimentarEstoque, ordens, orcamentos, getCliente, config } = useApp()
+  const { caixaTurno, caixaCarregado, registrarVendaCaixa, clientes, veiculosPorCliente, servicos, estoque, movimentarEstoque, reservadoDe, ordens, orcamentos, getCliente, config } = useApp()
 
   const [passo, setPasso] = useState(1)
   const [clienteId, setClienteId] = useState('')
@@ -301,12 +301,25 @@ export default function NovaVenda() {
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
               {buscaPeca && (
                 <div className="mt-1 border border-slate-200 rounded-lg max-h-40 overflow-y-auto">
-                  {pecasFiltradas.map(p => (
-                    <button key={p.id} onClick={() => addPeca(p)} className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-50 transition-colors">
-                      <span className="text-slate-700">{p.nome}</span>
-                      <span className="flex items-center gap-2 text-slate-500">{fmt(pNum(p.preco))} <Plus size={13} className="text-primary-500" /></span>
-                    </button>
-                  ))}
+                  {pecasFiltradas.map(p => {
+                    // Balcão enxerga o que dá para prometer: saldo menos o que
+                    // as OS ainda não aprovadas já reservaram. Não bloqueia —
+                    // avisa, para não vender a peça separada para um carro.
+                    const saldo = Number(p.estoque) || 0
+                    const reservadas = reservadoDe(p.id)
+                    const disponivel = saldo - reservadas
+                    return (
+                      <button key={p.id} onClick={() => addPeca(p)} className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-50 transition-colors">
+                        <span className="text-slate-700">
+                          {p.nome}
+                          <span className={`ml-2 text-xs ${disponivel > 0 ? 'text-slate-400' : 'text-red-500'}`}>
+                            {disponivel} disp.{reservadas > 0 ? ` · ${reservadas} reserv.` : ''}
+                          </span>
+                        </span>
+                        <span className="flex items-center gap-2 text-slate-500">{fmt(pNum(p.preco))} <Plus size={13} className="text-primary-500" /></span>
+                      </button>
+                    )
+                  })}
                   {pecasFiltradas.length === 0 && <p className="text-xs text-slate-400 px-3 py-2">Nenhuma peça.</p>}
                 </div>
               )}

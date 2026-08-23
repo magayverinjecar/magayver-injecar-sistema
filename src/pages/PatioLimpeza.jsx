@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, AlertTriangle, Car, User, Clock, DollarSign, Ban, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
+import { STATUS_RESERVA } from '../utils/reserva'
 
 const fmtBRL = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -39,7 +40,6 @@ export default function PatioLimpeza() {
     ordens, setOrdens, checklists, setChecklists,
     getCliente, getVeiculo, totalOrdem, entregarOrdem,
     financeiro, setFinanceiro, setCaixaTurno, caixaTurno,
-    movimentarEstoque,
   } = useApp()
 
   const [filtro, setFiltro] = useState('todos')
@@ -110,42 +110,29 @@ export default function PatioLimpeza() {
         setOrdens(prev => prev.map(o => {
           if (o.id !== os.id) return o
           const hist = [{ id: gerarId(), texto: 'Veículo entregue (valor zero)', data: agora }, ...(o.historico || [])]
-          return { ...o, status: 'Entregue', pago: true, dataConclusao: o.dataConclusao || hoje, historico: hist, etapaEm: Date.now() }
+          // OS que nunca foi aprovada e sai do pátio: as peças lançadas não
+          // foram usadas — `pecasLiberadas` diz à regra de estoque para não
+          // baixá-las (ficariam como "OS aprovada" sem ter sido).
+          const liberadas = STATUS_RESERVA.includes(o.status) ? { pecasLiberadas: true } : {}
+          return { ...o, status: 'Entregue', pago: true, dataConclusao: o.dataConclusao || hoje, historico: hist, etapaEm: Date.now(), ...liberadas }
         }))
       }
     } else if (acao === 'retirou_sem_pagar') {
       setOrdens(prev => prev.map(o => {
         if (o.id !== os.id) return o
         const hist = [{ id: gerarId(), texto: 'Veículo retirado sem pagar', data: agora }, ...(o.historico || [])]
-        return { ...o, status: 'Concluída', retirado: true, dataConclusao: o.dataConclusao || hoje, historico: hist }
+        const liberadas = STATUS_RESERVA.includes(o.status) ? { pecasLiberadas: true } : {}
+        return { ...o, status: 'Concluída', retirado: true, dataConclusao: o.dataConclusao || hoje, historico: hist, ...liberadas }
       }))
     } else if (acao === 'cancelar') {
-      // Cancelar também devolve as PEÇAS ao estoque (kardex) — antes só o
-      // financeiro era estornado e a peça ficava baixada para sempre. A marca
-      // `estoqueEstornado` na OS impede devolver duas vezes (aqui, no dropdown
-      // de status e na exclusão).
-      const pecasDaOS = (os.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
-      const devolvePecas = pecasDaOS.length > 0 && !os.estoqueEstornado && os.status !== 'Cancelada'
-      if (devolvePecas) {
-        // Mesma chave que o cancelamento pelo AppContext usa: dois aparelhos
-        // cancelando a mesma OS no mesmo ciclo geram o mesmo id de movimento
-        // e o banco devolve as peças uma vez só.
-        movimentarEstoque(pecasDaOS.map(p => ({
-          pecaId: p.produtoId,
-          qtd: Number(p.quantidade) || 1,
-          tipo: 'estorno_os',
-          motivo: 'OS cancelada',
-          origem: { tipo: 'os', id: os.id },
-          chave: ['estorno_os', os.id, 'cancelar', p.id, os.estoqueCiclo || 0],
-        })))
-      }
+      // As peças baixadas voltam ao saldo pela regra de estoque que vive em
+      // setOrdens (utils/reserva.js) — cancelar aqui é só escrever o status.
       setOrdens(prev => prev.map(o => {
         if (o.id !== os.id) return o
         const entries = []
         if (o.status === 'Concluída') entries.push({ id: gerarId(), texto: 'OS reaberta (estorno)', data: agora })
-        if (devolvePecas) entries.push({ id: gerarId(), texto: 'Peças devolvidas ao estoque (OS cancelada)', data: agora })
         entries.push({ id: gerarId(), texto: 'Status alterado para "Cancelada"', data: agora })
-        return { ...o, status: 'Cancelada', pago: false, ...(devolvePecas ? { estoqueEstornado: true } : {}), historico: [...entries, ...(o.historico || [])] }
+        return { ...o, status: 'Cancelada', pago: false, historico: [...entries, ...(o.historico || [])] }
       }))
       setFinanceiro(fp => fp.filter(f => f.osId !== os.id))
       setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.osId !== os.id) } : t)

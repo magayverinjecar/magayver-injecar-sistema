@@ -26,7 +26,7 @@ const fmt = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2,
 export default function Orcamentos() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, movimentarEstoque, getCliente, getVeiculo, novaOrdem } = useApp()
+  const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, movimentarEstoque, reservadoDe, getCliente, getVeiculo, novaOrdem } = useApp()
 
   const [aba, setAba] = useState('salvos')
   const [orcamentoEditandoId, setOrcamentoEditandoId] = useState(null)
@@ -354,10 +354,8 @@ export default function Orcamentos() {
       ...(i.custoUnitario ? { custoUnitario: i.custoUnitario } : {}),
     }))
 
-    // As peças precisam sair do estoque — novaOrdem só desconta o que vem em `pecas`
-    const pecasOS = itensOS
-      .filter(i => i.tipo === 'peca' && i.produtoId)
-      .map(i => ({ estoqueId: i.produtoId, qtd: i.quantidade, itemId: i.id }))
+    // Estoque: a OS nasce 'Recepção' (peças RESERVADAS) ou 'Aprovado' (peças
+    // BAIXADAS) — a regra em setOrdens decide pelo status; nada a montar aqui.
 
     const osId = novaOrdem({
       clienteId: orc.clienteId ? Number(orc.clienteId) : null,
@@ -369,7 +367,6 @@ export default function Orcamentos() {
         ? `OS criada do orçamento ${orc.numero} — cliente já havia aprovado`
         : `OS criada do orçamento ${orc.numero}`,
       itens: itensOS,
-      pecas: pecasOS,
       orcamentoId: orc.id,
       orcamentoNumero: orc.numero,
     })
@@ -570,6 +567,7 @@ export default function Orcamentos() {
                 <PainelAdicionarItem
                   servicos={servicos}
                   estoque={estoque}
+                  reservadoDe={reservadoDe}
                   mostrarReparador={false}
                   esconderLista={criarNovo}
                   selecaoExterna={selecaoPainel}

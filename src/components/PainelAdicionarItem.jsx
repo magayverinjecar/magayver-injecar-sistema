@@ -28,6 +28,10 @@ const COLS_SERV = 'sm:grid sm:grid-cols-[minmax(0,1fr)_9rem_5rem_6rem] sm:items-
 export default function PainelAdicionarItem({
   servicos = [],
   estoque = [],
+  // Quantas unidades da peça já estão RESERVADAS em OS antes da aprovação
+  // (pecaId → número). Disponível = saldo − reservadas. Quem não passa, não
+  // tem reserva (montagem de kit).
+  reservadoDe = () => 0,
   funcionarios = [],
   onAdd,
   onFechar,
@@ -121,16 +125,20 @@ export default function PainelAdicionarItem({
     setValorUnitario(item.preco)
   }
 
-  // Peça do estoque: quanto existe hoje. Serviço ou peça avulsa não tem limite.
+  // Peça do estoque: saldo físico, o que outras OS já reservaram, e o que
+  // sobra para prometer. Serviço ou peça avulsa não tem limite.
   const produtoSel = tipo === 'peca' && selId !== ''
     ? estoque.find(p => p.id === selId)
     : null
-  const disponivel = produtoSel ? Number(produtoSel.estoque) || 0 : null
+  const saldoFisico = produtoSel ? Number(produtoSel.estoque) || 0 : null
+  const reservadas = produtoSel ? reservadoDe(produtoSel.id) : 0
+  const disponivel = saldoFisico !== null ? saldoFisico - reservadas : null
   const qtdPedida = parseQtd(quantidade)
   const semEstoque = disponivel !== null && qtdPedida > disponivel
-  // Na montagem de kit a falta só INFORMA; na OS e no Orçamento ela BLOQUEIA,
-  // como sempre bloqueou.
-  const bloqueiaEstoque = semEstoque && !permitirSemEstoque
+  // Falta de peça AVISA, não bloqueia — decisão do bloco 02: antes da
+  // aprovação o item só reserva, e reservar mais do que tem é situação real
+  // (peça a comprar). Bloquear empurrava a equipe para o "Avulso", que some
+  // do estoque. Saldo negativo, se acontecer, aparece em vermelho no Estoque.
   const semValor = pNum(valorUnitario) <= 0
 
   // Custo só existe para peça AVULSA. Na peça do cadastro quem congela o custo
@@ -144,7 +152,7 @@ export default function PainelAdicionarItem({
   const margemPct = temMargem ? (lucroUn / vendaNum) * 100 : 0
 
   function adicionar() {
-    if (!descricao.trim() || bloqueiaEstoque) return
+    if (!descricao.trim()) return
     // Kit não tem preço para conferir — o preço só existe quando ele é aplicado.
     if (!esconderPrecos && semValor && !confirm('Este item está sem valor. Adicionar mesmo assim por R$ 0,00?')) return
     const item = {
@@ -168,7 +176,7 @@ export default function PainelAdicionarItem({
     refBusca.current?.focus()
   }
 
-  const podeAdicionar = !desabilitado && !!descricao.trim() && !bloqueiaEstoque
+  const podeAdicionar = !desabilitado && !!descricao.trim()
 
   // Quantas colunas a linha de números ocupa no desktop. Sem isto, esconder os
   // preços deixaria o botão "Adicionar" perdido no meio de colunas vazias.
@@ -261,7 +269,9 @@ export default function PainelAdicionarItem({
                 {lista.map(item => {
                   const sel = selId === item.id
                   const emEstoque = Number(item.estoque) || 0
-                  const corEstoque = emEstoque > 0 ? 'text-green-600' : 'text-red-500'
+                  const reservItem = reservadoDe(item.id)
+                  const dispItem = emEstoque - reservItem
+                  const corEstoque = dispItem > 0 ? 'text-green-600' : 'text-red-500'
                   return (
                     <button key={item.id} type="button" onClick={() => selecionar(item)}
                       className={`w-full text-left px-3 py-2 transition-colors ${tipo === 'peca' ? COLS_PECA : COLS_SERV} ${sel ? 'bg-primary-50 ring-1 ring-inset ring-primary-500' : 'hover:bg-slate-50'}`}>
@@ -276,7 +286,7 @@ export default function PainelAdicionarItem({
                         {tipo === 'peca' ? (
                           <>
                             {item.codigo && <span className="font-mono">{item.codigo}</span>}
-                            <span className={`font-medium ${corEstoque}`}>{emEstoque > 0 ? `${emEstoque} un.` : 'sem estoque'}</span>
+                            <span className={`font-medium ${corEstoque}`}>{emEstoque > 0 ? `${emEstoque} un.` : 'sem estoque'}{reservItem > 0 ? ` · ${reservItem} reserv.` : ''}</span>
                             {pNum(item.precoCusto) > 0 && <span className="tabular-nums">custo {fmt(pNum(item.precoCusto))}</span>}
                             <span className="tabular-nums font-semibold text-slate-700">venda {fmt(pNum(item.preco))}</span>
                           </>
@@ -293,8 +303,9 @@ export default function PainelAdicionarItem({
                       {tipo === 'peca' ? (
                         <>
                           <span className="hidden sm:block text-xs font-mono text-slate-500 truncate">{item.codigo || '—'}</span>
-                          <span className={`hidden sm:block text-right text-xs font-medium tabular-nums ${corEstoque}`}>
+                          <span className={`hidden sm:block text-right text-xs font-medium tabular-nums ${corEstoque}`} title={reservItem > 0 ? `${emEstoque} em saldo, ${reservItem} reservadas em OS ainda não aprovadas, ${dispItem} disponíveis` : undefined}>
                             {emEstoque > 0 ? `${emEstoque} un.` : '0 un.'}
+                            {reservItem > 0 && <span className="block text-[10px] font-normal text-amber-600">{reservItem} reserv.</span>}
                           </span>
                           <span className="hidden sm:block text-right text-xs text-slate-500 tabular-nums">
                             {pNum(item.precoCusto) > 0 ? fmt(pNum(item.precoCusto)) : '—'}
@@ -349,7 +360,7 @@ export default function PainelAdicionarItem({
             {disponivel !== null ? `Qtd. (${disponivel} disp.)` : 'Quantidade'}
           </label>
           <input id="painel-qtd-item" type="text" inputMode="decimal" value={quantidade} onChange={e => setQuantidade(e.target.value)}
-            className={`${INP} text-right tabular-nums ${bloqueiaEstoque ? 'border-red-300 bg-red-50' : ''}`} />
+            className={`${INP} text-right tabular-nums ${semEstoque ? 'border-amber-300 bg-amber-50' : ''}`} />
         </div>
         {pedeCusto && (
           <div>
@@ -403,11 +414,12 @@ export default function PainelAdicionarItem({
             </span>
           </div>
         ) : (
-          <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 rounded-lg">
             <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
             <span>
-              Estoque insuficiente: você pediu {qtdPedida} e existem {disponivel}.
-              Registre a entrada em Compras ou lance a peça como <strong>Avulso</strong>.
+              Você pediu <strong>{qtdPedida}</strong> e só há <strong>{disponivel}</strong> disponível
+              {reservadas > 0 ? <> ({saldoFisico} em saldo, {reservadas} já reservada{reservadas === 1 ? '' : 's'} em OS ainda não aprovadas)</> : null}.
+              O item entra mesmo assim — registre a compra da peça em <strong>Compras</strong> para o saldo fechar.
             </span>
           </div>
         )

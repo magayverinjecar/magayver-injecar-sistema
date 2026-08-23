@@ -104,7 +104,7 @@ function ExtratoPeca({ item, onClose }) {
 }
 
 export default function Estoque() {
-  const { estoque, setEstoque, movimentarEstoque, config } = useApp()
+  const { estoque, setEstoque, movimentarEstoque, reservadoDe, config } = useApp()
   // Kits ficam nesta tela, e não em Configurações: quem monta kit é quem mexe
   // em estoque — as peças e as referências estão aqui.
   const [aba, setAba] = useState('pecas')
@@ -305,6 +305,10 @@ export default function Estoque() {
             {filtrados.map(item => {
               const baixo = Number(item.estoque) <= Number(item.minimo)
               const negativo = Number(item.estoque) < 0
+              // Reservado: comprometido em OS ainda não aprovadas. Só aparece
+              // quando existe — a coluna continua sendo o saldo físico.
+              const reservado = reservadoDe(item.id)
+              const disponivel = (Number(item.estoque) || 0) - reservado
               return (
                 <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-5 py-3.5 text-sm font-mono text-slate-500">{item.codigo || '—'}</td>
@@ -323,6 +327,11 @@ export default function Estoque() {
                       <button onClick={() => abrirAjuste(item, 1)} title="Ajustar para cima (pede motivo)" className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm flex items-center justify-center">+</button>
                       <span className="text-xs text-slate-400">mín: {item.minimo}</span>
                     </div>
+                    {reservado > 0 && (
+                      <div className="text-[11px] text-amber-600 mt-0.5 pl-8" title="Reservadas em OS antes da aprovação · disponível para prometer">
+                        {reservado} reserv. · <span className={disponivel < 0 ? 'text-red-600 font-semibold' : ''}>{disponivel} disp.</span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-5 py-3.5 text-sm text-slate-700">{item.precoCusto ? `R$ ${item.precoCusto}` : '—'}</td>
                   <td className="px-5 py-3.5 text-sm text-slate-700">{item.preco ? `R$ ${item.preco}` : '—'}</td>

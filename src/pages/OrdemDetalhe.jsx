@@ -14,6 +14,7 @@ import MargemDaOS from '../components/MargemDaOS'
 import PainelAdicionarItem from '../components/PainelAdicionarItem'
 import SeletorKit from '../components/SeletorKit'
 import { avisoDeFalta, pecaSemEstoque } from '../utils/kits'
+import { ehPecaDeEstoque, itemBaixado, STATUS_RESERVA } from '../utils/reserva'
 import { maquinaPadrao, ehCartao } from '../utils/cartao'
 import {
   CATEGORIAS_FOTO, STATUS_INSP, normalizarInspecao,
@@ -68,9 +69,9 @@ export default function OrdemDetalhe() {
   const osId = decodeURIComponent(id)
   const navigate = useNavigate()
   const {
-    ordens, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque,
+    ordens, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque, reservadoDe,
     setClientes, setVeiculos,
-    atualizarOrdem, adicionarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
+    atualizarOrdem, adicionarItemOrdem, adicionarItensOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
     excluirOrdem, subtotalOrdem, totalOrdem, caixaTurno, caixaCarregado, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
     concluirOrdem, entregarOrdem, salvarDiagnostico, salvarVistoria,
     aprovarOrcamento, recusarOrcamento, fecharRecusa, concluirReparo, entregarSemCobrar,
@@ -318,21 +319,25 @@ export default function OrdemDetalhe() {
     mudarStatusOrdem(os.id, novoStatus)
   }
 
-  // Aumentar a quantidade de uma peça consome mais estoque — só o acréscimo precisa
-  // caber no que sobrou, já que a quantidade atual do item já foi baixada.
-  const erroEdicaoEstoque = (() => {
+  // Aumentar a quantidade de uma peça consome mais estoque. Só o ACRÉSCIMO
+  // precisa caber no disponível (saldo − reservado em outras OS) — a quantidade
+  // atual do item já está reservada ou baixada por esta OS. Falta AVISA, não
+  // bloqueia (bloco 02): o item entra e a compra da peça é o próximo passo.
+  const avisoEdicaoEstoque = (() => {
     if (!editandoItem || editandoItem.tipo !== 'peca' || !editandoItem.produtoId) return null
-    const produto = estoque.find(p => p.id === Number(editandoItem.produtoId))
+    const produto = estoque.find(p => String(p.id) === String(editandoItem.produtoId))
     if (!produto) return null
     const original = os.itens?.find(i => i.id === editandoItem.id)
     const acrescimo = parseQtd(editandoItem.quantidade) - parseQtd(original?.quantidade)
-    const disp = Number(produto.estoque) || 0
-    if (acrescimo > disp) return `Só há ${disp} unidade(s) em estoque para aumentar.`
+    if (acrescimo <= 0) return null
+    const saldo = Number(produto.estoque) || 0
+    const reservadas = reservadoDe(produto.id)
+    const disp = saldo - reservadas
+    if (acrescimo > disp) return `Você está aumentando ${acrescimo} e só há ${disp} disponível (${saldo} em saldo${reservadas > 0 ? `, ${reservadas} já reservadas em OS ainda não aprovadas` : ''}). Entra mesmo assim — registre a compra em Compras.`
     return null
   })()
 
   function salvarItemEditado() {
-    if (erroEdicaoEstoque) return
     editarItemOrdem(os.id, editandoItem.id, {
       descricao: editandoItem.descricao,
       quantidade: parseQtd(editandoItem.quantidade),
@@ -529,13 +534,13 @@ export default function OrdemDetalhe() {
   }
 
   // Kit lançado item por item, pelo MESMO caminho do painel de adicionar. É o
-  // que preserva o congelamento do custo da peça e a baixa do estoque — um
-  // atalho que gravasse os itens direto na OS perderia as duas coisas.
+  // que preserva o congelamento do custo da peça; reservar ou baixar é a regra
+  // em setOrdens que decide, pelo status da OS.
   function aplicarKit({ itens, faltando }) {
     // Só interrompe quando há o que avisar: peça faltando. Kit completo entra
     // em um clique, que é o motivo de ele existir.
     if (faltando.length && !confirm(avisoDeFalta(faltando))) return
-    itens.forEach(item => adicionarItemOrdem(os.id, item))
+    adicionarItensOrdem(os.id, itens)
   }
 
   return (
@@ -1066,6 +1071,7 @@ export default function OrdemDetalhe() {
               <PainelAdicionarItem
                 servicos={servicos}
                 estoque={estoque}
+                reservadoDe={reservadoDe}
                 funcionarios={funcionarios}
                 onFechar={() => setPainelItem(false)}
                 onAdd={item => adicionarItemOrdem(os.id, item)}
@@ -1095,6 +1101,12 @@ export default function OrdemDetalhe() {
                   // evita mandar o orçamento sem perceber que falta peça.
                   // Valor derivado: entrou a peça em Compras, o vermelho some.
                   const zerada = it.tipo === 'peca' && pecaSemEstoque(estoque, it.produtoId)
+                  // Estado da peça no estoque (bloco 02): antes da aprovação ela
+                  // está só reservada; depois, baixada. Derivado da marca no item.
+                  const estadoPeca = !ehPecaDeEstoque(it) ? null
+                    : itemBaixado(it, os) ? 'baixada'
+                    : STATUS_RESERVA.includes(os.status) ? 'reservada'
+                    : null  // OS encerrada sem usar a peça: nem reservada nem baixada
                   return (
                   <tr key={it.id} className={zerada ? 'bg-red-50' : ''}>
                     <td className="py-2.5">
@@ -1103,6 +1115,13 @@ export default function OrdemDetalhe() {
                       {zerada && (
                         <span className="ml-1 inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 font-medium">
                           <AlertTriangle size={11} />sem estoque
+                        </span>
+                      )}
+                      {estadoPeca && (
+                        <span
+                          title={estadoPeca === 'baixada' ? 'Já saiu do saldo do estoque' : 'Separada para esta OS; sai do saldo na aprovação'}
+                          className={`ml-1 text-[10px] px-1.5 py-0.5 rounded border ${estadoPeca === 'baixada' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                          {estadoPeca}
                         </span>
                       )}
                       {it.tipo === 'servico' && it.mecanicoId && (
@@ -1577,7 +1596,7 @@ export default function OrdemDetalhe() {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Quantidade</label>
                   <input type="text" inputMode="decimal" value={editandoItem.quantidade} onChange={e => setEditandoItem(i => ({ ...i, quantidade: e.target.value }))}
-                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${erroEdicaoEstoque ? 'border-red-300 bg-red-50' : 'border-slate-200'}`} />
+                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${avisoEdicaoEstoque ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Valor Unit.</label>
@@ -1600,9 +1619,9 @@ export default function OrdemDetalhe() {
                   </select>
                 </div>
               )}
-              {erroEdicaoEstoque && (
-                <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">
-                  <AlertTriangle size={14} className="flex-shrink-0" /> {erroEdicaoEstoque}
+              {avisoEdicaoEstoque && (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 rounded-lg">
+                  <AlertTriangle size={14} className="flex-shrink-0" /> {avisoEdicaoEstoque}
                 </div>
               )}
               <div className="flex gap-2 pt-1">
@@ -1610,8 +1629,8 @@ export default function OrdemDetalhe() {
                   className="flex-1 border border-slate-200 text-slate-700 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
                   Cancelar
                 </button>
-                <button type="button" onClick={salvarItemEditado} disabled={!!erroEdicaoEstoque}
-                  className="flex-1 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
+                <button type="button" onClick={salvarItemEditado}
+                  className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
                   Salvar
                 </button>
               </div>
