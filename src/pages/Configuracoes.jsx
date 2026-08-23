@@ -397,7 +397,7 @@ function Maquininhas() {
                     <Power size={16} />
                   </button>
                   <button onClick={() => remover(maq.id)} title="Excluir"
-                    className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 flex-shrink-0 transition-colors">
+                    className="p-2 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 flex-shrink-0 transition-colors">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -454,7 +454,7 @@ function Maquininhas() {
                           className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                         <span className="text-xs text-slate-400 flex-shrink-0">%</span>
                         <button onClick={() => delFaixa(maq.id, f.id)} aria-label="Remover faixa"
-                          className="p-1.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 flex-shrink-0 transition-colors">
+                          className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50 flex-shrink-0 transition-colors">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -611,15 +611,15 @@ function ChecklistConferencia() {
               className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             <div className="flex gap-0.5 flex-shrink-0">
               <button onClick={() => mover(idx, -1)} disabled={idx === 0} aria-label="Mover para cima"
-                className="p-1.5 rounded text-slate-300 hover:text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                className="p-1.5 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                 <ChevronUp size={15} />
               </button>
               <button onClick={() => mover(idx, 1)} disabled={idx === lista.length - 1} aria-label="Mover para baixo"
-                className="p-1.5 rounded text-slate-300 hover:text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                className="p-1.5 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                 <ChevronDown size={15} />
               </button>
               <button onClick={() => remover(item.id)} aria-label="Remover item"
-                className="p-1.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors">
                 <Trash2 size={15} />
               </button>
             </div>

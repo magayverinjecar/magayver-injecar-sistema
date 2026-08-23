@@ -698,9 +698,9 @@ export default function Orcamentos() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-slate-700">{fmt(subtotal)}</span>
-                        <button onClick={() => aplicarTaxaItemOrc(it.id)} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-300 hover:text-amber-500 text-xs font-bold transition-colors">%</button>
-                        <button onClick={() => abrirEdicaoItem(it)} className="p-1 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400 transition-colors"><Pencil size={14} /></button>
-                        <button onClick={() => removerItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
+                        <button onClick={() => aplicarTaxaItemOrc(it.id)} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-500 hover:text-amber-600 text-xs font-bold transition-colors">%</button>
+                        <button onClick={() => abrirEdicaoItem(it)} className="p-1 rounded hover:bg-blue-50 text-slate-500 hover:text-blue-600 transition-colors"><Pencil size={14} /></button>
+                        <button onClick={() => removerItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
                       </div>
                     </div>
                   )

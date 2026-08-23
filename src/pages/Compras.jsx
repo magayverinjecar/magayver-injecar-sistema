@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Eye, Trash2 } from 'lucide-react'
+import { Plus, Eye, Trash2, Upload } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 const statusColor = {
@@ -39,9 +39,18 @@ export default function Compras() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-800">Compras</h2>
-        <button onClick={nova} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-          <Plus size={16} />Nova Compra
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Importar vem ANTES de "Nova Compra": quando existe o XML, digitar
+              item por item e o boleto a mao e trabalho jogado fora — e e onde o
+              codigo e a quantidade sao errados. */}
+          <button onClick={() => navigate('/compras/importar')}
+            className="flex items-center gap-2 border border-primary-300 text-primary-700 hover:bg-primary-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <Upload size={16} />Importar XML
+          </button>
+          <button onClick={nova} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <Plus size={16} />Nova Compra
+          </button>
+        </div>
       </div>
 
       <select value={filtro} onChange={e => setFiltro(e.target.value)}
@@ -100,7 +109,7 @@ export default function Compras() {
                             ? `A compra ${c.numero} já foi recebida. Excluir vai RETIRAR do estoque o que entrou com ela e apagar os lançamentos financeiros dela. Confirmar exclusão?`
                             : `Excluir compra ${c.numero}?`
                           if (confirm(msg)) excluirCompra(c.id)
-                        }} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors" title="Excluir">
+                        }} className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors" title="Excluir">
                           <Trash2 size={16} />
                         </button>
                       </div>

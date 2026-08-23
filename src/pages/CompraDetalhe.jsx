@@ -173,7 +173,7 @@ export default function CompraDetalhe() {
         </div>
         <div className="flex items-center gap-2">
           <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusColor[compra.status]}`}>{compra.status}</span>
-          <button onClick={excluir} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors" title="Excluir compra">
+          <button onClick={excluir} className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors" title="Excluir compra">
             <Trash2 size={16} />
           </button>
         </div>
@@ -281,7 +281,7 @@ export default function CompraDetalhe() {
                       <button
                         type="button"
                         onClick={() => salvarDados('parcelas', (compra.parcelas || []).filter(x => x.id !== p.id))}
-                        className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors flex-shrink-0"
+                        className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors flex-shrink-0"
                       >
                         <X size={13} />
                       </button>
@@ -365,7 +365,7 @@ export default function CompraDetalhe() {
                     <td className="py-3 text-right text-sm font-semibold text-slate-700">{fmt(parseNum(it.valorUnitario) * parseNum(it.quantidade))}</td>
                     <td className="py-3 text-right">
                       {!recebida && (
-                        <button onClick={() => removerItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                        <button onClick={() => removerItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors">
                           <Trash2 size={14} />
                         </button>
                       )}

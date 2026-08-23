@@ -178,8 +178,11 @@ export default function MeusServicos() {
     )
   }
 
+  // `lg:max-w-none` no container: no celular a coluna estreita e o que cabe na
+  // mao, mas no computador prender a tela deixa metade do monitor vazia
+  // enquanto a tabela espreme. Mesma regra de Fotos e Vistoria.
   return (
-    <div className="p-4 md:p-6 max-w-xl mx-auto flex flex-col gap-4">
+    <div className="p-4 md:p-6 max-w-xl lg:max-w-none mx-auto flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Serviços</h2>
@@ -240,7 +243,7 @@ export default function MeusServicos() {
 
       {/* ── Em andamento na oficina ── */}
       {abaAtual === 'andamento' && (
-        <div className="space-y-2">
+        <div className="space-y-2 lg:hidden">
           {grupo.lista.map(os => {
             const semDono = os.responsavelId == null
             return (
@@ -288,7 +291,7 @@ export default function MeusServicos() {
 
       {/* ── Livres para pegar ── */}
       {abaAtual === 'livres' && (
-          <div className="space-y-2">
+          <div className="space-y-2 lg:hidden">
             {grupo.lista.map(os => {
               const paraDiagnostico = os.status === 'Recepção'
               return (
@@ -314,7 +317,7 @@ export default function MeusServicos() {
 
       {/* ── Comigo agora ── */}
       {abaAtual === 'comigo' && (
-          <div className="space-y-2">
+          <div className="space-y-2 lg:hidden">
             {grupo.lista.map(os => {
               const emDiagnostico = os.status === 'Em Diagnóstico'
               const emConferencia = os.status === 'Em Conferência'
@@ -381,7 +384,7 @@ export default function MeusServicos() {
 
       {/* ── Esperando peça ── */}
       {abaAtual === 'peca' && (
-          <div className="space-y-2">
+          <div className="space-y-2 lg:hidden">
             {grupo.lista.map(os => (
               <div key={os.id} onClick={() => abrir(os)}
                 className="bg-white border border-red-200 rounded-2xl p-4 cursor-pointer hover:shadow-sm transition-all">
@@ -407,7 +410,7 @@ export default function MeusServicos() {
       {/* ── Prontos e Entregues: mesma carta, só muda a lista da aba ── */}
       {(abaAtual === 'prontos' || abaAtual === 'entregues') && (
         <>
-          <div className="space-y-2">
+          <div className="space-y-2 lg:hidden">
             {(verTodosFinalizados ? grupo.lista : grupo.lista.slice(0, 10)).map(os => {
               const autor = quemFez(os)
               const fotosReparo = (os.fotos || []).filter(f => f.momento === 'reparo').length
@@ -435,11 +438,167 @@ export default function MeusServicos() {
           </div>
           {grupo.lista.length > 10 && (
             <button onClick={() => setVerTodosFinalizados(v => !v)}
-              className="w-full border border-slate-200 text-slate-600 text-sm font-medium py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+              className="w-full lg:hidden border border-slate-200 text-slate-600 text-sm font-medium py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
               {verTodosFinalizados ? 'Mostrar menos' : `Ver todos os ${grupo.lista.length}`}
             </button>
           )}
         </>
+      )}
+
+      {/* No computador as seis abas usam a MESMA tabela: o que muda de uma para
+          a outra e a coluna de acao, nao a informacao. Cartao continua no
+          celular, que e onde o reparador trabalha com o telefone na mao e
+          precisa de alvo grande. */}
+      {grupo.lista.length > 0 && (
+        <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Veículo</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cliente</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Queixa</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Há</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Situação</th>
+                <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {(abaAtual === 'prontos' || abaAtual === 'entregues'
+                ? (verTodosFinalizados ? grupo.lista : grupo.lista.slice(0, 10))
+                : grupo.lista
+              ).map(os => {
+                const semDono = os.responsavelId == null
+                const paraDiagnostico = os.status === 'Recepção'
+                const emDiagnostico = os.status === 'Em Diagnóstico'
+                const emConferencia = os.status === 'Em Conferência'
+                const fotosReparo = (os.fotos || []).filter(f => f.momento === 'reparo').length
+                const autor = quemFez(os)
+                const clicavel = abaAtual !== 'prontos' && abaAtual !== 'entregues'
+                return (
+                  <tr key={os.id}
+                    onClick={clicavel ? () => abrir(os) : undefined}
+                    className={`hover:bg-slate-50 transition-colors ${clicavel ? 'cursor-pointer' : ''}`}>
+                    <td className="px-5 py-3">
+                      <p className="text-sm font-medium text-slate-800">{os.modelo}</p>
+                      <p className="font-mono text-[11px] text-slate-500 mt-0.5">{os.placa || os.id}</p>
+                    </td>
+                    <td className="px-5 py-3 text-sm text-slate-600">{os.cliente}</td>
+                    <td className="px-5 py-3 text-sm text-slate-500 max-w-xs">
+                      <span className="block truncate" title={os.descricaoProblema || ''}>
+                        {os.descricaoProblema || <span className="text-slate-300">—</span>}
+                      </span>
+                      {os.motivoPeca && (
+                        <span className="inline-block text-[11px] text-red-700 bg-red-50 px-2 py-0.5 rounded mt-0.5">{os.motivoPeca}</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-sm text-slate-500 whitespace-nowrap">{os.tempo}</td>
+                    <td className="px-5 py-3">
+                      <span className={`inline-block text-[11px] px-2 py-0.5 rounded font-medium ${
+                        os.status === 'Entregue' ? 'bg-slate-100 text-slate-600'
+                          : os.status === 'Concluída' ? 'bg-green-100 text-green-700'
+                          : 'bg-blue-50 text-blue-700'
+                      }`}>{os.status}</span>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {(abaAtual === 'prontos' || abaAtual === 'entregues')
+                          ? (autor || <span className="text-slate-300">sem reparador</span>)
+                          : semDono
+                            ? <span className="text-slate-400">sem responsável</span>
+                            : os.responsavelNome}
+                      </p>
+                    </td>
+                    <td className="px-5 py-3 text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1.5">
+
+                        {abaAtual === 'livres' && (
+                          <button onClick={e => { e.stopPropagation(); agir(os.id,
+                              () => paraDiagnostico ? iniciarDiagnostico(os.id) : iniciarReparo(os.id),
+                              `${paraDiagnostico ? 'Iniciar o diagnóstico' : 'Iniciar o reparo'} de ${os.placa || os.modelo}?\n\nVai ficar registrado como ${meuNome}.`) }}
+                            disabled={ocupado === os.id}
+                            className="inline-flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors">
+                            {paraDiagnostico ? <><Stethoscope size={13} /> Vou diagnosticar</> : <><Play size={13} /> Iniciar reparo</>}
+                          </button>
+                        )}
+
+                        {abaAtual === 'andamento' && semDono && (
+                          <button onClick={e => { e.stopPropagation(); agir(os.id, () => assumirServico(os.id),
+                              `Assumir ${os.placa || os.modelo}?\n\nVai ficar registrado como ${meuNome}.`) }}
+                            disabled={ocupado === os.id}
+                            className="inline-flex items-center gap-1.5 border border-blue-200 text-blue-600 hover:bg-blue-50 disabled:opacity-50 text-xs font-semibold px-3 py-1.5 rounded transition-colors">
+                            <Play size={13} /> Assumir
+                          </button>
+                        )}
+
+                        {abaAtual === 'comigo' && (emConferencia ? (
+                          <button onClick={e => { e.stopPropagation(); navigate(`/conferencia/${encodeURIComponent(os.id)}`) }}
+                            className="inline-flex items-center gap-1.5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors">
+                            <ShieldCheck size={13} /> Conferir
+                          </button>
+                        ) : emDiagnostico ? (
+                          <button onClick={e => { e.stopPropagation(); abrir(os) }}
+                            className="inline-flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors">
+                            <ClipboardCheck size={13} /> Continuar
+                          </button>
+                        ) : (
+                          <>
+                            <button onClick={e => { e.stopPropagation(); agir(os.id, () => concluirReparo(os.id),
+                                `Concluir o reparo de ${os.placa || os.modelo}?\n\nO veículo vai para conferência.`) }}
+                              disabled={ocupado === os.id}
+                              className="inline-flex items-center gap-1.5 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors">
+                              <CheckCircle2 size={13} /> Reparo concluído
+                            </button>
+                            <button onClick={e => { e.stopPropagation()
+                                const peca = prompt('Qual peça está faltando?')
+                                if (peca === null) return
+                                agir(os.id, () => marcarAguardandoPeca(os.id, peca)) }}
+                              disabled={ocupado === os.id}
+                              className="inline-flex items-center gap-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 text-xs font-medium px-3 py-1.5 rounded transition-colors">
+                              <Package size={13} /> Peça
+                            </button>
+                          </>
+                        ))}
+
+                        {abaAtual === 'peca' && (
+                          <button onClick={e => { e.stopPropagation(); agir(os.id, () => pecaChegou(os.id),
+                              `A peça de ${os.placa || os.modelo} chegou?\n\nO veículo volta para o reparo.`) }}
+                            disabled={ocupado === os.id}
+                            className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors">
+                            <PackageCheck size={13} /> A peça chegou
+                          </button>
+                        )}
+
+                        {/* Fotografar nao e privilegio de quem esta com o carro:
+                            quem estiver na bancada precisa conseguir registrar. */}
+                        {podeFotografar && (abaAtual === 'andamento' || abaAtual === 'prontos' || abaAtual === 'entregues'
+                          || (abaAtual === 'comigo' && ['Em Execução', 'Em Conferência'].includes(os.status))) && (
+                          <button onClick={e => { e.stopPropagation(); irParaFotos(os) }}
+                            title="Fotos do reparo"
+                            className="inline-flex items-center gap-1 border border-orange-200 text-orange-700 hover:bg-orange-50 text-xs font-medium px-2.5 py-1.5 rounded transition-colors">
+                            <Camera size={13} />
+                            {fotosReparo > 0 && <span className="text-[10px] bg-orange-100 px-1 rounded-full">{fotosReparo}</span>}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <div className="flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+            <span>
+              {grupo.lista.length} {grupo.lista.length === 1 ? 'veículo' : 'veículos'} em "{grupo.label}"
+              {(abaAtual === 'prontos' || abaAtual === 'entregues') && grupo.lista.length > 10 && !verTodosFinalizados && (
+                <span className="ml-2 text-slate-500">· mostrando os 10 mais recentes</span>
+              )}
+            </span>
+            {(abaAtual === 'prontos' || abaAtual === 'entregues') && grupo.lista.length > 10 && (
+              <button onClick={() => setVerTodosFinalizados(v => !v)}
+                className="text-slate-600 hover:text-slate-900 underline">
+                {verTodosFinalizados ? 'Mostrar menos' : `Ver todos os ${grupo.lista.length}`}
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

@@ -202,7 +202,7 @@ export default function AbaKits() {
                         {fmt(unit * (Number(l.quantidade) || 1))}
                       </span>
                       <button type="button" onClick={() => removerLinha(l.id)} aria-label={`Remover ${l.descricao} do kit`}
-                        className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                        className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -263,9 +263,9 @@ export default function AbaKits() {
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button onClick={() => abrirKit(kit)} title="Editar kit"
-                      className="p-1.5 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400 transition-colors"><Pencil size={14} /></button>
+                      className="p-1.5 rounded hover:bg-blue-50 text-slate-500 hover:text-blue-600 transition-colors"><Pencil size={14} /></button>
                     <button onClick={() => excluirKit(kit)} title="Excluir kit"
-                      className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
+                      className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </div>
 

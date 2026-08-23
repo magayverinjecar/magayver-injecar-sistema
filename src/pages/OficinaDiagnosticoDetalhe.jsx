@@ -67,6 +67,20 @@ export default function OficinaDiagnosticoDetalhe() {
   const veiculo = getVeiculo(os.veiculoId)
   const luzes = os.luzesPainel || []
   const preenchidos = contarPreenchidos(diagItens)
+  // O que realmente vai ser gravado. `dadosDoDiagnostico` descarta linha sem
+  // descrição, então contar `listaPecas` cru mostrava "3 peça(s)" para três
+  // linhas em branco recém-criadas no "+" — número que some ao salvar.
+  const pecasPreenchidas = listaPecas.filter(p => String(p.descricao || '').trim())
+  // Só para o rodapé do computador: quantas unidades a lista de peças pede no
+  // total. A quantidade é texto livre ("1", "2", "1,5"), então a soma perdoa
+  // vírgula. Campo em branco vale 1 — é o padrão de quem digitou a peça e não
+  // mexeu na quantidade; contar zero faria "2 peças · 0 unidades".
+  const unidadesPecas = pecasPreenchidas.reduce((s, p) => {
+    const bruto = String(p.quantidade ?? '').trim()
+    if (!bruto) return s + 1
+    const n = Number(bruto.replace(',', '.'))
+    return s + (Number.isFinite(n) ? n : 1)
+  }, 0)
   // Depois de aprovado o carro já saiu da fase de diagnóstico: a tela vira
   // consulta, para o reparador reler o laudo enquanto executa o serviço.
   const naFaseDiagnostico = ['Recepção', 'Em Diagnóstico', 'Diagnóstico'].includes(os.status)
@@ -124,7 +138,7 @@ export default function OficinaDiagnosticoDetalhe() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-5">
+    <div className="p-4 md:p-6 max-w-3xl lg:max-w-none mx-auto space-y-5">
 
       <div className="flex items-center gap-3">
         <button onClick={voltar} aria-label="Voltar"
@@ -158,187 +172,247 @@ export default function OficinaDiagnosticoDetalhe() {
         </span>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-2xl p-5">
-        <h3 className="text-xs font-bold text-primary-600 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Car size={14} /> Dados do Veículo &amp; Contexto
-        </h3>
+      {/* No computador o laudo cabe em duas colunas: à esquerda o que o
+          reparador LÊ e depois ESCREVE sobre o carro (contexto → conclusão e
+          peças), à direita o que ele MEDE (parâmetros → scanner). A ordem no
+          código continua a do celular, e a posição de cada bloco no monitor é
+          fixada por col/row-start — sem isso a coluna esquerda ficaria com um
+          buraco no meio. */}
+      <div className="space-y-5 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 text-sm">
-          <div>
-            <span className="block text-slate-400 text-[10px] uppercase font-bold">Veículo/Modelo</span>
-            <span className="font-bold text-slate-800">{nomeVeiculo(veiculo, os)}</span>
-          </div>
-          <div>
-            <span className="block text-slate-400 text-[10px] uppercase font-bold">Placa</span>
-            <span className="font-bold text-slate-800 uppercase tracking-wider">{veiculo?.placa || os.veiculoPlaca || '—'}</span>
-          </div>
-          <div>
-            <span className="block text-slate-400 text-[10px] uppercase font-bold">Motor</span>
-            <span className="text-slate-600">{veiculo?.motor || '—'}</span>
-          </div>
-          <div>
-            <span className="block text-slate-400 text-[10px] uppercase font-bold flex items-center gap-1">
-              <Fuel size={10} /> Combustível
-            </span>
-            <span className="text-slate-600">{os.combustivel || veiculo?.combustivel || '—'}</span>
-          </div>
-          <div>
-            <span className="block text-slate-400 text-[10px] uppercase font-bold flex items-center gap-1">
-              <Gauge size={10} /> Km Entrada
-            </span>
-            <span className="text-slate-600">{os.kmEntrada || '—'}</span>
-          </div>
-          <div>
-            <span className="block text-slate-400 text-[10px] uppercase font-bold">Última Manutenção</span>
-            <span className="text-slate-600">{os.ultimaRevisao || '—'}</span>
-          </div>
-        </div>
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 lg:col-start-1 lg:row-start-1">
+          <h3 className="text-xs font-bold text-primary-600 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <Car size={14} /> Dados do Veículo &amp; Contexto
+          </h3>
 
-        {luzes.length > 0 && (
-          <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-3">
-            <span className="block text-red-600 text-[10px] font-bold mb-2 uppercase flex items-center gap-1">
-              <AlertTriangle size={11} /> Luzes de Alerta no Painel (Reportado):
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {luzes.map(luz => (
-                <span key={luz}
-                  className="px-2.5 py-1 bg-red-100 text-red-700 border border-red-200 rounded-full text-xs font-bold">
-                  {luz}
-                </span>
-              ))}
+          {/* Meia tela é estreita para quatro colunas: em três, modelo e placa
+              continuam legíveis sem quebrar no meio da palavra. */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-3 gap-4 mb-4 text-sm">
+            <div>
+              <span className="block text-slate-400 text-[10px] uppercase font-bold">Veículo/Modelo</span>
+              <span className="font-bold text-slate-800">{nomeVeiculo(veiculo, os)}</span>
+            </div>
+            <div>
+              <span className="block text-slate-400 text-[10px] uppercase font-bold">Placa</span>
+              <span className="font-bold text-slate-800 uppercase tracking-wider">{veiculo?.placa || os.veiculoPlaca || '—'}</span>
+            </div>
+            <div>
+              <span className="block text-slate-400 text-[10px] uppercase font-bold">Motor</span>
+              <span className="text-slate-600">{veiculo?.motor || '—'}</span>
+            </div>
+            <div>
+              <span className="block text-slate-400 text-[10px] uppercase font-bold flex items-center gap-1">
+                <Fuel size={10} /> Combustível
+              </span>
+              <span className="text-slate-600">{os.combustivel || veiculo?.combustivel || '—'}</span>
+            </div>
+            <div>
+              <span className="block text-slate-400 text-[10px] uppercase font-bold flex items-center gap-1">
+                <Gauge size={10} /> Km Entrada
+              </span>
+              <span className="text-slate-600">{os.kmEntrada || '—'}</span>
+            </div>
+            <div>
+              <span className="block text-slate-400 text-[10px] uppercase font-bold">Última Manutenção</span>
+              <span className="text-slate-600">{os.ultimaRevisao || '—'}</span>
             </div>
           </div>
-        )}
 
-        <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
-          <span className="block text-amber-600 text-[10px] font-bold mb-1 uppercase flex items-center gap-1">
-            <MessageSquare size={10} /> Relato do Cliente:
-          </span>
-          <p className="text-slate-600 italic text-sm leading-relaxed">
-            "{os.relatoCliente || os.descricaoProblema || 'Sem relato registrado.'}"
-          </p>
-        </div>
-
-        {os.fotos?.length > 0 && (
-          <button onClick={() => navigate(`/oficina/vistoria/${encodeURIComponent(os.id)}`)}
-            className="mt-3 w-full flex items-center justify-center gap-2 border border-cyan-200 text-cyan-700 py-2 rounded-xl text-sm font-medium hover:bg-cyan-50 transition-colors">
-            <Camera size={15} /> Ver as {os.fotos.length} foto(s) da entrada
-          </button>
-        )}
-      </div>
-
-      <div>
-        <h3 className="text-xl font-bold text-slate-800 mb-0.5">Checklist Técnico</h3>
-        <p className="text-sm text-slate-400">
-          Preencha os parâmetros técnicos (Mecânico/Técnico)
-          <span className={preenchidos > 0 ? 'text-green-600 font-medium' : ''}>
-            {' '}· {preenchidos} de {DIAGNOSTICO_ITENS.length} preenchido(s)
-          </span>
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {diagItens.map(item => (
-          <div key={item.id}
-            className="bg-white border border-slate-200 hover:border-primary-300 rounded-xl p-3 transition-colors group">
-            <label className="block text-xs font-bold text-slate-400 uppercase group-hover:text-primary-500 transition-colors mb-1.5">
-              {item.label}{item.unidade ? ` (${item.unidade})` : ''}
-            </label>
-            <input
-              type="text"
-              value={item.value || ''}
-              onChange={e => setValorItem(item.id, e.target.value.toUpperCase())}
-              placeholder="Digite o valor/obs..."
-              className="w-full border-b border-slate-200 px-1 py-1 text-sm text-slate-800 focus:outline-none focus:border-primary-400 uppercase transition-colors bg-transparent"
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-2xl p-5">
-        <label className="block text-sm font-bold text-slate-600 uppercase mb-2">
-          Falhas do Scanner
-        </label>
-        <textarea
-          rows={4}
-          value={scanner}
-          onChange={e => setFalhasScanner(e.target.value)}
-          placeholder="Códigos de falha (DTC) ou leituras do scanner..."
-          className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none"
-        />
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
-        <div>
-          <label className="block text-sm font-bold text-slate-600 uppercase mb-1">
-            Conclusão do Diagnóstico
-          </label>
-          <p className="text-xs text-slate-400 mb-2">
-            O que o veículo tem e o que precisa ser feito. É a partir daqui que o orçamento é montado.
-          </p>
-          <textarea rows={4} value={parecer}
-            onChange={e => setConclusao(e.target.value)}
-            placeholder="Ex.: Bomba de combustível com pressão baixa. Necessário substituir a bomba e o filtro..."
-            className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none" />
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="block text-sm font-bold text-slate-600 uppercase">
-              Peças Necessárias
-            </label>
-            {listaPecas.length > 0 && (
-              <span className="text-xs text-slate-400">{listaPecas.length} peça(s)</span>
-            )}
-          </div>
-
-          {listaPecas.length > 0 && (
-            <div className="space-y-2 mb-2">
-              {listaPecas.map(p => (
-                <div key={p.id} className="flex items-center gap-2">
-                  <input value={p.descricao} autoFocus={!p.descricao}
-                    onChange={e => editarPeca(p.id, 'descricao', e.target.value.toUpperCase())}
-                    placeholder="Nome da peça..."
-                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-primary-300" />
-                  <input value={p.quantidade} inputMode="decimal"
-                    onChange={e => editarPeca(p.id, 'quantidade', e.target.value)}
-                    aria-label="Quantidade"
-                    className="w-16 border border-slate-200 rounded-lg px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary-300" />
-                  <button onClick={() => removerPeca(p.id)} aria-label="Remover peça"
-                    className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              ))}
+          {luzes.length > 0 && (
+            <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-3">
+              <span className="block text-red-600 text-[10px] font-bold mb-2 uppercase flex items-center gap-1">
+                <AlertTriangle size={11} /> Luzes de Alerta no Painel (Reportado):
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {luzes.map(luz => (
+                  <span key={luz}
+                    className="px-2.5 py-1 bg-red-100 text-red-700 border border-red-200 rounded-full text-xs font-bold">
+                    {luz}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
-          <button onClick={addPeca}
-            className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 text-slate-500 py-2.5 rounded-lg text-sm font-medium hover:border-primary-300 hover:text-primary-600 transition-colors">
-            <Plus size={15} /> Adicionar peça
-          </button>
-          <p className="text-xs text-slate-400 mt-2">
-            Só a lista do que o serviço precisa — quem coloca preço é o administrativo.
-          </p>
+          <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+            <span className="block text-amber-600 text-[10px] font-bold mb-1 uppercase flex items-center gap-1">
+              <MessageSquare size={10} /> Relato do Cliente:
+            </span>
+            <p className="text-slate-600 italic text-sm leading-relaxed">
+              "{os.relatoCliente || os.descricaoProblema || 'Sem relato registrado.'}"
+            </p>
+          </div>
+
+          {os.fotos?.length > 0 && (
+            <button onClick={() => navigate(`/oficina/vistoria/${encodeURIComponent(os.id)}`)}
+              className="mt-3 w-full flex items-center justify-center gap-2 border border-cyan-200 text-cyan-700 py-2 rounded-xl text-sm font-medium hover:bg-cyan-50 transition-colors">
+              <Camera size={15} /> Ver as {os.fotos.length} foto(s) da entrada
+            </button>
+          )}
         </div>
+
+        {/* Título e os doze parâmetros viram uma peça só para poderem ocupar a
+            coluna da direita inteira. No celular nada muda: continuam dois
+            blocos empilhados com o mesmo respiro. */}
+        <div className="space-y-5 lg:space-y-2 lg:col-start-2 lg:row-start-1">
+          <div>
+            <h3 className="text-xl lg:text-sm font-bold lg:font-semibold text-slate-800 mb-0.5">Checklist Técnico</h3>
+            {/* No monitor a contagem vive no rodapé do bloco, junto do resto dos
+                números; aqui em cima ela só empurraria os campos para baixo. */}
+            <p className="text-sm text-slate-400 lg:hidden">
+              Preencha os parâmetros técnicos (Mecânico/Técnico)
+              <span className={preenchidos > 0 ? 'text-green-600 font-medium' : ''}>
+                {' '}· {preenchidos} de {DIAGNOSTICO_ITENS.length} preenchido(s)
+              </span>
+            </p>
+          </div>
+
+          <div>
+            {/* Três por linha só no monitor largo (1280+): aí os doze
+                parâmetros cabem em quatro fileiras e a coluna da direita deixa
+                de ser um rolo. Entre 1024 e 1280 a caixa fica estreita demais e
+                "PORCENTAGEM" vaza para fora dela, então lá ficam dois por
+                linha. No celular segue um, que é o alvo que o dedo alcança. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-2">
+              {diagItens.map(item => (
+                <div key={item.id}
+                  className="bg-white border border-slate-200 hover:border-primary-300 rounded-xl p-3 lg:p-2 transition-colors group">
+                  <label className="block text-xs font-bold text-slate-400 uppercase group-hover:text-primary-500 transition-colors mb-1.5 lg:mb-0.5 lg:leading-tight">
+                    {item.label}{item.unidade ? ` (${item.unidade})` : ''}
+                  </label>
+                  <input
+                    type="text"
+                    value={item.value || ''}
+                    onChange={e => setValorItem(item.id, e.target.value.toUpperCase())}
+                    placeholder="Digite o valor/obs..."
+                    className="w-full border-b border-slate-200 px-1 py-1 text-sm text-slate-800 focus:outline-none focus:border-primary-400 uppercase transition-colors bg-transparent"
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Rodapé de sistema do checklist: quantos parâmetros existem e
+                quantos já têm valor — a mesma leitura que o Estoque dá da
+                prateleira. */}
+            <div className="hidden lg:flex items-center justify-between gap-4 mt-2 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+              <span>{DIAGNOSTICO_ITENS.length} parâmetros do diagnóstico</span>
+              <span className="tabular-nums">
+                Preenchidos: <strong className={`font-medium ${preenchidos > 0 ? 'text-green-700' : ''}`}>{preenchidos}</strong> de {DIAGNOSTICO_ITENS.length}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 lg:col-start-2 lg:row-start-2">
+          <label className="block text-sm font-bold text-slate-600 uppercase mb-2">
+            Falhas do Scanner
+          </label>
+          <textarea
+            rows={4}
+            value={scanner}
+            onChange={e => setFalhasScanner(e.target.value)}
+            placeholder="Códigos de falha (DTC) ou leituras do scanner..."
+            className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none"
+          />
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 lg:col-start-1 lg:row-start-2">
+          <div>
+            <label className="block text-sm font-bold text-slate-600 uppercase mb-1">
+              Conclusão do Diagnóstico
+            </label>
+            {/* Lembrete de para que serve o campo: vale no celular, onde o
+                reparador só vê um bloco por vez. No monitor, com o contexto do
+                carro ao lado, vira linha a mais para pular. */}
+            <p className="text-xs text-slate-400 mb-2 lg:hidden">
+              O que o veículo tem e o que precisa ser feito. É a partir daqui que o orçamento é montado.
+            </p>
+            <textarea rows={4} value={parecer}
+              onChange={e => setConclusao(e.target.value)}
+              placeholder="Ex.: Bomba de combustível com pressão baixa. Necessário substituir a bomba e o filtro..."
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none" />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-bold text-slate-600 uppercase">
+                Peças Necessárias
+              </label>
+              {pecasPreenchidas.length > 0 && (
+                <span className="text-xs text-slate-400 lg:hidden">{pecasPreenchidas.length} peça(s)</span>
+              )}
+            </div>
+
+            {listaPecas.length > 0 && (
+              <div className="space-y-2 mb-2">
+                {listaPecas.map(p => (
+                  <div key={p.id} className="flex items-center gap-2">
+                    <input value={p.descricao} autoFocus={!p.descricao}
+                      onChange={e => editarPeca(p.id, 'descricao', e.target.value.toUpperCase())}
+                      placeholder="Nome da peça..."
+                      className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-primary-300" />
+                    <input value={p.quantidade} inputMode="decimal"
+                      onChange={e => editarPeca(p.id, 'quantidade', e.target.value)}
+                      aria-label="Quantidade"
+                      className="w-16 border border-slate-200 rounded-lg px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary-300" />
+                    <button onClick={() => removerPeca(p.id)} aria-label="Remover peça"
+                      className="p-2 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button onClick={addPeca}
+              className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 text-slate-500 py-2.5 rounded-lg text-sm font-medium hover:border-primary-300 hover:text-primary-600 transition-colors">
+              <Plus size={15} /> Adicionar peça
+            </button>
+            <p className="text-xs text-slate-400 mt-2 lg:hidden">
+              Só a lista do que o serviço precisa — quem coloca preço é o administrativo.
+            </p>
+
+            {/* Rodapé da lista de peças, no formato do Estoque: quantas linhas à
+                esquerda, quantas unidades à direita. É o número que o
+                administrativo vai comprar. */}
+            {listaPecas.length > 0 && (
+              <div className="hidden lg:flex items-center justify-between gap-4 mt-2 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+                <span>{listaPecas.length} {listaPecas.length === 1 ? 'peça pedida' : 'peças pedidas'}</span>
+                <span className="tabular-nums">
+                  Unidades: <strong className="font-medium">{unidadesPecas.toLocaleString('pt-BR')}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 pt-1 pb-6 items-stretch sm:items-center">
+      {/* Computador: a fileira de botões vira barra de rodapé — à esquerda o
+          estado do laudo (o que já tem, o que falta), à direita o que dá para
+          fazer com ele. Mesma barra da Nova Entrada. */}
+      <div className="flex flex-col sm:flex-row gap-3 pt-1 pb-6 items-stretch sm:items-center lg:gap-2 lg:px-3 lg:pt-1.5 lg:pb-1.5 lg:bg-slate-100 lg:border lg:border-slate-300 lg:rounded">
+        <span className="hidden lg:flex items-center gap-2 flex-1 text-[11px] text-slate-600 tabular-nums">
+          <span><strong className="font-medium">{preenchidos}</strong> de {DIAGNOSTICO_ITENS.length} parâmetros</span>
+          {listaPecas.length > 0 && <span>· {listaPecas.length} peça(s)</span>}
+          {!parecer.trim() && <span className="text-amber-700">· conclusão em branco</span>}
+          {pendente && <span className="text-amber-700 font-medium">· alterações não salvas</span>}
+        </span>
         <button onClick={salvarProgresso} disabled={salvando || !pendente}
-          className="flex items-center justify-center gap-2 border border-amber-300 text-amber-600 bg-amber-50 hover:bg-amber-100 px-5 py-3 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          className="flex items-center justify-center gap-2 border border-amber-300 text-amber-600 bg-amber-50 hover:bg-amber-100 px-5 py-3 lg:px-4 lg:py-1.5 rounded-xl text-sm lg:text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
           <Save size={16} /> {salvo ? 'Salvo!' : salvando ? 'Salvando...' : 'Salvar Diagnóstico'}
         </button>
 
         {naFaseDiagnostico && (
           <button onClick={concluir} disabled={salvando}
-            className="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white px-5 py-3 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
+            className="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white px-5 py-3 lg:px-4 lg:py-1.5 rounded-xl text-sm lg:text-xs font-semibold transition-colors disabled:opacity-50">
             <CheckCircle2 size={16} /> Finalizar Diagnóstico
           </button>
         )}
 
         {podeVerOS && (
           <button onClick={() => navigate(`/ordens-servico/${encodeURIComponent(os.id)}`)}
-            className="flex items-center justify-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-5 py-3 rounded-xl text-sm font-semibold transition-colors sm:ml-auto">
+            className="flex items-center justify-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-5 py-3 lg:px-4 lg:py-1.5 rounded-xl text-sm lg:text-xs font-semibold transition-colors sm:ml-auto">
             <FileText size={16} /> Ver OS
           </button>
         )}

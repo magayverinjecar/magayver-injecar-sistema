@@ -2312,6 +2312,20 @@ export function AppProvider({ children }) {
           preco: i.novoItemDados.precoVenda || '0',
           minimo: Number(i.novoItemDados.minimo) || 0,
           estoque: 0,
+          // O que veio do XML da nota: NCM, CEST, origem, codigo de barras e
+          // unidade. Antes eram descartados aqui — a peca nascia sem nada
+          // fiscal, e alguem teria de digitar NCM a mao depois, que e
+          // exatamente o que ninguem faz. Copiados um a um, e nao por espalhar
+          // o objeto inteiro, para o cadastro nao herdar campo de controle da
+          // importacao.
+          ean: i.novoItemDados.ean || '',
+          ncm: i.novoItemDados.ncm || '',
+          cest: i.novoItemDados.cest || '',
+          origem: i.novoItemDados.origem || '0',
+          unidade: i.novoItemDados.unidade || 'UN',
+          codigoFabricante: i.novoItemDados.codigoFabricante || '',
+          fornecedorId: compra.fornecedorId || '',
+          ativo: true,
         })),
       ])
       movimentarEstoque(novasEntradas.map(i => ({

@@ -25,11 +25,38 @@ export function momentoEntrada(os) {
 // marca + modelo. Mostrar só `modelo` perdia a marca e virava "TESTE".
 // A OS também guarda `veiculoModelo` com o texto original — quando existe, ele
 // tem prioridade por ser exatamente o que foi digitado.
+// "GOL GOL" — a mesma palavra duas vezes, e nada mais. Sai de cadastro antigo,
+// quando uma palavra so digitada virava marca E modelo e os dois eram juntados
+// antes de gravar na OS. Colapsa so o caso exato (a string INTEIRA e a palavra
+// repetida): "GOL GOL G5" continua intacto, porque ali o "G5" e informacao.
+function semRepeticao(texto) {
+  const t = String(texto || '').trim()
+  const m = t.match(/^(\S+)\s+(\S+)$/)
+  return m && m[1].toUpperCase() === m[2].toUpperCase() ? m[1] : t
+}
+
 export function nomeVeiculo(veiculo, os) {
-  if (os?.veiculoModelo) return os.veiculoModelo
+  if (os?.veiculoModelo) return semRepeticao(os.veiculoModelo)
   if (!veiculo) return os?.veiculoInfo || '—'
-  const composto = [veiculo.marca, veiculo.modelo].filter(Boolean).join(' ').trim()
-  return composto || veiculo.modelo || '—'
+
+  const marca = String(veiculo.marca || '').trim()
+  const modelo = String(veiculo.modelo || '').trim()
+  if (!marca) return modelo || os?.veiculoInfo || '—'
+  if (!modelo) return marca
+
+  // "GOL GOL" na tela vinha daqui. A recepção digita o carro num campo só e o
+  // cadastro quebra em marca + modelo pela primeira palavra: com uma palavra
+  // só ("GOL"), a marca fica "GOL" e o modelo cai no mesmo valor por causa do
+  // `|| veiculo.modelo` do salvamento. Juntar os dois repetia a palavra.
+  //
+  // A mesma guarda cobre o caso em que a marca já vem escrita dentro do modelo
+  // ("VOLKSWAGEN" + "VOLKSWAGEN GOL"), que é o que acontece quando o cadastro
+  // é editado à mão depois.
+  const M = marca.toUpperCase()
+  const MO = modelo.toUpperCase()
+  if (M === MO || MO.startsWith(M + ' ')) return modelo
+
+  return marca + ' ' + modelo
 }
 
 // Data de entrada legível, corrigindo as migradas que ficaram com a data errada.

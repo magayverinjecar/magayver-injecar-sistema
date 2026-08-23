@@ -183,8 +183,11 @@ export default function OficinaDiagnostico() {
     )
   }
 
+  // `lg:max-w-none` no container: no celular a coluna estreita e o que cabe na
+  // mao, mas no computador prender a tela deixa metade do monitor vazia
+  // enquanto a tabela espreme. Mesma regra de Fotos e Vistoria.
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-3xl mx-auto">
+    <div className="p-4 md:p-6 space-y-5 max-w-3xl lg:max-w-none mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Realizar Diagnóstico</h2>
@@ -249,9 +252,96 @@ export default function OficinaDiagnostico() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <>
+        {/* Cartao e do celular: o reparador usa o sistema com o telefone na mao,
+            e ali o alvo grande do botao vale mais que a densidade. */}
+        <div className="space-y-3 lg:hidden">
           {listaAtual.map(os => <Card key={os.id} os={os} tipo={filtro} />)}
         </div>
+
+        {/* No computador vira tabela, como o resto do sistema. Cabe cinco vezes
+            mais carro na tela, e o que se procura aqui e comparar a fila: quem
+            esta esperando ha mais tempo, quem ja tem tecnico. */}
+        <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Veículo</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cliente</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Queixa</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Parado há</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Reparador</th>
+                <th className="px-5 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {listaAtual.map(os => {
+                const naFila = filtro === 'fila'
+                const pronto = filtro === 'finalizados'
+                return (
+                  <tr key={os.id} onClick={() => abrir(os)}
+                    className="hover:bg-slate-50 transition-colors cursor-pointer">
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-800">{os.modelo}</span>
+                        {os.meu && <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">seu</span>}
+                      </div>
+                      <p className="font-mono text-[11px] text-slate-500 mt-0.5">{os.placa || '—'} · {os.id}</p>
+                    </td>
+                    <td className="px-5 py-3 text-sm text-slate-600">{os.cliente}</td>
+                    <td className="px-5 py-3 text-sm text-slate-500 max-w-xs">
+                      <span className="block truncate" title={os.descricaoProblema || ''}>
+                        {os.descricaoProblema || <span className="text-slate-300">—</span>}
+                      </span>
+                      {os.luzesPainel?.length > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 mt-0.5">
+                          <AlertTriangle size={10} /> {os.luzesPainel.length} luz(es)
+                        </span>
+                      )}
+                    </td>
+                    {/* Vermelho a partir de 24h: carro parado nao pode sumir na
+                        lista so porque a lista ficou densa. */}
+                    <td className={`px-5 py-3 text-sm whitespace-nowrap ${!pronto && os.urgente ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
+                      {pronto ? (os.diagnosticadoEm || os.espera) : os.espera}
+                    </td>
+                    <td className="px-5 py-3 text-sm">
+                      {os.tecnicoNome || os.responsavelNome
+                        ? <span className={pronto ? 'text-green-700' : 'text-blue-600'}>{os.tecnicoNome || os.responsavelNome}</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-5 py-3 text-right whitespace-nowrap">
+                      {naFila ? (
+                        <button onClick={e => assumir(e, os)} disabled={ocupado === os.id}
+                          className="inline-flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors">
+                          <Stethoscope size={13} /> Vou diagnosticar
+                        </button>
+                      ) : (
+                        <button onClick={e => { e.stopPropagation(); abrir(os) }}
+                          className={`inline-flex items-center gap-1.5 border text-xs font-semibold px-3 py-1.5 rounded transition-colors ${pronto
+                            ? 'border-green-200 text-green-700 hover:bg-green-50'
+                            : 'border-blue-200 text-blue-700 hover:bg-blue-50'}`}>
+                          {pronto ? <><FileText size={13} /> Ver</> : <><ArrowRight size={13} /> Continuar</>}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <div className="flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+            <span>
+              {listaAtual.length} {listaAtual.length === 1 ? 'veículo' : 'veículos'}
+              {busca && ' (filtrado)'}
+              {filtro !== 'finalizados' && listaAtual.filter(o => o.urgente).length > 0 && (
+                <span className="ml-2 text-red-700" title="Parado há 24 horas ou mais">
+                  · {listaAtual.filter(o => o.urgente).length} parado(s) há mais de 24h
+                </span>
+              )}
+            </span>
+          </div>
+        </div>
+        </>
       )}
     </div>
   )
