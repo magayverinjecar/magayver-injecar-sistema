@@ -78,7 +78,12 @@ export default function Caixa() {
         {modalAbrir && (
           <ModalBase title="Abrir Turno de Caixa" onClose={() => setModalAbrir(false)}>
             <label className="block text-sm font-medium text-slate-700 mb-1">Saldo inicial (dinheiro em caixa)</label>
-            <input type="number" value={saldoInicial} onChange={e => setSaldoInicial(e.target.value)} placeholder="0"
+            {/* type="text" e nao "number": o campo e de DINHEIRO, e no Brasil
+            se digita "100,50". O input numerico do navegador REJEITA a
+            virgula em silencio — o valor fica vazio, o botao continua
+            travado e ninguem entende o porque. E o `parseValorBR` que le
+            isto ja aceita virgula, ponto, "R$" e espaco. */}
+            <input type="text" inputMode="decimal" value={saldoInicial} onChange={e => setSaldoInicial(e.target.value)} placeholder="0,00"
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" autoFocus />
             <div className="flex gap-3 justify-end mt-5">
               <button onClick={() => setModalAbrir(false)} className="border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
@@ -316,7 +321,7 @@ export default function Caixa() {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => imprimirReciboCaixa(v)} className="flex items-center gap-1 text-xs border border-slate-200 hover:bg-slate-50 text-slate-600 px-2 py-1 rounded transition-colors"><Printer size={12} />Recibo</button>
-                        <button onClick={() => excluirVenda(v.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors"><Trash2 size={14} /></button>
+                        <button onClick={() => excluirVenda(v.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -389,7 +394,7 @@ export default function Caixa() {
                               <Pencil size={13} />
                             </button>
                             <button onClick={() => excluirMov(m.idOriginal)}
-                              className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                              className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors">
                               <Trash2 size={13} />
                             </button>
                           </div>
@@ -434,7 +439,7 @@ export default function Caixa() {
             ))}
           </div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Valor</label>
-          <input type="number" value={movValor} onChange={e => setMovValor(e.target.value)} placeholder="0,00"
+          <input type="text" inputMode="decimal" value={movValor} onChange={e => setMovValor(e.target.value)} placeholder="0,00"
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-3" autoFocus />
           <label className="block text-sm font-medium text-slate-700 mb-1">Motivo</label>
           <textarea value={movMotivo} onChange={e => setMovMotivo(e.target.value)} rows={2} placeholder="Informe o motivo..."
@@ -462,7 +467,7 @@ export default function Caixa() {
             Só o que for <strong>Dinheiro</strong> entra na contagem da gaveta. O resto é conferido pelo extrato.
           </p>
           <label className="block text-sm font-medium text-slate-700 mb-1">Valor</label>
-          <input type="number" value={editMov.valor} onChange={e => setEditMov(v => ({ ...v, valor: e.target.value }))}
+          <input type="text" inputMode="decimal" value={editMov.valor} onChange={e => setEditMov(v => ({ ...v, valor: e.target.value }))}
             placeholder="0,00" autoFocus
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-3" />
           <label className="block text-sm font-medium text-slate-700 mb-1">Motivo</label>
@@ -505,7 +510,7 @@ export default function Caixa() {
                   </div>
 
                   <label className="block text-sm font-medium text-slate-700 mb-1">Quanto você contou?</label>
-                  <input type="number" inputMode="decimal" autoFocus
+                  <input type="text" inputMode="decimal" autoFocus
                     value={contagem[FORMA_DINHEIRO] || ''}
                     onChange={e => setContagem(c => ({ ...c, [FORMA_DINHEIRO]: e.target.value }))}
                     placeholder="0,00"

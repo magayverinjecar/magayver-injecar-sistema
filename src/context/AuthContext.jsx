@@ -5,7 +5,7 @@ import { supabase } from '../supabase'
 export const MODELOS = {
   admin: {
     label: 'Administrador',
-    menus: ['patio','patio-limpeza','conferir-os','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','gastos','configuracoes'],
+    menus: ['patio','patio-limpeza','conferir-os','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','venda','gastos','configuracoes'],
     verPrecos: true,
     verFinanceiro: true,
     editarConfigs: true,
@@ -21,7 +21,7 @@ export const MODELOS = {
   },
   recepcao: {
     label: 'Recepção',
-    menus: ['patio','dashboard','agenda','checklist-novo','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','caixa'],
+    menus: ['patio','dashboard','agenda','checklist-novo','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','caixa','venda'],
     verPrecos: true,
     verFinanceiro: false,
     editarConfigs: false,
@@ -58,6 +58,20 @@ const MENUS_OBRIGATORIOS = {
 // outros para conseguir concluir o serviço. Vale para qualquer perfil — a
 // equipe toda usa 'personalizado', que não é coberto por MENUS_OBRIGATORIOS.
 const MENUS_DEPENDENTES = [
+  // 'venda' (venda de balcão) nasceu separada de 'caixa' para poder existir
+  // vendedor que vende e não mexe no caixa. Mas a tela de venda já existia
+  // trancada atrás de 'caixa', e a equipe inteira usa perfil 'personalizado' —
+  // sem esta linha, no dia da publicação todo mundo que já vendia perderia a
+  // tela sem entender por quê.
+  //
+  // O custo é só o caso inverso: não dá para ter 'caixa' sem 'venda'. Isso não
+  // atrapalha ninguém — quem opera o caixa existe justamente para receber
+  // venda. E o caso que interessa (vendedor com 'venda' e SEM 'caixa') funciona
+  // normalmente, porque a dependência é de mão única.
+  //
+  // Quando a permissão de venda estiver preenchida na mão de quem deve ter,
+  // esta linha pode sair e as duas ficam totalmente independentes.
+  { se: 'caixa', entao: ['venda'] },
   // Quem diagnostica também executa o reparo (Meus Serviços) e confere antes de liberar
   { se: 'checklist-diagnostico', entao: ['checklist-gerenciar', 'conferir-os'] },
   // Quem mexe na OS precisa poder conferir para conseguir entregar o veículo

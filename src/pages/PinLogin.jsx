@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Wrench, Eye, EyeOff, ArrowLeft, LogIn, Sun, Moon } from 'lucide-react'
+import { Wrench, Eye, EyeOff, LogIn, Sun, Moon, ChevronDown } from 'lucide-react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -26,7 +26,9 @@ export default function PinLogin() {
   const [entrando, setEntrando] = useState(false)
   const [pessoas, setPessoas] = useState(null)   // null = ainda carregando
   const [erroLista, setErroLista] = useState('')
+  const [listaAberta, setListaAberta] = useState(false)
   const inputRef = useRef(null)
+  const caixaRef = useRef(null)
 
   // A lista de nomes vem de uma janelinha do banco que devolve SO numero, nome,
   // perfil e e-mail — nunca o PIN. Antes esta tela lia a tabela inteira de
@@ -59,13 +61,19 @@ export default function PinLogin() {
     setSenha('')
     setErro('')
     setMostrar(false)
+    setListaAberta(false)
   }
 
-  function voltar() {
-    setSelecionado(null)
-    setSenha('')
-    setErro('')
-  }
+  // Clicar fora fecha a lista. Sem isto ela fica aberta por cima do campo de
+  // senha, e a pessoa acha que a tela travou.
+  useEffect(() => {
+    if (!listaAberta) return
+    function fora(e) {
+      if (caixaRef.current && !caixaRef.current.contains(e.target)) setListaAberta(false)
+    }
+    document.addEventListener('mousedown', fora)
+    return () => document.removeEventListener('mousedown', fora)
+  }, [listaAberta])
 
   // Quem confere a senha agora e o SERVIDOR.
   //
@@ -136,7 +144,6 @@ export default function PinLogin() {
   // Classes que mudam com o tema
   const bg       = dark ? 'bg-slate-900'  : 'bg-slate-100'
   const card     = dark ? 'bg-slate-800 border-slate-700'  : 'bg-white border-slate-200'
-  const cardUser = dark ? 'bg-slate-800 border-slate-700 hover:border-primary-500' : 'bg-white border-slate-200 hover:border-primary-400'
   const txtMain  = dark ? 'text-white'    : 'text-slate-800'
   const txtSub   = dark ? 'text-slate-400': 'text-slate-500'
   const inputCls = dark
@@ -169,14 +176,17 @@ export default function PinLogin() {
         </div>
       </div>
 
-      {!selecionado ? (
-        /* ── Seleção de usuário ── */
-        <div className="w-full max-w-md">
-          <p className={`text-center text-sm mb-6 ${txtSub}`}>Quem está usando o sistema?</p>
+      {/* Uma tela só: escolhe o nome na lista, desce para a senha, entra.
+          Antes eram dois passos — uma grade com um quadrado por pessoa e,
+          depois de clicar, outra tela só para a senha. A grade crescia junto
+          com a equipe (já são nove) e o segundo passo não fazia nada além de
+          existir. Lista suspensa é o que um sistema faz. */}
+      <div className="w-full max-w-sm">
+        <div className={`rounded-3xl p-8 shadow-xl border ${card}`}>
 
           {carregando ? (
-            /* Enquanto os funcionários não chegam, não oferecer o acesso admin sem PIN */
-            <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
+            /* Enquanto os funcionários não chegam, nenhuma porta é oferecida. */
+            <div className="text-center text-sm space-y-4 py-4">
               <div className="w-8 h-8 mx-auto border-4 border-slate-200 border-t-primary-500 rounded-full animate-spin" />
               <p className={txtSub}>Carregando usuários...</p>
             </div>
@@ -187,7 +197,7 @@ export default function PinLogin() {
                que a tela oferecia entrar como administrador SEM SENHA, para
                qualquer um que abrisse o site. Sem confirmacao de leitura, a
                porta fica fechada. */
-            <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
+            <div className="text-center text-sm space-y-4 py-2">
               <p className={txtSub}>{erroLista}</p>
               <button
                 onClick={() => window.location.reload()}
@@ -204,51 +214,65 @@ export default function PinLogin() {
                financeiro e cadastro de funcionarios, para quem clicasse.
                O gatilho era "lista de funcionarios vazia", e lista vazia
                e exatamente o que o banco devolve quando uma politica
-               esconde a tabela: sem erro, com sucesso. A guarda de leitura
-               confirmada nao resolve, porque leitura bloqueada CONFIRMA.
-               Com a oficina ja cadastrada, essa porta era so risco. */
-            <div className={`text-center text-sm rounded-2xl p-8 space-y-4 border ${card}`}>
+               esconde a tabela: sem erro, com sucesso. */
+            <div className="text-center text-sm space-y-4 py-2">
               <p className={txtSub}>Nenhum funcionário com senha configurada.</p>
               <p className={`text-xs ${txtSub}`}>
-                Cadastre um funcionário com PIN pelo painel do Supabase para poder entrar.
+                Cadastre um funcionário com senha pelo painel do Supabase para poder entrar.
               </p>
               <button
                 onClick={() => window.location.reload()}
-                className="w-full border border-slate-600 text-slate-300 py-3 rounded-xl font-medium text-sm hover:bg-slate-800 transition-colors"
+                className={`w-full border py-3 rounded-xl font-medium text-sm transition-colors ${voltarBtn} border-slate-300`}
               >
                 Tentar de novo
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {funcionariosComSenha.map(f => (
-                <button key={f.id} onClick={() => selecionarFuncionario(f)}
-                  className={`border rounded-2xl p-5 text-left transition-all ${cardUser}`}>
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold mb-3 ${PERFIL_COR[f.perfil] || 'bg-slate-200 text-slate-600'}`}>
-                    {f.nome[0].toUpperCase()}
-                  </div>
-                  <p className={`font-semibold text-sm leading-tight ${txtMain}`}>{f.nome.split(' ')[0]}</p>
-                  <p className={`text-xs mt-0.5 ${txtSub}`}>{PERFIL_LABEL[f.perfil] || f.perfil}</p>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-      ) : (
-        /* ── Tela de senha ── */
-        <div className="w-full max-w-sm">
-          <div className={`rounded-3xl p-8 shadow-xl border ${card}`}>
-
-            <div className="flex flex-col items-center mb-8">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold mb-3 ${PERFIL_COR[selecionado.perfil] || 'bg-slate-200 text-slate-600'}`}>
-                {selecionado.nome[0].toUpperCase()}
-              </div>
-              <p className={`text-lg font-semibold ${txtMain}`}>{selecionado.nome.split(' ')[0]}</p>
-              <p className={`text-sm ${txtSub}`}>{PERFIL_LABEL[selecionado.perfil] || selecionado.perfil}</p>
-            </div>
-
             <div className="space-y-4">
+
+              <div className="relative" ref={caixaRef}>
+                <label className={`block text-sm mb-2 ${txtSub}`}>Quem está entrando</label>
+                <button type="button" onClick={() => setListaAberta(v => !v)}
+                  className={`w-full flex items-center gap-3 border rounded-xl px-3 py-2.5 text-sm text-left transition-all ${inputCls} ${listaAberta ? 'ring-2 ring-primary-500' : ''}`}>
+                  {selecionado ? (
+                    <>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${PERFIL_COR[selecionado.perfil] || 'bg-slate-200 text-slate-600'}`}>
+                        {selecionado.nome[0].toUpperCase()}
+                      </div>
+                      <span className="flex-1 min-w-0">
+                        <span className={`block truncate font-medium ${txtMain}`}>{selecionado.nome}</span>
+                        <span className={`block text-xs ${txtSub}`}>{PERFIL_LABEL[selecionado.perfil] || selecionado.perfil}</span>
+                      </span>
+                    </>
+                  ) : (
+                    <span className={`flex-1 ${txtSub}`}>Escolha seu nome</span>
+                  )}
+                  <ChevronDown size={18} className={`flex-shrink-0 transition-transform ${listaAberta ? 'rotate-180' : ''} ${txtSub}`} />
+                </button>
+
+                {listaAberta && (
+                  /* Rola a partir de umas seis pessoas: a lista não pode empurrar
+                     o botão de entrar para fora da tela do celular. */
+                  <div className={`absolute z-20 w-full mt-1 rounded-xl border shadow-xl overflow-hidden max-h-64 overflow-y-auto ${card}`}>
+                    {funcionariosComSenha.map(f => {
+                      const ehEste = selecionado?.id === f.id
+                      return (
+                        <button key={f.id} type="button" onClick={() => selecionarFuncionario(f)}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors border-b last:border-0 ${dark ? 'border-slate-700 hover:bg-slate-700' : 'border-slate-100 hover:bg-slate-50'} ${ehEste ? (dark ? 'bg-slate-700' : 'bg-primary-50') : ''}`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${PERFIL_COR[f.perfil] || 'bg-slate-200 text-slate-600'}`}>
+                            {f.nome[0].toUpperCase()}
+                          </div>
+                          <span className="flex-1 min-w-0">
+                            <span className={`block truncate text-sm font-medium ${txtMain}`}>{f.nome}</span>
+                            <span className={`block text-xs ${txtSub}`}>{PERFIL_LABEL[f.perfil] || f.perfil}</span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className={`block text-sm mb-2 ${txtSub}`}>Senha</label>
                 <div className="relative">
@@ -258,7 +282,8 @@ export default function PinLogin() {
                     value={senha}
                     onChange={e => { setSenha(e.target.value); setErro('') }}
                     onKeyDown={onKeyDown}
-                    placeholder="Digite sua senha"
+                    onFocus={() => setListaAberta(false)}
+                    placeholder={selecionado ? 'Digite sua senha' : 'Escolha o nome primeiro'}
                     className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 pr-11 transition-all ${inputCls} ${erro ? 'border-red-500' : ''}`}
                   />
                   <button type="button" onClick={() => setMostrar(v => !v)}
@@ -269,22 +294,17 @@ export default function PinLogin() {
                 {erro && <p className="text-red-500 text-xs mt-2">{erro}</p>}
               </div>
 
-              {/* Trava no primeiro toque: agora o login vai ao servidor e pode
+              {/* Trava no primeiro toque: o login vai ao servidor e pode
                   demorar. Sem isto, a tela fica parada e calada e a pessoa
                   aperta mais quatro vezes achando que travou. */}
-              <button onClick={entrar} disabled={entrando}
-                className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2">
+              <button onClick={entrar} disabled={entrando || !selecionado}
+                className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2">
                 <LogIn size={16} /> {entrando ? 'Entrando…' : 'Entrar'}
               </button>
             </div>
-
-            <button onClick={voltar}
-              className={`mt-6 flex items-center justify-center gap-1.5 text-sm w-full transition-colors ${voltarBtn}`}>
-              <ArrowLeft size={14} /> Trocar usuário
-            </button>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

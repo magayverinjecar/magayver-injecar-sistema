@@ -14,6 +14,14 @@ import Orcamentos from './pages/Orcamentos'
 import Servicos from './pages/Servicos'
 import Estoque from './pages/Estoque'
 import EstoqueMovimentacoes from './pages/EstoqueMovimentacoes'
+import PecaCadastro from './pages/PecaCadastro'
+import FuncionarioCadastro from './pages/FuncionarioCadastro'
+import ClienteCadastro from './pages/ClienteCadastro'
+import ServicoCadastro from './pages/ServicoCadastro'
+import VeiculoCadastro from './pages/VeiculoCadastro'
+import OrdemCadastro from './pages/OrdemCadastro'
+import OrdemEditar from './pages/OrdemEditar'
+import CompraImportarXml from './pages/CompraImportarXml'
 import Compras from './pages/Compras'
 import CompraDetalhe from './pages/CompraDetalhe'
 import Fornecedores from './pages/Fornecedores'
@@ -109,24 +117,41 @@ export default function App() {
           <Route path="dashboard"           element={<Rota perm="dashboard"><Dashboard /></Rota>} />
           <Route path="minha-senha" element={<MinhaSenha />} />
           <Route path="clientes"            element={<Rota perm="clientes"><Clientes /></Rota>} />
+          <Route path="clientes/novo"       element={<Rota perm="clientes"><ClienteCadastro /></Rota>} />
           <Route path="veiculos"            element={<Rota perm="veiculos"><Veiculos /></Rota>} />
+          <Route path="veiculos/novo"       element={<Rota perm="veiculos"><VeiculoCadastro /></Rota>} />
           <Route path="agenda"              element={<Rota perm="agenda"><Agenda /></Rota>} />
           <Route path="ordens-servico"      element={<Rota perm="ordens-servico"><OrdensServico /></Rota>} />
+          <Route path="ordens-servico/nova" element={<Rota perm="ordens-servico"><OrdemCadastro /></Rota>} />
+          <Route path="ordens-servico/:id/editar" element={<Rota perm="ordens-servico"><OrdemEditar /></Rota>} />
           <Route path="ordens-servico/:id"  element={<Rota perm="ordens-servico"><OrdemDetalhe /></Rota>} />
           <Route path="orcamentos"          element={<Rota perm="orcamentos"><Orcamentos /></Rota>} />
           <Route path="servicos"            element={<Rota perm="servicos"><Servicos /></Rota>} />
+          <Route path="servicos/novo"       element={<Rota perm="servicos"><ServicoCadastro /></Rota>} />
           <Route path="estoque"             element={<Rota perm="estoque"><Estoque /></Rota>} />
           <Route path="estoque/movimentacoes" element={<Rota perm="estoque"><EstoqueMovimentacoes /></Rota>} />
+          {/* Cadastro da peça em tela, não em popup: são 20 campos, e ficha
+              grande é tela em todo o resto do sistema. "nova" vem antes de
+              ":id" porque a rota literal tem de ganhar da variável. */}
+          <Route path="estoque/peca/nova"     element={<Rota perm="estoque"><PecaCadastro /></Rota>} />
+          <Route path="estoque/peca/:id"      element={<Rota perm="estoque"><PecaCadastro /></Rota>} />
           <Route path="compras"             element={<Rota perm="compras"><Compras /></Rota>} />
+          <Route path="compras/importar"    element={<Rota perm="compras"><CompraImportarXml /></Rota>} />
           <Route path="compras/:id"         element={<Rota perm="compras"><CompraDetalhe /></Rota>} />
           <Route path="fornecedores"        element={<Rota perm="fornecedores"><Fornecedores /></Rota>} />
           <Route path="insumos"             element={<Rota perm="insumos"><Insumos /></Rota>} />
           <Route path="gastos"              element={<Rota perm="gastos"><Gastos /></Rota>} />
           <Route path="financeiro"          element={<Rota perm="financeiro"><Financeiro /></Rota>} />
           <Route path="caixa"               element={<Rota perm="caixa"><Caixa /></Rota>} />
-          <Route path="caixa/nova-venda"    element={<Rota perm="caixa"><NovaVenda /></Rota>} />
+          {/* Venda de balcão tem permissão PRÓPRIA, separada de 'caixa': dá
+              para contratar vendedor que só vende peça no balcão, sem abrir o
+              caixa nem ver o resto do sistema. */}
+          <Route path="caixa/nova-venda"    element={<Rota perm="venda"><NovaVenda /></Rota>} />
           <Route path="caixa/historico"     element={<Rota perm="caixa"><CaixaHistorico /></Rota>} />
           <Route path="funcionarios"        element={<Rota perm="funcionarios"><Funcionarios /></Rota>} />
+          {/* "novo" antes de ":id": a rota literal tem de ganhar da variavel. */}
+          <Route path="funcionarios/novo"   element={<Rota perm="funcionarios"><FuncionarioCadastro /></Rota>} />
+          <Route path="funcionarios/:id"    element={<Rota perm="funcionarios"><FuncionarioCadastro /></Rota>} />
           <Route path="produtividade"       element={<Rota perm="produtividade"><Produtividade /></Rota>} />
           <Route path="configuracoes"       element={<Rota perm="configuracoes"><Configuracoes /></Rota>} />
           <Route path="assistente-financeiro" element={<Rota perm="assistente-financeiro"><AssistenteFinanceiro /></Rota>} />

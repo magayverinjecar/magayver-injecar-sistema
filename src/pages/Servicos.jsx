@@ -1,27 +1,31 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Wrench, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import gerarId from '../utils/id'
-import Modal from '../components/ui/Modal'
+import { parseValorBR } from '../utils/numero'
 
-const vazio = { nome: '', categoria: '', preco: '', tempo: '' }
+const fmtBRL = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function Servicos() {
+  const navigate = useNavigate()
   const { servicos, setServicos } = useApp()
   const [busca, setBusca] = useState('')
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState(vazio)
 
   const filtrados = servicos.filter(s => s.nome.toLowerCase().includes(busca.toLowerCase()))
 
-  function salvar() {
-    if (!form.nome.trim()) return
-    // Maiúscula só ao salvar: se o campo já virasse caps enquanto digita, o
-    // corretor ortográfico do navegador pularia as palavras achando que é sigla.
-    setServicos(prev => [...prev, { ...form, nome: form.nome.toUpperCase().trim(), categoria: (form.categoria || '').toUpperCase(), id: gerarId() }])
-    setForm(vazio)
-    setModal(false)
-  }
+  // Serviço é tabela de preço, não prateleira: somar tudo não diz nada. O que
+  // o dono olha é a média da mão de obra e quantos serviços ainda estão sem
+  // preço — cada um desses é uma parada no meio do orçamento para perguntar
+  // "quanto é mesmo?".
+  const comPreco = filtrados.filter(s => parseValorBR(s.preco) > 0)
+  const precoMedio = comPreco.length
+    ? comPreco.reduce((t, s) => t + parseValorBR(s.preco), 0) / comPreco.length
+    : 0
+  const semPreco = filtrados.length - comPreco.length
+
+  // Cadastrar vive em tela propria (`pages/Servico.jsx`): ficha de
+  // cadastro nao e decisao curta, e como popup ela nao tinha endereco proprio
+  // nem sobrevivia a um clique fora.
 
   function excluir(id) {
     if (confirm('Excluir serviço?')) setServicos(prev => prev.filter(s => s.id !== id))
@@ -35,12 +39,82 @@ export default function Servicos() {
           <input type="text" placeholder="Buscar serviço..." value={busca} onChange={e => setBusca(e.target.value)}
             className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 w-64" />
         </div>
-        <button onClick={() => setModal(true)} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+        <button onClick={() => navigate('/servicos/novo')} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
           <Plus size={16} />Novo Serviço
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Computador: a tabela de preços da oficina, uma linha por serviço.
+          Em card cabiam nove serviços na tela e o preço ficava em nove lugares
+          diferentes; em coluna alinhada dá para descer o olho e comparar. */}
+      <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Serviço</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoria</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Tempo</th>
+              <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Preço</th>
+              <th className="px-5 py-3"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {filtrados.map(s => {
+              // O preço é texto livre digitado à mão. Quando dá para ler como
+              // número, sai formatado para a coluna alinhar na vírgula; quando
+              // não dá ("A COMBINAR", "0,00"), mostra apagado o que a pessoa
+              // escreveu — em vez de inventar um R$ 0,00 que não é verdade, e
+              // sem misturar com os preços de verdade na hora de comparar.
+              const valor = parseValorBR(s.preco)
+              return (
+                <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                  {/* Vários serviços foram cadastrados com o procedimento
+                      inteiro no nome (dez linhas de texto). Na tabela ficam em
+                      duas linhas, senão uma linha só empurra o resto da lista
+                      para fora da tela; o texto completo sai ao passar o mouse
+                      e continua inteiro no card do celular. */}
+                  <td className="px-5 py-3.5 text-sm font-medium text-slate-800">
+                    <span className="line-clamp-2" title={s.nome}>{s.nome}</span>
+                  </td>
+                  <td className="px-5 py-3.5 text-sm text-slate-600 whitespace-nowrap">{s.categoria || <span className="text-slate-300">—</span>}</td>
+                  <td className="px-5 py-3.5 text-sm text-slate-600 whitespace-nowrap">{s.tempo || <span className="text-slate-300">—</span>}</td>
+                  {/* Sem quebra: o nome do serviço é longo e empurrava o preço,
+                      que quebrava em "R$" numa linha e o valor na outra. */}
+                  <td className="px-5 py-3.5 text-sm text-slate-700 text-right tabular-nums whitespace-nowrap">
+                    {valor > 0
+                      ? fmtBRL(valor)
+                      : <span className="text-slate-400">{s.preco || '—'}</span>}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <button onClick={() => excluir(s.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors" title="Excluir">
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {filtrados.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum serviço encontrado.</p>}
+        {filtrados.length > 0 && (
+          <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+            <span>
+              {filtrados.length} {filtrados.length === 1 ? 'serviço' : 'serviços'}
+              {busca && ` (de ${servicos.length})`}
+              {semPreco > 0 && <span className="ml-2 text-yellow-700">· {semPreco} sem preço</span>}
+            </span>
+            <span className="flex items-center gap-4 tabular-nums">
+              {/* Sem nenhum serviço com preço, "R$ 0,00" seria lido como "a
+                  média é zero" em vez de "não há o que calcular". */}
+              <span>Preço médio: <strong className="font-medium">{comPreco.length ? fmtBRL(precoMedio) : '—'}</strong></span>
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Celular: os cards de sempre — na mão o alvo tem que ser grande e a
+          tabela de cinco colunas não cabe. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:hidden">
         {filtrados.map(s => (
           <div key={s.id} className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between mb-3">
@@ -49,7 +123,7 @@ export default function Servicos() {
               </div>
               <div className="flex items-center gap-2">
                 {s.categoria && <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{s.categoria}</span>}
-                <button onClick={() => excluir(s.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                <button onClick={() => excluir(s.id)} className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors">
                   <Trash2 size={13} />
                 </button>
               </div>
@@ -64,34 +138,6 @@ export default function Servicos() {
         {filtrados.length === 0 && <p className="text-sm text-slate-400 py-4">Nenhum serviço cadastrado.</p>}
       </div>
 
-      {modal && (
-        <Modal title="Novo Serviço" onClose={() => setModal(false)}>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nome *</label>
-              <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} spellCheck lang="pt-BR" placeholder="EX: TROCA DE ÓLEO" className="w-full uppercase border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Categoria</label>
-              <input value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))} spellCheck lang="pt-BR" placeholder="MANUTENÇÃO, FREIOS..." className="w-full uppercase border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Preço (R$)</label>
-                <input value={form.preco} onChange={e => setForm(f => ({ ...f, preco: e.target.value }))} placeholder="0,00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tempo estimado</label>
-                <input value={form.tempo} onChange={e => setForm(f => ({ ...f, tempo: e.target.value }))} placeholder="1h30" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-              </div>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button onClick={() => setModal(false)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-              <button onClick={salvar} className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">Salvar</button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   )
 }

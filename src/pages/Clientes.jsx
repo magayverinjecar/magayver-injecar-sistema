@@ -1,17 +1,13 @@
 import { useState } from 'react'
-import { Search, Plus, Phone, Mail, Car, Trash2, ChevronRight, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Search, Plus, Phone, Mail, Car, Trash2, ChevronRight, X, Megaphone } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import gerarId from '../utils/id'
-import Modal from '../components/ui/Modal'
-
-const vazio = { nome: '', telefone: '', email: '' }
+import { ORIGENS_CLIENTE } from '../utils/origemCliente'
 
 export default function Clientes() {
+  const navigate = useNavigate()
   const { clientes, setClientes, veiculos, ordens, veiculosPorCliente, ordensPorCliente, getVeiculo } = useApp()
   const [busca, setBusca] = useState('')
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState(vazio)
-  const [erroNome, setErroNome] = useState(false)
   const [detalhe, setDetalhe] = useState(null)
 
   const filtrados = clientes.filter(c => c.nome.toLowerCase().includes(busca.toLowerCase()))
@@ -25,25 +21,14 @@ export default function Clientes() {
   // Cliente sem telefone é o que trava o dia: o carro fica pronto e não tem
   // como avisar. O rodapé mostra quantos são para não descobrir um por um.
   const semTelefone = filtrados.filter(c => !String(c.telefone || '').trim()).length
+  // A mesma lógica do "sem telefone", para a outra lacuna: enquanto este número
+  // for alto, o relatório de origem no Financeiro fala de pouca gente. Aqui dá
+  // para ir fechando a conta — abrir a ficha e responder leva um clique.
+  const semOrigem = filtrados.filter(c => !String(c.origem || '').trim()).length
 
-  function salvar() {
-    if (!form.nome.trim()) { setErroNome(true); return }
-    setErroNome(false)
-    try {
-      setClientes(prev => [...prev, { ...form, id: gerarId() }])
-      setForm(vazio)
-      setModal(false)
-    } catch (err) {
-      console.error('Erro ao salvar cliente:', err)
-      alert('Erro ao salvar cliente: ' + err.message)
-    }
-  }
-
-  function fecharModal() {
-    setModal(false)
-    setForm(vazio)
-    setErroNome(false)
-  }
+  // Cadastrar vive em tela propria (`pages/Cliente.jsx`): ficha de
+  // cadastro nao e decisao curta, e como popup ela nao tinha endereco proprio
+  // nem sobrevivia a um clique fora.
 
   function excluir(id) {
     if (confirm('Excluir este cliente?')) {
@@ -73,7 +58,7 @@ export default function Clientes() {
             <input type="text" placeholder="Buscar cliente..." value={busca} onChange={e => setBusca(e.target.value)}
               className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 w-full" />
           </div>
-          <button onClick={() => setModal(true)} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
+          <button onClick={() => navigate('/clientes/novo')} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0">
             <Plus size={16} />Novo Cliente
           </button>
         </div>
@@ -96,7 +81,7 @@ export default function Clientes() {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 text-xs text-slate-400">
                     <span className="flex items-center gap-0.5"><Car size={12} />{veics.length}</span>
-                    <button onClick={e => { e.stopPropagation(); excluir(c.id) }} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                    <button onClick={e => { e.stopPropagation(); excluir(c.id) }} className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors">
                       <Trash2 size={14} />
                     </button>
                     <ChevronRight size={14} className={`text-slate-300 transition-transform ${detalhe === c.id ? 'rotate-90' : ''}`} />
@@ -168,7 +153,7 @@ export default function Clientes() {
                     <td className="px-5 py-3.5 text-sm text-slate-600 text-right tabular-nums">{ordensDoCliente.length}</td>
                     <td className="px-5 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={e => { e.stopPropagation(); excluir(c.id) }} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                        <button onClick={e => { e.stopPropagation(); excluir(c.id) }} className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors">
                           <Trash2 size={14} />
                         </button>
                         <ChevronRight size={14} className={`text-slate-300 transition-transform ${detalhe === c.id ? 'rotate-90' : ''}`} />
@@ -193,6 +178,11 @@ export default function Clientes() {
                     · {semTelefone} sem telefone
                   </span>
                 )}
+                {semOrigem > 0 && (
+                  <span className="ml-2 text-slate-500" title="Sem a origem, o relatório de canal no Financeiro não conta este cliente">
+                    · {semOrigem} sem origem
+                  </span>
+                )}
               </span>
               <span className="flex items-center gap-4 tabular-nums">
                 <span>Veículos: <strong className="font-medium">{totalVeiculos.toLocaleString('pt-BR')}</strong></span>
@@ -214,6 +204,26 @@ export default function Clientes() {
             <div className="p-4 space-y-2 text-sm text-slate-600">
               {clienteDetalhe.telefone && <div className="flex items-center gap-2"><Phone size={13} className="text-slate-400" />{clienteDetalhe.telefone}</div>}
               {clienteDetalhe.email && <div className="flex items-center gap-2"><Mail size={13} className="text-slate-400" />{clienteDetalhe.email}</div>}
+
+              {/* Preencher a origem dos cadastros antigos. Grava na escolha, sem
+                  botão de salvar: são 200 fichas para completar, e um modal com
+                  confirmação a cada uma faria ninguém completar nenhuma. */}
+              <div className="pt-2 border-t border-slate-100">
+                <label className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1.5">
+                  <Megaphone size={13} className="text-slate-400" /> Como nos conheceu
+                </label>
+                <select value={clienteDetalhe.origem || ''}
+                  onChange={e => {
+                    const v = e.target.value
+                    setClientes(prev => prev.map(c => c.id === clienteDetalhe.id ? { ...c, origem: v } : c))
+                  }}
+                  className={`w-full border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                    clienteDetalhe.origem ? 'border-slate-200 text-slate-700' : 'border-amber-200 bg-amber-50 text-slate-400'
+                  }`}>
+                  <option value="">Não perguntado</option>
+                  {ORIGENS_CLIENTE.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -255,35 +265,6 @@ export default function Clientes() {
         </div>
       )}
 
-      {modal && (
-        <Modal title="Novo Cliente" onClose={fecharModal} backdropClose={false}>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nome *</label>
-              <input
-                value={form.nome}
-                onChange={e => { setForm(f => ({ ...f, nome: e.target.value })); setErroNome(false) }}
-                placeholder="Nome completo"
-                autoFocus
-                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${erroNome ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
-              />
-              {erroNome && <p className="text-xs text-red-500 mt-1">Informe o nome do cliente.</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Telefone</label>
-              <input value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(11) 99999-0000" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">E-mail</label>
-              <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email@exemplo.com" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button type="button" onClick={fecharModal} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-              <button type="button" onClick={salvar} className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">Salvar</button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   )
 }

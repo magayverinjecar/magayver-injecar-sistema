@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Plus, Trash2 } from 'lucide-react'
+import { Search, Plus } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import Modal from '../components/ui/Modal'
+import { nomeVeiculo } from '../utils/datas'
 
 export const STATUS_OS = [
   'Recepção', 'Em Diagnóstico', 'Aguardando Aprovação', 'Rejeitada',
@@ -35,77 +35,30 @@ export const statusColor = {
 // aparece sozinho, sem coluna que o explique.
 const fmtNum = (v) => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmt = (v) => 'R$ ' + fmtNum(v)
-const vazio = { clienteId: '', veiculoId: '', kmEntrada: '', mecanicoId: '', descricaoProblema: '' }
-const RASCUNHO_KEY = 'nova-os-rascunho'
+// Abrir OS vive em `pages/OrdemCadastro.jsx`, em tela: ficha de abertura nao e
+// decisao curta, e o rascunho dela precisa sobreviver a uma atualizacao da
+// pagina — coisa que popup nao dava.
 
 export default function OrdensServico() {
-  const { ordens, novaOrdem, getCliente, getVeiculo, getFuncionario, clientes, veiculosPorCliente, funcionarios, totalOrdem, checklists } = useApp()
+  const { ordens, getCliente, getVeiculo, getFuncionario, funcionarios, totalOrdem } = useApp()
   const navigate = useNavigate()
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('Todos')
   const [filtroMec, setFiltroMec] = useState('Todos')
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState(vazio)
-  const [buscaCliente, setBuscaCliente] = useState('')
-  const [dropdownAberto, setDropdownAberto] = useState(false)
-  const [temRascunho, setTemRascunho] = useState(false)
-  const buscaRef = useRef(null)
-
-  // auto-save: grava rascunho no localStorage a cada mudança enquanto o modal está aberto
-  useEffect(() => {
-    if (!modal) return
-    try {
-      localStorage.setItem(RASCUNHO_KEY, JSON.stringify({ form, buscaCliente }))
-    } catch {}
-  }, [form, buscaCliente, modal])
-
-  const veiculosDoCliente = form.clienteId ? veiculosPorCliente(Number(form.clienteId)) : []
-
-  // Clientes ordenados do mais recente + filtrados pela busca
-  const clientesOrdenados = [...clientes].sort((a, b) => b.id - a.id)
-  const clientesFiltrados = clientesOrdenados.filter(c =>
-    !buscaCliente.trim() || c.nome?.toLowerCase().includes(buscaCliente.toLowerCase())
-  )
-
-  function selecionarCliente(c) {
-    setForm(f => ({ ...f, clienteId: String(c.id), veiculoId: '', descricaoProblema: '', kmEntrada: '' }))
-    setBuscaCliente(c.nome)
-    setDropdownAberto(false)
-  }
-
-  function abrirModal() {
-    let restorou = false
-    try {
-      const salvo = localStorage.getItem(RASCUNHO_KEY)
-      if (salvo) {
-        const draft = JSON.parse(salvo)
-        if (draft.form?.clienteId || draft.buscaCliente) {
-          setForm(draft.form || vazio)
-          setBuscaCliente(draft.buscaCliente || '')
-          restorou = true
-        }
-      }
-    } catch {}
-    if (!restorou) { setForm(vazio); setBuscaCliente('') }
-    setTemRascunho(restorou)
-    setDropdownAberto(false)
-    setModal(true)
-  }
-
-  function limparRascunho() {
-    localStorage.removeItem(RASCUNHO_KEY)
-    setForm(vazio)
-    setBuscaCliente('')
-    setTemRascunho(false)
-  }
 
   const filtradas = ordens.filter(o => {
     const cliente = getCliente(o.clienteId)
     const veiculo = getVeiculo(o.veiculoId)
     const termo = busca.toLowerCase()
+    // Buscar pelo CARRO também: no balcão o cliente é lembrado pelo veículo
+    // ("aquele Gol prata"), e quem atende raramente tem a placa na cabeça.
+    // `nomeVeiculo` é a mesma função que monta o nome na tela — assim se acha
+    // digitando exatamente o que se está lendo, marca ou modelo.
+    const carro = nomeVeiculo(veiculo, o).toLowerCase()
     const matchBusca = o.id.toLowerCase().includes(termo)
       || (cliente?.nome || '').toLowerCase().includes(termo)
       || (veiculo?.placa || '').toLowerCase().includes(termo)
+      || carro.includes(termo)
     const matchStatus = filtroStatus === 'Todos' || o.status === filtroStatus
     const matchMec = filtroMec === 'Todos' || String(o.mecanicoId) === filtroMec
     return matchBusca && matchStatus && matchMec
@@ -123,29 +76,11 @@ export default function OrdensServico() {
   const valorFiltradas = filtradas.reduce((s, o) => s + totalOrdem(o), 0)
   const temFiltro = Boolean(busca.trim()) || filtroStatus !== 'Todos' || filtroMec !== 'Todos'
 
-  function salvar() {
-    if (!form.clienteId || !form.veiculoId) return
-    const id = novaOrdem({
-      clienteId: Number(form.clienteId),
-      veiculoId: Number(form.veiculoId),
-      kmEntrada: form.kmEntrada,
-      mecanicoId: form.mecanicoId ? Number(form.mecanicoId) : null,
-      descricaoProblema: form.descricaoProblema,
-    })
-    // `novaOrdem` devolve null quando se recusa a numerar: leitura
-    // incompleta numeraria por cima de uma OS que ja existe.
-    if (!id) return
-    localStorage.removeItem(RASCUNHO_KEY)
-    setForm(vazio)
-    setModal(false)
-    navigate(`/ordens-servico/${encodeURIComponent(id)}`)
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-800">Ordens de Serviço</h2>
-        <button onClick={abrirModal} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+        <button onClick={() => navigate('/ordens-servico/nova')} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
           <Plus size={16} />Nova OS
         </button>
       </div>
@@ -154,7 +89,7 @@ export default function OrdensServico() {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[240px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input type="text" placeholder="Buscar por número, cliente ou placa..." value={busca} onChange={e => setBusca(e.target.value)}
+          <input type="text" placeholder="Buscar por número, cliente, placa ou carro..." value={busca} onChange={e => setBusca(e.target.value)}
             className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500">
@@ -181,7 +116,7 @@ export default function OrdensServico() {
                 <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 ${statusColor[o.status] || 'bg-slate-100 text-slate-600'}`}>{o.status}</span>
               </div>
               <p className="text-sm font-semibold text-slate-800">{cliente?.nome || '—'}</p>
-              {veiculo && <p className="text-sm text-slate-500 mt-0.5">{veiculo.placa} · {veiculo.modelo}</p>}
+              {veiculo && <p className="text-sm text-slate-500 mt-0.5">{veiculo.placa} · {nomeVeiculo(veiculo, o)}</p>}
               <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
                 <span className="text-xs text-slate-400">{o.data}</span>
                 <span className="text-sm font-bold text-slate-700">{total > 0 ? fmt(total) : '—'}</span>
@@ -219,7 +154,13 @@ export default function OrdensServico() {
                 <tr key={o.id} onClick={() => navigate(`/ordens-servico/${encodeURIComponent(o.id)}`)} className="hover:bg-slate-50 transition-colors cursor-pointer">
                   <td className="px-5 py-3.5 text-sm font-mono font-medium text-slate-700">{o.id}</td>
                   <td className="px-5 py-3.5 text-sm font-medium text-slate-800">{cliente?.nome || '—'}</td>
-                  <td className="px-5 py-3.5 text-sm text-slate-600">{veiculo ? `${veiculo.placa} ${veiculo.modelo}` : '—'}</td>
+                  {/* `nomeVeiculo` e nao `veiculo.modelo`: o cadastro quebra o
+                      que a recepcao digitou num campo so ("VOLKSWAGEN GOL G5")
+                      em marca + modelo, e mostrar so o modelo deixava a coluna
+                      dizendo "G5". Buscar por "gol" achava a OS e a linha nao
+                      parecia ter nada com Gol. Agora a busca e a tela leem o
+                      mesmo texto. */}
+                  <td className="px-5 py-3.5 text-sm text-slate-600">{veiculo ? `${veiculo.placa} ${nomeVeiculo(veiculo, o)}` : '—'}</td>
                   {/* OS sem mecânico é traço apagado, e não vazio: assim a coluna
                       mostra na hora quais ainda não têm dono. */}
                   <td className="hidden lg:table-cell px-5 py-3.5 text-sm text-slate-600">{mecanico?.nome || <span className="text-slate-300">—</span>}</td>
@@ -254,88 +195,6 @@ export default function OrdensServico() {
         )}
       </div>
 
-      {modal && (
-        <Modal title="Nova Ordem de Serviço" onClose={() => { setModal(false); setForm(vazio) }}>
-          <div className="space-y-4">
-            {temRascunho && (
-              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg">
-                <span>Rascunho restaurado automaticamente</span>
-                <button onClick={limparRascunho} className="font-semibold underline hover:text-amber-900 ml-2">Limpar</button>
-              </div>
-            )}
-            <div className="relative">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Cliente *</label>
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                <input
-                  ref={buscaRef}
-                  type="text"
-                  placeholder="Buscar por nome..."
-                  value={buscaCliente}
-                  onChange={e => { setBuscaCliente(e.target.value); setDropdownAberto(true); setForm(f => ({ ...f, clienteId: '', veiculoId: '' })) }}
-                  onFocus={() => setDropdownAberto(true)}
-                  onBlur={() => setTimeout(() => setDropdownAberto(false), 150)}
-                  className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-              {dropdownAberto && (
-                <div className="absolute z-30 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
-                  {clientesFiltrados.length === 0 ? (
-                    <p className="px-4 py-3 text-sm text-slate-400 text-center">Nenhum cliente encontrado</p>
-                  ) : (
-                    clientesFiltrados.map((c, idx) => (
-                      <button key={c.id} onMouseDown={() => selecionarCliente(c)}
-                        className="w-full px-4 py-2.5 text-left hover:bg-slate-50 border-b border-slate-100 last:border-0 flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-medium text-slate-800">{c.nome}</p>
-                          {c.telefone && <p className="text-xs text-slate-400">{c.telefone}</p>}
-                        </div>
-                        {idx === 0 && <span className="text-[10px] bg-primary-50 text-primary-500 font-bold px-1.5 py-0.5 rounded">Recente</span>}
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-              {form.clienteId && (
-                <p className="text-xs text-green-600 mt-1">✓ Cliente selecionado</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Veículo *</label>
-              <select value={form.veiculoId} onChange={e => {
-                const vId = e.target.value
-                const ck = checklists
-                  .filter(c => String(c.veiculoId) === vId && c.relatoCliente)
-                  .sort((a, b) => b.id - a.id)[0]
-                setForm(f => ({ ...f, veiculoId: vId, descricaoProblema: ck?.relatoCliente || f.descricaoProblema, kmEntrada: ck?.kmEntrada || f.kmEntrada }))
-              }} disabled={!form.clienteId}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-400">
-                <option value="">{form.clienteId ? 'Selecione' : 'Selecione o cliente primeiro'}</option>
-                {veiculosDoCliente.map(v => <option key={v.id} value={v.id}>{v.placa} - {v.modelo}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">KM de Entrada</label>
-              <input value={form.kmEntrada} onChange={e => setForm(f => ({ ...f, kmEntrada: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Mecânico Responsável</label>
-              <select value={form.mecanicoId} onChange={e => setForm(f => ({ ...f, mecanicoId: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                <option value="">Nenhum</option>
-                {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Descrição do Problema</label>
-              <textarea value={form.descricaoProblema} onChange={e => setForm(f => ({ ...f, descricaoProblema: e.target.value }))}
-                rows={3} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none" />
-            </div>
-            <button onClick={salvar} disabled={!form.clienteId || !form.veiculoId} className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">Criar OS</button>
-          </div>
-        </Modal>
-      )}
     </div>
   )
 }

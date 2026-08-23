@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, Lock, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Banknote, Smartphone, CreditCard, ArrowRightLeft, Wrench, Eye, Save, ImagePlus, PenTool, ClipboardList, Loader2, ThumbsUp, ThumbsDown, Copy, Check, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Banknote, Smartphone, CreditCard, ArrowRightLeft, Wrench, Eye, Save, ImagePlus, PenTool, ClipboardList, Loader2, ThumbsUp, ThumbsDown, Copy, Check, ShieldCheck } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import gerarId from '../utils/id'
@@ -81,7 +81,6 @@ export default function OrdemDetalhe() {
 
   const os = ordens.find(o => o.id === osId)
   const [aba, setAba] = useState('Dados')
-  const [modalEditar, setModalEditar] = useState(false)
   const [modalCliente, setModalCliente] = useState(false)
   // Painel de lançar item — embutido no quadro de itens, não é mais popup
   const [painelItem, setPainelItem] = useState(false)
@@ -564,7 +563,7 @@ export default function OrdemDetalhe() {
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto pb-1 flex-nowrap">
-          <button onClick={() => setModalEditar(true)} disabled={osFinalizada}
+          <button onClick={() => navigate(`/ordens-servico/${encodeURIComponent(os.id)}/editar`)} disabled={osFinalizada}
             title={osFinalizada ? 'OS finalizada — reabra a OS para editar' : ''}
             className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap flex-shrink-0"><Pencil size={14} />Editar</button>
           <button onClick={() => imprimir('a4det')} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><Printer size={14} />Nota de Serviço</button>
@@ -1134,9 +1133,9 @@ export default function OrdemDetalhe() {
                     <td className="py-2.5 text-right text-sm font-semibold text-slate-700">{fmt(pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto))}</td>
                     <td className="py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => aplicarTaxaItem(it)} disabled={osFinalizada} aria-label={`Aplicar acréscimo de ${taxaPct}%`} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-300 hover:text-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-colors">%</button>
-                        <button onClick={() => setEditandoItem({ ...it, quantidade: String(it.quantidade), valorUnitario: String(it.valorUnitario), desconto: String(it.desconto || '0'), mecanicoId: it.mecanicoId || '' })} disabled={osFinalizada} aria-label="Editar item" className="p-1 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed"><Pencil size={14} /></button>
-                        <button onClick={() => { if (confirm(`Remover "${it.descricao}" da OS?`)) removerItemOrdem(os.id, it.id) }} disabled={osFinalizada} aria-label="Remover item" className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed"><Trash2 size={14} /></button>
+                        <button onClick={() => aplicarTaxaItem(it)} disabled={osFinalizada} aria-label={`Aplicar acréscimo de ${taxaPct}%`} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-500 hover:text-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-colors">%</button>
+                        <button onClick={() => setEditandoItem({ ...it, quantidade: String(it.quantidade), valorUnitario: String(it.valorUnitario), desconto: String(it.desconto || '0'), mecanicoId: it.mecanicoId || '' })} disabled={osFinalizada} aria-label="Editar item" className="p-1 rounded hover:bg-blue-50 text-slate-500 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"><Pencil size={14} /></button>
+                        <button onClick={() => { if (confirm(`Remover "${it.descricao}" da OS?`)) removerItemOrdem(os.id, it.id) }} disabled={osFinalizada} aria-label="Remover item" className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -1413,7 +1412,6 @@ export default function OrdemDetalhe() {
         </div>
       )}
 
-      {modalEditar && <ModalEditar os={os} funcionarios={funcionarios} onClose={() => setModalEditar(false)} onSalvar={d => { atualizarOrdem(os.id, d); setModalEditar(false) }} />}
       {modalCliente && (
         <ModalEditarClienteVeiculo cliente={cliente} veiculo={veiculo} os={os}
           onClose={() => setModalCliente(false)}
@@ -1840,50 +1838,6 @@ function ModalBase({ title, onClose, children }) {
   )
 }
 
-function ModalEditar({ os, funcionarios, onClose, onSalvar }) {
-  const [f, setF] = useState({
-    kmEntrada: os.kmEntrada || '',
-    mecanicoId: os.mecanicoId || '',
-    dataEntrada: os.dataEntradaISO || '',
-    dataConclusao: os.dataConclusaoISO || '',
-    descricaoProblema: os.descricaoProblema || '',
-    diagnostico: os.diagnostico || '',
-    observacoes: os.observacoes || '',
-    anotacoesInternas: os.anotacoesInternas || '',
-  })
-  const set = (k, v) => setF(p => ({ ...p, [k]: v }))
-  return (
-    <ModalBase title={`Editar OS ${os.id}`} onClose={onClose}>
-      <div className="space-y-3">
-        <Campo label="KM de Entrada"><input value={f.kmEntrada} onChange={e => set('kmEntrada', e.target.value)} className="inp" /></Campo>
-        <Campo label="Mecânico Responsável">
-          <select value={f.mecanicoId} onChange={e => set('mecanicoId', e.target.value)} className="inp">
-            <option value="">Nenhum</option>
-            {funcionarios.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-          </select>
-        </Campo>
-        <div className="grid grid-cols-2 gap-3">
-          <Campo label="Data de Entrada"><input type="datetime-local" value={f.dataEntrada} onChange={e => set('dataEntrada', e.target.value)} className="inp" /></Campo>
-          <Campo label="Data de Conclusão"><input type="datetime-local" value={f.dataConclusao} onChange={e => set('dataConclusao', e.target.value)} className="inp" /></Campo>
-        </div>
-        <Campo label="Descrição do Problema"><textarea rows={2} value={f.descricaoProblema} onChange={e => set('descricaoProblema', e.target.value)} className="inp resize-none" /></Campo>
-        <Campo label="Diagnóstico"><textarea rows={2} value={f.diagnostico} onChange={e => set('diagnostico', e.target.value)} className="inp resize-none" /></Campo>
-        <Campo label="Observações"><textarea rows={2} value={f.observacoes} onChange={e => set('observacoes', e.target.value)} className="inp resize-none" /></Campo>
-        <Campo label={<span className="flex items-center gap-1"><Lock size={12} />Anotações internas <span className="text-slate-400 font-normal">(não saí impresso na OS)</span></span>}>
-          <textarea rows={2} value={f.anotacoesInternas} onChange={e => set('anotacoesInternas', e.target.value)} placeholder="Ex: nº do pedido de peças, fornecedor, prazos internos..." className="inp resize-none" />
-        </Campo>
-        <button onClick={() => {
-          const extra = {}
-          if (f.dataEntrada) { extra.dataEntradaISO = f.dataEntrada; extra.dataEntrada = new Date(f.dataEntrada).toLocaleDateString('pt-BR') }
-          if (f.dataConclusao) { extra.dataConclusaoISO = f.dataConclusao; extra.dataConclusao = new Date(f.dataConclusao).toLocaleDateString('pt-BR') }
-          onSalvar({ ...f, mecanicoId: f.mecanicoId ? Number(f.mecanicoId) : null, ...extra })
-        }} className="w-full bg-primary-500 hover:bg-primary-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">Salvar</button>
-      </div>
-      <style>{`.inp{width:100%;border:1px solid #e2e8f0;border-radius:0.5rem;padding:0.5rem 0.75rem;font-size:0.875rem;outline:none}.inp:focus{box-shadow:0 0 0 2px #f97316}`}</style>
-    </ModalBase>
-  )
-}
-
-function Campo({ label, children }) {
-  return <div><label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>{children}</div>
-}
+// A edicao da OS virou tela: `pages/OrdemEditar.jsx`. Sao oito campos, quatro
+// deles textos longos — no popup ficavam com duas linhas cada, rolando dentro
+// da caixa, justo onde se escreve o que aconteceu com o carro.

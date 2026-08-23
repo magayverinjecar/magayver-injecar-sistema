@@ -30,9 +30,17 @@ function Secao({ titulo, resumo, aberta, onToggle, children }) {
 //
 // `comSaldo`: no cadastro o saldo inicial é digitável (vira movimento de saldo
 // inicial); na edição não, porque saldo só muda por movimentação.
-export default function FormularioPeca({ f, set, comSaldo = true }) {
+//
+// `largo`: em tela cheia. As quatro seções nascem ABERTAS e se espalham em duas
+// colunas, porque a sanfona só existia por falta de espaço no popup — onde cabe
+// tudo, abrir seção por seção é trabalho a mais. No popup (ou no celular) o
+// comportamento é o de sempre: as duas do dia a dia abertas, fiscal e detalhes
+// recolhidas para quem cadastra rápido não tropeçar nelas.
+export default function FormularioPeca({ f, set, comSaldo = true, largo = false }) {
   const { fornecedores } = useApp()
-  const [abertas, setAbertas] = useState({ ident: true, precos: true, fiscal: false, detalhes: false })
+  const [abertas, setAbertas] = useState(largo
+    ? { ident: true, precos: true, fiscal: true, detalhes: true }
+    : { ident: true, precos: true, fiscal: false, detalhes: false })
   const alternar = (k) => setAbertas(a => ({ ...a, [k]: !a[k] }))
   const campo = (k) => (e) => set(x => ({ ...x, [k]: e.target.value }))
 
@@ -40,7 +48,9 @@ export default function FormularioPeca({ f, set, comSaldo = true }) {
   const conversao = temConversao(f)
 
   return (
-    <div className="space-y-3">
+    <div className={largo
+      ? 'space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3'
+      : 'space-y-3'}>
       <Secao titulo="Identificação" aberta={abertas.ident} onToggle={() => alternar('ident')}
         resumo={[f.codigo, f.nome].filter(Boolean).join(' · ')}>
         <div className="grid grid-cols-2 gap-3">

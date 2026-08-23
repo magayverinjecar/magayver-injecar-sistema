@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Car, CalendarDays, ClipboardList,
   Wrench, Package, DollarSign, ShoppingCart, UserCog, Settings,
   BarChart3, FileText, Truck, Factory, Droplets, Receipt, Brain,
-  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid, History
+  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid, History, Tag
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
@@ -36,6 +36,13 @@ const grupos = [
     items: [
       { to: '/ordens-servico', icon: ClipboardList, label: 'Ordens de Serviço' },
       { to: '/orcamentos', icon: FileText, label: 'Orçamentos' },
+      // Venda de balcão fica junto de OS e Orçamento porque é a terceira forma
+      // de a oficina cobrar — peça avulsa ou serviço rápido, sem abrir OS. Ela
+      // existia desde sempre, mas a única porta era um botão dentro do Caixa:
+      // quem não sabia que estava lá continuava abrindo OS para vender um
+      // filtro. `permissao` explícita porque a chave derivada do path viraria
+      // 'caixa/nova-venda', que não existe em menu nenhum.
+      { to: '/caixa/nova-venda', icon: Tag, label: 'Venda Balcão', permissao: 'venda' },
       { to: '/clientes', icon: Users, label: 'Clientes' },
       { to: '/veiculos', icon: Car, label: 'Veículos' },
       { to: '/servicos', icon: Wrench, label: 'Serviços' },

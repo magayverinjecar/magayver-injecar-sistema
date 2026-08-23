@@ -1,22 +1,17 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Search, Plus, AlertTriangle, Trash2, Pencil, Package, Boxes, History, RefreshCw, Merge, EyeOff } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabase'
-import gerarId from '../utils/id'
 import Modal from '../components/ui/Modal'
 import AbaKits from '../components/AbaKits'
 import AbaDuplicadas from '../components/AbaDuplicadas'
-import FormularioPeca from '../components/FormularioPeca'
-import { PECA_VAZIA } from '../utils/pecaCampos'
 import { kitsDoConfig } from '../utils/kits'
 import { rotuloDoTipo, rotuloDaOrigem, mensagemErroExtrato } from '../utils/movimentos'
-import { pecaComCodigo, pecaAtiva, gruposDuplicados } from '../utils/pecas'
+import { pecaAtiva, gruposDuplicados } from '../utils/pecas'
 import { parseValorBR } from '../utils/numero'
 
 const fmtBRL = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-const vazio = PECA_VAZIA
 
 // ── Extrato de movimentação de uma peça (kardex) ─────────────────────────────
 // Lê a tabela estoque_mov sob demanda — ela não fica sincronizada no app, é
@@ -112,15 +107,12 @@ function ExtratoPeca({ item, onClose }) {
 }
 
 export default function Estoque() {
+  const navigate = useNavigate()
   const { estoque, setEstoque, movimentarEstoque, reservadoDe, config } = useApp()
-  const { currentUser } = useAuth()
   // Kits ficam nesta tela, e não em Configurações: quem monta kit é quem mexe
   // em estoque — as peças e as referências estão aqui.
   const [aba, setAba] = useState('pecas')
   const [busca, setBusca] = useState('')
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState(vazio)
-  const [editando, setEditando] = useState(null) // item sendo editado
   const [ajustando, setAjustando] = useState(null) // { item, valor, motivo }
   const [extratoDe, setExtratoDe] = useState(null) // item com extrato aberto
   const [mostrarInativas, setMostrarInativas] = useState(false)
@@ -138,78 +130,12 @@ export default function Estoque() {
 
   const emFalta = estoque.filter(i => pecaAtiva(i) && Number(i.estoque) <= Number(i.minimo)).length
 
-  function salvar() {
-    if (!form.nome.trim()) return
-    // Codigo repetido nao entra: e assim que a mesma vela virou sete cadastros,
-    // com o saldo real espalhado em sete linhas. A comparacao perdoa espaco,
-    // hifen, barra, ponto e acento — "FLU/DS/280" e "flu ds 280" sao a mesma.
-    const jaExiste = pecaComCodigo(estoque, form.codigo)
-    if (jaExiste) {
-      alert(`O código ${form.codigo} já está cadastrado em:\n\n${jaExiste.nome}\n\nSe for a mesma peça, use a peça que já existe (dá para editar o nome nela). Se for outra peça, corrija o código.`)
-      return
-    }
-    // Maiúscula só ao salvar — em caps enquanto digita, o corretor do navegador
-    // pula as palavras achando que é sigla.
-    //
-    // A peça nasce com saldo ZERO e a quantidade inicial entra por movimento de
-    // "saldo inicial" no kardex: o extrato explica o saldo desde o primeiro dia.
-    const id = gerarId()
-    const qtdInicial = Number(form.estoque) || 0
-    setEstoque(prev => [...prev, {
-      ...form, id, estoque: 0,
-      nome: form.nome.toUpperCase().trim(),
-      categoria: (form.categoria || '').toUpperCase(),
-      marca: (form.marca || '').toUpperCase(),
-      aplicacao: (form.aplicacao || '').toUpperCase(),
-      localizacao: (form.localizacao || '').toUpperCase(),
-      minimo: Number(form.minimo) || 0,
-      ativo: true,
-      criadoEm: Date.now(),
-      criadoPor: currentUser?.nome || '',
-    }])
-    if (qtdInicial !== 0) {
-      movimentarEstoque({
-        pecaId: id,
-        qtd: qtdInicial,
-        tipo: 'saldo_inicial',
-        motivo: 'Cadastro da peça',
-        custoUnit: form.precoCusto,
-        criarSeFaltar: true,
-      })
-    }
-    setForm(vazio)
-    setModal(false)
-  }
-
-  function abrirEdicao(item) {
-    setEditando({ ...item, minimo: String(item.minimo) })
-  }
-
-  function salvarEdicao() {
-    if (!editando.nome.trim()) return
-    const jaExiste = pecaComCodigo(estoque, editando.codigo, { ignorarId: editando.id })
-    if (jaExiste) {
-      alert(`O código ${editando.codigo} já está cadastrado em:\n\n${jaExiste.nome}\n\nDuas peças com o mesmo código dividem o saldo e o alerta de mínimo.`)
-      return
-    }
-    // O saldo NÃO passa por aqui: editar cadastro mexe em nome, código, preços
-    // e mínimo. Saldo muda por movimentação (botões −/+ com motivo), senão a
-    // foto do formulário apagaria baixas feitas em outro aparelho.
-    setEstoque(prev => prev.map(i => i.id === editando.id
-      ? {
-          ...editando,
-          nome: editando.nome.toUpperCase().trim(),
-          categoria: (editando.categoria || '').toUpperCase(),
-          marca: (editando.marca || '').toUpperCase(),
-          aplicacao: (editando.aplicacao || '').toUpperCase(),
-          localizacao: (editando.localizacao || '').toUpperCase(),
-          estoque: i.estoque,
-          minimo: Number(editando.minimo) || 0,
-        }
-      : i
-    ))
-    setEditando(null)
-  }
+  // Cadastrar e editar peça vivem em `pages/PecaCadastro.jsx`, em tela cheia.
+  // São 20 campos em 4 seções — ficha grande é tela em todo o resto do sistema
+  // (OS, Compra, Nova Entrada), e como popup ela rolava dentro de uma caixa,
+  // não tinha endereço próprio e sumia com um clique fora. Os popups que
+  // ficaram nesta tela — ajuste de saldo e extrato — são decisão curta, que é
+  // o uso certo de popup.
 
   function excluir(id) {
     if (confirm('Excluir este item?')) setEstoque(prev => prev.filter(i => i.id !== id))
@@ -295,7 +221,7 @@ export default function Estoque() {
               <EyeOff size={15} />{mostrarInativas ? 'Ocultar' : 'Mostrar'} inativas ({qtdInativas})
             </button>
           )}
-          <button onClick={() => { setForm(vazio); setModal(true) }} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+          <button onClick={() => navigate('/estoque/peca/nova')} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
             <Plus size={16} />Nova Peça
           </button>
         </div>
@@ -371,13 +297,13 @@ export default function Estoque() {
                   <td className="px-5 py-3.5 text-sm text-slate-700 text-right tabular-nums">{item.preco || <span className="text-slate-300">—</span>}</td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => setExtratoDe(item)} className="p-1.5 rounded hover:bg-slate-100 text-slate-300 hover:text-slate-500 transition-colors" title="Extrato de movimentação">
+                      <button onClick={() => setExtratoDe(item)} className="p-1.5 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors" title="Extrato de movimentação">
                         <History size={14} />
                       </button>
-                      <button onClick={() => abrirEdicao(item)} className="p-1.5 rounded hover:bg-blue-50 text-slate-300 hover:text-blue-400 transition-colors" title="Editar">
+                      <button onClick={() => navigate(`/estoque/peca/${item.id}`)} className="p-1.5 rounded hover:bg-blue-50 text-slate-500 hover:text-blue-600 transition-colors" title="Editar">
                         <Pencil size={14} />
                       </button>
-                      <button onClick={() => excluir(item.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors" title="Excluir">
+                      <button onClick={() => excluir(item.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors" title="Excluir">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -406,28 +332,6 @@ export default function Estoque() {
         )}
       </div>
       </>)}
-
-      {/* Modal Nova Peça */}
-      {modal && (
-        <Modal title="Nova Peça / Item" onClose={() => setModal(false)}>
-          <FormularioPeca f={form} set={setForm} />
-          <div className="flex gap-3 pt-4">
-            <button type="button" onClick={() => setModal(false)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-            <button type="button" onClick={salvar} className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">Salvar</button>
-          </div>
-        </Modal>
-      )}
-
-      {/* Modal Editar Peça — sem o campo de saldo: saldo muda por movimentação */}
-      {editando && (
-        <Modal title="Editar Peça" onClose={() => setEditando(null)}>
-          <FormularioPeca f={editando} set={setEditando} comSaldo={false} />
-          <div className="flex gap-3 pt-4">
-            <button type="button" onClick={() => setEditando(null)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-            <button type="button" onClick={salvarEdicao} className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">Salvar Alterações</button>
-          </div>
-        </Modal>
-      )}
 
       {/* Modal Ajuste de saldo — todo ajuste tem motivo e vira extrato */}
       {ajustando && (() => {

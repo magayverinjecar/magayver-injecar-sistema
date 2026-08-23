@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Plus, Trash2, Printer, FileText, CheckCircle, Package } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Plus, Trash2, Printer, FileText, CheckCircle, Package, DollarSign } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { imprimirReciboCaixa } from '../utils/print'
 import gerarId from '../utils/id'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
@@ -20,6 +21,13 @@ const PASSOS = ['Identificação', 'Itens', 'Pagamento', 'Confirmação', 'Concl
 
 export default function NovaVenda() {
   const navigate = useNavigate()
+  // Quem pode abrir o caixa é quem tem o menu 'caixa'. Hoje esta tela exige a
+  // mesma permissão na rota, então na prática só o primeiro texto aparece — o
+  // segundo passa a valer no dia em que a venda de balcão for liberada para
+  // quem não abre caixa. A checagem fica aqui em vez de assumir: a permissão é
+  // editável por pessoa nas Configurações, e o texto tem de acompanhar.
+  const { temPermissao } = useAuth()
+  const podeAbrirCaixa = temPermissao('caixa')
   const { caixaTurno, caixaCarregado, registrarVendaCaixa, clientes, veiculosPorCliente, servicos, estoque, movimentarEstoque, reservadoDe, ordens, orcamentos, getCliente, config } = useApp()
 
   const [passo, setPasso] = useState(1)
@@ -45,18 +53,48 @@ export default function NovaVenda() {
   const [vendaFinalizada, setVendaFinalizada] = useState(null)
   const [finalizando, setFinalizando] = useState(false)
 
-  // O turno carrega depois do resto (vem em segundo plano), então na primeira
-  // renderização ele ainda é null mesmo com o caixa aberto. Redirecionar aqui
-  // dentro do render chutava a pessoa de volta para o Caixa — e o React avisava
-  // que estava navegando durante a renderização. Espera o carregamento terminar.
-  useEffect(() => {
-    if (caixaCarregado && !caixaTurno) navigate('/caixa')
-  }, [caixaCarregado, caixaTurno, navigate])
-
+  // Sem turno aberto, esta tela AVISA — não abre o caixa por atalho.
+  //
+  // Abrir turno é ato de responsabilidade: quem abre declara quanto dinheiro
+  // está na gaveta, e esse número é a base de conferência do fechamento do dia.
+  // Deixar isso acontecer de raspão, no meio de uma venda, faria o saldo
+  // inicial ser digitado às pressas com o cliente esperando — ou zerado no
+  // impulso de seguir em frente. Por isso o caminho continua sendo a tela do
+  // Caixa; o que esta tela faz é dizer isso claramente e levar até lá num
+  // clique, em vez de expulsar sem explicação.
+  //
+  // A mensagem muda conforme quem está na frente da tela: para quem não pode
+  // abrir o caixa, mandar "vá abrir" seria mandar fazer o impossível — o que
+  // essa pessoa precisa saber é a quem pedir.
   if (!caixaTurno) {
     return (
-      <div className="flex items-center justify-center py-20 text-sm text-slate-400">
-        {caixaCarregado ? 'Nenhum turno de caixa aberto.' : 'Carregando o caixa…'}
+      <div className="p-6 max-w-md mx-auto">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-8 text-center">
+          <DollarSign size={34} className="text-slate-300 mx-auto mb-3" />
+          {!caixaCarregado ? (
+            <p className="text-sm text-slate-400">Carregando o caixa…</p>
+          ) : podeAbrirCaixa ? (
+            <>
+              <p className="font-semibold text-slate-800">O caixa não está aberto</p>
+              <p className="text-sm text-slate-500 mt-1.5 mb-5 leading-relaxed">
+                Toda venda precisa cair num turno de caixa, para o fechamento do dia bater.
+                Vá até o Caixa, abra o turno informando o dinheiro que está na gaveta, e volte aqui.
+              </p>
+              <button onClick={() => navigate('/caixa')}
+                className="w-full inline-flex items-center justify-center gap-2 bg-primary-500 hover:bg-primary-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
+                Ir para o Caixa <ArrowRight size={15} />
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold text-slate-800">O caixa não está aberto</p>
+              <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">
+                Você não tem acesso para abrir o caixa. Peça a alguém com acesso ao Caixa —
+                o administrador ou a recepção — para abrir o turno, e então a venda pode ser feita.
+              </p>
+            </>
+          )}
+        </div>
       </div>
     )
   }
@@ -366,7 +404,7 @@ export default function NovaVenda() {
                     <td className="py-2 text-center"><input value={it.preco} onChange={e => updItem(it.id, 'preco', e.target.value)} className="w-20 border border-slate-200 rounded px-2 py-1 text-sm text-center" /></td>
                     <td className="py-2 text-center"><input value={it.desc} onChange={e => updItem(it.id, 'desc', e.target.value)} className="w-16 border border-slate-200 rounded px-2 py-1 text-sm text-center" /></td>
                     <td className="py-2 text-right text-sm font-semibold text-slate-700">{fmt(pNum(it.preco) * pNum(it.qtd) - pNum(it.desc))}</td>
-                    <td className="py-2 text-right"><button onClick={() => delItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400"><Trash2 size={14} /></button></td>
+                    <td className="py-2 text-right"><button onClick={() => delItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600"><Trash2 size={14} /></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -491,7 +529,7 @@ export default function NovaVenda() {
                             </>}
                       </td>
                       <td className="py-2 text-sm text-slate-400">{p.ref || '-'}</td>
-                      <td className="py-2 text-right"><button onClick={() => delPagamento(p.id)} aria-label="Remover pagamento" className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400"><Trash2 size={14} /></button></td>
+                      <td className="py-2 text-right"><button onClick={() => delPagamento(p.id)} aria-label="Remover pagamento" className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600"><Trash2 size={14} /></button></td>
                     </tr>
                   )
                 })}

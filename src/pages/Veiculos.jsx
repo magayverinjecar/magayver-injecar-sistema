@@ -1,17 +1,13 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Search, Plus, Car, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import gerarId from '../utils/id'
-import Modal from '../components/ui/Modal'
 import { momentoEntrada, dataEntradaLegivel, nomeVeiculo } from '../utils/datas'
 
-const vazio = { placa: '', modelo: '', ano: '', cor: '', clienteId: '', km: '' }
-
 export default function Veiculos() {
-  const { veiculos, setVeiculos, clientes, getCliente, ordens } = useApp()
+  const navigate = useNavigate()
+  const { veiculos, setVeiculos, getCliente, ordens } = useApp()
   const [busca, setBusca] = useState('')
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState(vazio)
 
   // Histórico de cada carro levantado em UMA passada pela lista de OS.
   // Chamar ordensPorVeiculo linha a linha varre a tabela de ordens inteira uma
@@ -52,12 +48,9 @@ export default function Veiculos() {
   // não voltou. Vale saber quantos são antes de confiar no tamanho da lista.
   const semOS = filtrados.filter(v => !historicoPorVeiculo.has(v.id)).length
 
-  function salvar() {
-    if (!form.placa.trim() || !form.modelo.trim()) return
-    setVeiculos(prev => [...prev, { ...form, id: gerarId(), clienteId: Number(form.clienteId) || null }])
-    setForm(vazio)
-    setModal(false)
-  }
+  // Cadastrar vive em tela propria (`pages/Veículo.jsx`): ficha de
+  // cadastro nao e decisao curta, e como popup ela nao tinha endereco proprio
+  // nem sobrevivia a um clique fora.
 
   function excluir(id) {
     if (confirm('Excluir este veículo?')) setVeiculos(prev => prev.filter(v => v.id !== id))
@@ -71,7 +64,7 @@ export default function Veiculos() {
           <input type="text" placeholder="Buscar placa, modelo ou cliente..." value={busca} onChange={e => setBusca(e.target.value)}
             className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 w-72" />
         </div>
-        <button onClick={() => setModal(true)} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+        <button onClick={() => navigate('/veiculos/novo')} className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
           <Plus size={16} />Novo Veículo
         </button>
       </div>
@@ -90,7 +83,7 @@ export default function Veiculos() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-1 rounded">{v.placa}</span>
-                  <button onClick={() => excluir(v.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                  <button onClick={() => excluir(v.id)} className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors">
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -162,7 +155,7 @@ export default function Veiculos() {
                     {historico ? historico.qtd : <span className="text-slate-300">0</span>}
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <button onClick={() => excluir(v.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors" title="Excluir">
+                    <button onClick={() => excluir(v.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors" title="Excluir">
                       <Trash2 size={14} />
                     </button>
                   </td>
@@ -194,48 +187,6 @@ export default function Veiculos() {
         )}
       </div>
 
-      {modal && (
-        <Modal title="Novo Veículo" onClose={() => setModal(false)}>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Proprietário</label>
-              <select value={form.clienteId} onChange={e => setForm(f => ({ ...f, clienteId: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                <option value="">Selecione o cliente</option>
-                {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Placa *</label>
-                <input value={form.placa} onChange={e => setForm(f => ({ ...f, placa: e.target.value }))} placeholder="ABC-1234" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Modelo *</label>
-                <input value={form.modelo} onChange={e => setForm(f => ({ ...f, modelo: e.target.value }))} placeholder="Honda Civic" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Ano</label>
-                <input value={form.ano} onChange={e => setForm(f => ({ ...f, ano: e.target.value }))} placeholder="2020" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Cor</label>
-                <input value={form.cor} onChange={e => setForm(f => ({ ...f, cor: e.target.value }))} placeholder="Prata" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">KM</label>
-                <input value={form.km} onChange={e => setForm(f => ({ ...f, km: e.target.value }))} placeholder="45.000" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-              </div>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button onClick={() => setModal(false)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-              <button onClick={salvar} className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">Salvar</button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   )
 }
