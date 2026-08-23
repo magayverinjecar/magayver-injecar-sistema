@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 backups/
+
+# Documento de trabalho do dono, fica so na maquina dele
+PLANO_MIGRACAO_OPCAO_C.pdf

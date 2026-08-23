@@ -9,6 +9,7 @@ import PontoDeEquilibrio from '../components/PontoDeEquilibrio'
 import DRE from '../components/DRE'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
 import SeletorPeriodo from '../components/ui/SeletorPeriodo'
+import PainelOrigem from '../components/PainelOrigem'
 import { ehCartao, maquinaPadrao } from '../utils/cartao'
 import { intervaloDe, periodoAnteriorDe, resumirFinanceiro, dentroDoPeriodo, variacao } from '../utils/periodo'
 import { parseValorBR } from '../utils/numero'
@@ -413,6 +414,7 @@ const pNum = parseValorBR
           { key: 'apagar',      label: `A Pagar${todasContasAPagar.length ? ` (${todasContasAPagar.length})` : ''}` },
           { key: 'devedores',   label: `A Receber${aReceber.itens.length ? ` (${aReceber.itens.length})` : ''}` },
           { key: 'cartoes',     label: 'Cartões' },
+          { key: 'origem',      label: 'Origem' },
         ].map(({ key, label }) => (
           <button key={key} onClick={() => setAba(key)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -487,7 +489,7 @@ const pNum = parseValorBR
                         coluna dizendo o que é aquele número. */}
                     {l.tipo === 'receita' ? '+' : '−'} <span className="lg:hidden">R$ </span>{l.valor}
                   </span>
-                  <button onClick={() => excluir(l.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                  <button onClick={() => excluir(l.id)} className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors">
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -573,7 +575,7 @@ const pNum = parseValorBR
                           <CheckCircle2 size={12} />Dar Baixa
                         </button>
                         <button onClick={() => excluirBoletoAvulso(p.id)}
-                          className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+                          className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors">
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -639,6 +641,13 @@ const pNum = parseValorBR
 
       {/* Cartões — quanto a adquirência está custando */}
       {aba === 'cartoes' && <PainelCartoes intervalo={intervalo} />}
+
+      {/* De onde vêm os clientes — e qual canal traz dinheiro. Fica aqui, e não
+          numa tela de clientes, porque a resposta útil não é "quantos vieram do
+          Google", é "quanto o Google faturou": a decisão que ela alimenta é a
+          de onde colocar verba de anúncio. Recebe o mesmo `intervalo` do topo,
+          que é o que dá o recorte mês a mês e ano a ano. */}
+      {aba === 'origem' && <PainelOrigem intervalo={intervalo} />}
 
       {/* A Receber — OS concluída não paga + venda de balcão com saldo aberto */}
       {aba === 'devedores' && (

@@ -6,6 +6,7 @@ import {
   PenTool, Search, Eraser, Smartphone, Link, MessageSquare, Copy, Save
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { ORIGENS_CLIENTE } from '../utils/origemCliente'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabase'
 
@@ -192,9 +193,14 @@ export default function ChecklistNovo() {
     cpfCnpj: ckEditar.clienteCpfCnpj || '',
     email: ckEditar.clienteEmail || '',
     endereco: '', numero: '', bairro: '', cidadeEstado: '', cep: '',
+    origem: '',
   } : {
     nome: '', telefone: '', telefone2: '', cpfCnpj: '',
     email: '', endereco: '', numero: '', bairro: '', cidadeEstado: '', cep: '',
+    // Esta tela ainda é porta de entrada (botão em Checklist), então precisa da
+    // mesma pergunta da Nova Entrada: cliente cadastrado por aqui sem origem
+    // cai para sempre em "Não informado" no relatório de canal do Financeiro.
+    origem: '',
   })
 
   // Restaurar endereço completo ao editar
@@ -298,6 +304,7 @@ export default function ChecklistNovo() {
       cpfCnpj: c.cpfCnpj || '', email: c.email || '',
       endereco: c.endereco || '', numero: c.numero || '',
       bairro: c.bairro || '', cidadeEstado: c.cidadeEstado || '', cep: c.cep || '',
+      origem: c.origem || '',
     })
     setBuscaCliente(c.nome)
     setMostrarDropdown(false)
@@ -463,7 +470,16 @@ export default function ChecklistNovo() {
       setClientes(prev => [novo, ...prev])
       cId = novo.id
     } else {
-      setClientes(prev => prev.map(c => c.id === cId ? { ...c, ...cliente } : c))
+      // Mesma proteção da Nova Entrada: campo de origem vazio não apaga a
+      // resposta que já estava gravada no cadastro. Antes de esta tela ter o
+      // campo, o spread preservava sozinho (a chave nem existia); agora que
+      // existe, sem a guarda ela apagaria.
+      setClientes(prev => prev.map(c => {
+        if (c.id !== cId) return c
+        const dados = { ...cliente }
+        if (!String(dados.origem || '').trim()) delete dados.origem
+        return { ...c, ...dados }
+      }))
     }
 
     let vId = veiculoId
@@ -472,8 +488,11 @@ export default function ChecklistNovo() {
       const novoV = {
         id: gerarId(),
         clienteId: cId,
-        marca: parts[0] || '',
-        modelo: parts.slice(1).join(' ') || veiculo.modelo,
+        // Uma palavra so ("GOL") nao pode virar marca=GOL E modelo=GOL: o
+        // cadastro passava a ter a mesma palavra nos dois campos e a tela
+        // mostrava "GOL GOL".
+        marca: parts.length > 1 ? parts[0] : '',
+        modelo: parts.length > 1 ? parts.slice(1).join(' ') : veiculo.modelo.trim(),
         placa: veiculo.placa,
         cor: veiculo.cor,
         ano: veiculo.ano,
@@ -611,7 +630,12 @@ export default function ChecklistNovo() {
                 <Search size={15} className="absolute left-3 top-3 text-slate-400" />
                 <input type="text" placeholder="Nome ou telefone..."
                   value={buscaCliente}
-                  onChange={e => { setBuscaCliente(e.target.value); setMostrarDropdown(true); setClienteId(null) }}
+                  onChange={e => {
+                    setBuscaCliente(e.target.value); setMostrarDropdown(true); setClienteId(null)
+                    // Limpa junto: senão o cliente novo herda a origem do que
+                    // estava selecionado antes, e ninguém percebe.
+                    setCliente(p => (p.origem ? { ...p, origem: '' } : p))
+                  }}
                   onFocus={() => setMostrarDropdown(true)}
                   onBlur={() => setTimeout(() => setMostrarDropdown(false), 150)}
                   className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" />
@@ -705,11 +729,20 @@ export default function ChecklistNovo() {
                   placeholder="(00) 00000-0000" inputMode="tel" />
               </div>
 
-              <div className="col-span-12">
+              <div className="col-span-12 sm:col-span-6">
                 <CampoInput label="Email"
                   value={cliente.email}
                   onChange={e => setCliente(p => ({ ...p, email: e.target.value.toLowerCase() }))}
                   placeholder="email@exemplo.com" type="email" inputMode="email" />
+              </div>
+              <div className="col-span-12 sm:col-span-6">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Como nos conheceu</label>
+                <select value={cliente.origem || ''}
+                  onChange={e => setCliente(p => ({ ...p, origem: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300">
+                  <option value="">Não perguntado</option>
+                  {ORIGENS_CLIENTE.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
               </div>
             </div>
           </>

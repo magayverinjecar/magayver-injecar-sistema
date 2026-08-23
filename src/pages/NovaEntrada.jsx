@@ -8,6 +8,7 @@ import {
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase, uploadAssinatura } from '../supabase'
+import { ORIGENS_CLIENTE } from '../utils/origemCliente'
 
 const DASHBOARD_LIGHTS = [
   'Injeção (Check Engine)', 'Bateria / Alternador', 'Pressão de Óleo',
@@ -206,7 +207,16 @@ export default function NovaEntrada() {
   const [cliente, setCliente] = useState({
     nome: '', telefone: '', telefone2: '', cpfCnpj: '',
     email: '', endereco: '', numero: '', bairro: '', cidadeEstado: '', cep: '',
+    // Como o cliente chegou até a oficina. Fica gravado no cadastro dele — é a
+    // matéria-prima do relatório de canal no Financeiro. Só é perguntado de
+    // verdade uma vez: quando o cliente já tem resposta, o campo vem
+    // preenchido e a recepção não precisa parar a conversa por causa dele.
+    origem: '',
   })
+  // Se o cliente escolhido já tinha resposta gravada. Serve só para o aviso na
+  // tela — o campo continua editável, porque resposta errada precisa poder ser
+  // corrigida (e os cadastros antigos vão sendo preenchidos aos poucos).
+  const [origemJaTinha, setOrigemJaTinha] = useState(false)
 
   const [veiculoId, setVeiculoId] = useState(null)
   const [veiculo, setVeiculo] = useState({
@@ -262,7 +272,9 @@ export default function NovaEntrada() {
       cpfCnpj: c.cpfCnpj || '', email: c.email || '',
       endereco: c.endereco || '', numero: c.numero || '',
       bairro: c.bairro || '', cidadeEstado: c.cidadeEstado || '', cep: c.cep || '',
+      origem: c.origem || '',
     })
+    setOrigemJaTinha(!!String(c.origem || '').trim())
     setBuscaCliente(c.nome)
     setMostrarDropdown(false)
     setVeiculoId(null)
@@ -431,7 +443,16 @@ export default function NovaEntrada() {
       setClientes(prev => [novo, ...prev])
       cId = novo.id
     } else {
-      setClientes(prev => prev.map(c => c.id === cId ? { ...c, ...cliente } : c))
+      // A origem gravada não é apagada por um campo vazio: se por qualquer
+      // caminho a tela chegar aqui sem a resposta em mãos (rascunho antigo,
+      // cadastro carregado pela metade), o que já estava no cadastro vale mais
+      // do que o branco. Só uma escolha explícita substitui a anterior.
+      setClientes(prev => prev.map(c => {
+        if (c.id !== cId) return c
+        const dados = { ...cliente }
+        if (!String(dados.origem || '').trim()) delete dados.origem
+        return { ...c, ...dados }
+      }))
     }
 
     let vId = veiculoId
@@ -439,7 +460,12 @@ export default function NovaEntrada() {
       const parts = veiculo.modelo.trim().split(' ')
       const novoV = {
         id: gerarId(), clienteId: cId,
-        marca: parts[0] || '', modelo: parts.slice(1).join(' ') || veiculo.modelo,
+        // Uma palavra so ("GOL") nao pode virar marca=GOL E modelo=GOL: o
+        // cadastro passava a ter a mesma palavra nos dois campos e a tela
+        // mostrava "GOL GOL". Sem segunda palavra, a marca fica vazia e o que
+        // foi digitado vira o modelo inteiro.
+        marca: parts.length > 1 ? parts[0] : '',
+        modelo: parts.length > 1 ? parts.slice(1).join(' ') : veiculo.modelo.trim(),
         placa: veiculo.placa, cor: veiculo.cor, ano: veiculo.ano,
         motor: veiculo.motor, combustivel: veiculo.combustivel,
       }
@@ -554,7 +580,17 @@ export default function NovaEntrada() {
                 <Search size={15} className="absolute left-3 top-3 text-slate-400" />
                 <input type="text" placeholder="Nome ou telefone..."
                   value={buscaCliente}
-                  onChange={e => { setBuscaCliente(e.target.value); setMostrarDropdown(true); setClienteId(null) }}
+                  onChange={e => {
+                    setBuscaCliente(e.target.value); setMostrarDropdown(true); setClienteId(null)
+                    // Trocar de cliente na busca limpa a origem junto. Sem isto,
+                    // selecionar o cliente A (Google), perceber que era o B e
+                    // digitar o nome do B gravava o B como "Google" — a recepção
+                    // não olha esse campo de novo, ninguém percebe, e o relatório
+                    // de canal fica envenenado em silêncio. Telefone e e-mail
+                    // herdam do mesmo jeito, mas são vistos e corrigidos na hora.
+                    setOrigemJaTinha(false)
+                    setCliente(p => (p.origem ? { ...p, origem: '' } : p))
+                  }}
                   onFocus={() => setMostrarDropdown(true)}
                   onBlur={() => setTimeout(() => setMostrarDropdown(false), 150)}
                   className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" />
@@ -632,6 +668,24 @@ export default function NovaEntrada() {
                 <CampoInput label="Email" value={cliente.email}
                   onChange={e => setCliente(p => ({ ...p, email: e.target.value.toLowerCase() }))}
                   placeholder="email@exemplo.com" type="email" inputMode="email" />
+              </div>
+              {/* Fica por último no HTML de propósito: no celular a recepção
+                  desce preenchendo o que é obrigatório e só então encontra a
+                  pergunta. No computador `lg:order-1` traz o campo para o
+                  começo da linha, ocupando as 2 colunas de 12 que sobravam. */}
+              <div className="col-span-12 sm:col-span-6 lg:col-span-2 lg:order-1">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                  Como nos conheceu
+                  {origemJaTinha && <span className="ml-1 normal-case font-normal text-slate-400">· já respondeu</span>}
+                </label>
+                <select value={cliente.origem || ''}
+                  onChange={e => setCliente(p => ({ ...p, origem: e.target.value }))}
+                  className={`w-full border rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 ${
+                    cliente.origem ? 'border-slate-200 text-slate-700' : 'border-slate-200 text-slate-400'
+                  }`}>
+                  <option value="">Não perguntado</option>
+                  {ORIGENS_CLIENTE.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
               </div>
             </div>
         </div>
