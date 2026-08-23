@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Car, CalendarDays, ClipboardList,
   Wrench, Package, DollarSign, ShoppingCart, UserCog, Settings,
   BarChart3, FileText, Truck, Factory, Droplets, Receipt, Brain,
-  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid
+  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid, History
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
@@ -47,6 +47,9 @@ const grupos = [
     titulo: 'ESTOQUE & COMPRAS',
     items: [
       { to: '/estoque', icon: Package, label: 'Estoque' },
+      // `permissao` explícita: sem ela a chave seria derivada do path e viraria
+      // 'estoque/movimentacoes' — que não existe em menu nenhum e sumiria o item.
+      { to: '/estoque/movimentacoes', icon: History, label: 'Movimentações', permissao: 'estoque' },
       { to: '/compras', icon: Truck, label: 'Compras' },
       { to: '/insumos', icon: Droplets, label: 'Insumos' },
       { to: '/fornecedores', icon: Factory, label: 'Fornecedores' },
@@ -103,6 +106,10 @@ export default function Sidebar({ open, onClose }) {
                 <li key={to}>
                   <NavLink
                     to={to}
+                    // Sem `end`, "/estoque" ficaria aceso junto com
+                    // "/estoque/movimentacoes" — os dois itens marcados ao
+                    // mesmo tempo. `end` acende só a rota exata.
+                    end={to === '/estoque'}
                     onClick={onClose}
                     className={({ isActive }) =>
                       `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${

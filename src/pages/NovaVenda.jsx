@@ -19,7 +19,7 @@ const PASSOS = ['Identificação', 'Itens', 'Pagamento', 'Confirmação', 'Concl
 
 export default function NovaVenda() {
   const navigate = useNavigate()
-  const { caixaTurno, caixaCarregado, registrarVendaCaixa, clientes, veiculosPorCliente, servicos, estoque, setEstoque, ordens, orcamentos, getCliente, config } = useApp()
+  const { caixaTurno, caixaCarregado, registrarVendaCaixa, clientes, veiculosPorCliente, servicos, estoque, movimentarEstoque, ordens, orcamentos, getCliente, config } = useApp()
 
   const [passo, setPasso] = useState(1)
   const [clienteId, setClienteId] = useState('')
@@ -70,7 +70,7 @@ export default function NovaVenda() {
     ? clientes.filter(c => c.nome.toLowerCase().includes(buscaCliente.toLowerCase()))
     : []
 
-  const pecasFiltradas = buscaPeca ? estoque.filter(p => p.nome.toLowerCase().includes(buscaPeca.toLowerCase()) || (p.codigo || '').toLowerCase().includes(buscaPeca.toLowerCase())) : estoque
+  const pecasFiltradas = buscaPeca ? estoque.filter(p => (p.nome || '').toLowerCase().includes(buscaPeca.toLowerCase()) || (p.codigo || '').toLowerCase().includes(buscaPeca.toLowerCase())) : estoque
   const servicosFiltrados = buscaServico ? servicos.filter(s => s.nome.toLowerCase().includes(buscaServico.toLowerCase())) : servicos
 
   // === importar OS / orçamento ===
@@ -183,23 +183,21 @@ export default function NovaVenda() {
     }
     const numero = registrarVendaCaixa(dadosVenda)
 
-    // Peça vendida no balcão precisa sair do estoque — só a peça lançada dentro
-    // da OS dava baixa, e o estoque ia ficando maior do que a prateleira real.
+    // Peça vendida no balcão sai do estoque pelo kardex: um movimento por
+    // linha, somado no servidor. A mesma peça em várias linhas baixa todas
+    // (o bug do "vendia duas, baixava uma" morre na raiz), e cada saída fica
+    // registrada no extrato com a venda de origem.
     const pecas = itens.filter(i => i.tipo === 'peca' && i.produtoId)
     if (pecas.length > 0) {
-      // Soma as quantidades por produto ANTES de baixar. A busca adiciona uma
-      // linha nova a cada clique, então a mesma peça vira várias linhas de
-      // quantidade 1 — e o `find` descontava só a primeira: vendia duas,
-      // baixava uma, e o estoque ia ficando maior que a prateleira.
-      const porProduto = new Map()
-      for (const p of pecas) {
-        const id = Number(p.produtoId)
-        porProduto.set(id, (porProduto.get(id) || 0) + (pNum(p.qtd) || 1))
-      }
-      setEstoque(prev => prev.map(item => {
-        const qtd = porProduto.get(item.id)
-        if (!qtd) return item
-        return { ...item, estoque: Math.max(0, Number(item.estoque) - qtd) }
+      movimentarEstoque(pecas.map(p => {
+        const prod = estoque.find(e => String(e.id) === String(p.produtoId))
+        return {
+          pecaId: p.produtoId,
+          qtd: -(pNum(p.qtd) || 1),
+          tipo: 'saida_venda',
+          origem: { tipo: 'venda', id: numero },
+          custoUnit: prod?.precoCusto,
+        }
       }))
     }
 

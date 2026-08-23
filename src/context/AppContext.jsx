@@ -7,6 +7,7 @@ import { parseDataBR } from '../utils/datas'
 import { parseValorBR } from '../utils/numero'
 import { intervaloDe, periodoAnteriorDe, resumirFinanceiro } from '../utils/periodo'
 import gerarId from '../utils/id'
+import { novoIdMovimento, idMovimentoDeterministico } from '../utils/movimentos'
 import {
   enfileirar as enfileirarPendencia,
   listar as listarPendencias,
@@ -143,6 +144,21 @@ export function mesclarOrdem(prevRow, nextRow, remotoData) {
   saida.fotos = unirPorId(rem.fotos, prev.fotos, next.fotos)
   saida.historico = unirPorId(rem.historico, prev.historico, next.historico)
     .sort((a, b) => (b.quandoMs || 0) - (a.quandoMs || 0))
+  return saida
+}
+
+// Mescla de PEÇA: o cadastro (nome, preço, mínimo...) vale o deste navegador,
+// mas o SALDO é do banco. Desde o kardex, todo saldo muda por soma no servidor
+// (registrar_movimentos); a foto local pode estar atrasada, então gravar a
+// linha inteira por cima restauraria saldo velho — exatamente o defeito que o
+// kardex existe para matar. Pura e exportada para teste.
+export function mesclarPeca(nextRow, remotoData) {
+  const { id, ...data } = nextRow || {}
+  const saida = { ...data }
+  // Linha sem a chave no banco (cadastro legado) conta como saldo zero — é o
+  // que o trigger estoque_protege_saldo faz do lado de lá; o app espelha para
+  // nunca gravar um saldo que o banco vai descartar.
+  if (remotoData) saida.estoque = remotoData.estoque !== undefined ? remotoData.estoque : 0
   return saida
 }
 
@@ -433,6 +449,62 @@ export function AppProvider({ children }) {
     return { ok: false, motivo: MOTIVO.REDE, erro: ultimo }
   }
 
+  // Envia movimentos de kardex para a função `registrar_movimentos` do banco,
+  // que grava extrato + saldo numa transação só. Retentar é SEGURO: cada
+  // movimento carrega um uuid e o banco ignora id repetido sem somar de novo.
+  async function enviarMovimentos(rows) {
+    let ultimo = null
+    for (let t = 0; t < 3; t++) {
+      try {
+        const { data, error } = await supabase.rpc('registrar_movimentos', { movs: rows })
+        if (error) {
+          ultimo = error
+          if (ehRecusaDePermissao(error)) {
+            console.error('[estoque_mov] movimento recusado por permissão:', error)
+            return { ok: false, motivo: MOTIVO.PERMISSAO, erro: error }
+          }
+          if (ERROS_PERMANENTES.includes(error.code)) {
+            console.error(`[estoque_mov] movimento com erro permanente (${error.code}):`, error)
+            return { ok: false, motivo: MOTIVO.PERMANENTE, erro: error }
+          }
+        } else {
+          // A função responde por item. Item rejeitado ('movimento incompleto')
+          // ou peça que já não existe ('pecaAusente') não melhora com reenvio —
+          // fica registrado no console para não sumir em silêncio.
+          const resultados = Array.isArray(data?.resultados) ? data.resultados : []
+          for (const it of resultados) {
+            if (it && it.ok === false) console.error('[estoque_mov] movimento rejeitado pelo banco:', it)
+            else if (it && it.pecaAusente) console.warn('[estoque_mov] movimento registrado para peça que não existe mais (saldo não alterado):', it)
+          }
+          return { ok: true, motivo: MOTIVO.OK, resposta: data }
+        }
+      } catch (e) { ultimo = e }
+      if (t < 2) await new Promise(r => setTimeout(r, 700 * (t + 1)))
+    }
+    console.error('[estoque_mov] movimento falhou após 3 tentativas:', ultimo)
+    return { ok: false, motivo: MOTIVO.REDE, erro: ultimo }
+  }
+
+  // Pendência VELHA de estoque não pode reenviar a foto do saldo: entre a falha
+  // e o reenvio, o kardex pode ter movimentado a peça no servidor. Relê cada
+  // linha e mantém o saldo do banco (mesma regra do mesclarPeca).
+  async function remesclarRowsEstoque(rows) {
+    const saida = []
+    for (const row of rows) {
+      const resp = await supabase.from('estoque').select('data').eq('id', String(row.id)).maybeSingle()
+      if (resp.error) throw resp.error
+      const rem = resp.data?.data
+      // Linha existe: saldo do banco. Linha não existe: saldo zero — o saldo
+      // dela chega pelo movimento que está na mesma fila (ou já chegou, e aí a
+      // linha existiria). A foto local pode trazer o delta já aplicado na tela.
+      const data = rem
+        ? { ...row.data, estoque: rem.estoque !== undefined ? rem.estoque : 0 }
+        : { ...row.data, estoque: 0 }
+      saida.push({ id: String(row.id), data })
+    }
+    return saida
+  }
+
   async function apagarComRetry(tabela, id) {
     let ultimo = null
     for (let t = 0; t < 3; t++) {
@@ -475,7 +547,8 @@ export function AppProvider({ children }) {
       ...pendencia,
       // `filaGravacao` decide o que enviar pelo `tipo`; sem ele, uma exclusão
       // pendente seria lida como gravação sem linhas e descartada em silêncio.
-      tipo: pendencia.delId != null ? 'apagar' : 'gravar',
+      // Tipo explícito (ex.: 'movimento' do kardex) vence a derivação.
+      tipo: pendencia.tipo || (pendencia.delId != null ? 'apagar' : 'gravar'),
       criadoEm: Date.now(),
     }
     filaFalhas.current.push(p)
@@ -530,8 +603,13 @@ export function AppProvider({ children }) {
         // Erro permanente (chave duplicada, tipo inválido, payload grande
         // demais) não melhora na centésima tentativa — só mantém a tarja acesa
         // para sempre e ocupa vaga contra o teto da fila.
+        // O limite de idade existe para FOTO (gravar a linha inteira por cima de
+        // dado mais novo). Movimento de kardex é delta com uuid: reenviar a
+        // qualquer hora é seguro — o banco soma uma vez só. Aposentar uma baixa
+        // de sexta na segunda deixaria o saldo errado para sempre.
+        const ehFoto = p.tipo !== 'movimento'
         const paraDeTentar = p.motivo === MOTIVO.PERMANENTE ||
-                             agora - (p.criadoEm || 0) > LIMITE_REENVIO_MS
+                             (ehFoto && agora - (p.criadoEm || 0) > LIMITE_REENVIO_MS)
         if (paraDeTentar) filaFalhas.current.push(p)
         else pendentes.push(p)
       }
@@ -542,6 +620,25 @@ export function AppProvider({ children }) {
           for (const id of p.ids) {
             const res = await apagarComRetry(p.tabela, id)
             if (!res.ok) { ok = false; p.motivo = res.motivo }
+          }
+        } else if (p.tipo === 'movimento') {
+          // Kardex: vai para a função do banco, nunca para upsert — o uuid de
+          // cada movimento garante que reenviar não soma o saldo duas vezes.
+          const res = await enviarMovimentos(p.rows)
+          if (!res.ok) { ok = false; p.motivo = res.motivo }
+          else aplicarSaldoDoServidor(res.resposta)
+        } else if (p.tabela === 'estoque') {
+          // Foto de peça reenviada depois não pode restaurar saldo velho por
+          // cima do que o kardex já somou no servidor: relê e mantém o saldo
+          // do banco. Se a releitura falhar, adia — nunca grava às cegas.
+          try {
+            const rows = await remesclarRowsEstoque(p.rows)
+            const res = await gravarComRetry(p.tabela, rows)
+            if (!res.ok) { ok = false; p.motivo = res.motivo }
+          } catch (e) {
+            console.error('[estoque] releitura para reenvio falhou — pendência adiada:', e)
+            ok = false
+            p.motivo = MOTIVO.REDE
           }
         } else {
           const res = await gravarComRetry(p.tabela, p.rows)
@@ -567,7 +664,7 @@ export function AppProvider({ children }) {
       // "verifique a internet" para uma recusa do servidor.
       setFalhaDePermissao(filaFalhas.current.some(p => p.motivo === MOTIVO.PERMISSAO || p.motivo === MOTIVO.PARCIAL))
       setPendenciaAntiga(filaFalhas.current.some(p =>
-        p.motivo === MOTIVO.PERMANENTE || agora - (p.criadoEm || 0) > LIMITE_REENVIO_MS))
+        p.motivo === MOTIVO.PERMANENTE || (p.tipo !== 'movimento' && agora - (p.criadoEm || 0) > LIMITE_REENVIO_MS)))
     } finally {
       drenandoFila.current = false
     }
@@ -600,9 +697,12 @@ export function AppProvider({ children }) {
     }
     if (paraGravar.length > 0) {
       let rows
-      if (tableName === 'ordens') {
+      if (tableName === 'ordens' || tableName === 'estoque') {
         // Relê a linha atual e mescla: o que outro navegador gravou nesse meio
         // tempo sobrevive junto com o que este navegador está gravando agora.
+        // Para 'estoque' a regra é mais curta: o cadastro vale o local, mas o
+        // SALDO é sempre o do banco — desde o kardex, saldo só muda por soma
+        // no servidor, nunca por foto (mesclarPeca).
         rows = []
         for (const item of paraGravar) {
           const id = String(item.id)
@@ -615,18 +715,29 @@ export function AppProvider({ children }) {
           let rem = null
           let erroLeitura
           try {
-            const resp = await supabase.from('ordens').select('data').eq('id', id).maybeSingle()
+            const resp = await supabase.from(tableName).select('data').eq('id', id).maybeSingle()
             rem = resp.data
             erroLeitura = resp.error
           } catch (e) { erroLeitura = e }
 
           if (erroLeitura) {
-            console.error(`[ordens] nao consegui reler a OS ${id} para mesclar — gravacao adiada para nao apagar o trabalho de outro aparelho:`, erroLeitura)
-            registrarFalha({ tabela: 'ordens', rows: [item2row(item)], motivo: MOTIVO.REDE })
+            console.error(`[${tableName}] nao consegui reler a linha ${id} para mesclar — gravacao adiada para nao apagar o trabalho de outro aparelho:`, erroLeitura)
+            registrarFalha({ tabela: tableName, rows: [item2row(item)], motivo: MOTIVO.REDE })
             resultado.ok = false
             continue
           }
-          rows.push(rem?.data ? { id, data: mesclarOrdem(prevMap.get(id), item, rem.data) } : item2row(item))
+          if (rem?.data) {
+            rows.push({ id, data: tableName === 'ordens' ? mesclarOrdem(prevMap.get(id), item, rem.data) : mesclarPeca(item, rem.data) })
+          } else if (tableName === 'estoque') {
+            // Peça NOVA no banco nasce com saldo zero, sempre: todo saldo
+            // legítimo chega por movimento (saldo_inicial, entrada_compra).
+            // A foto local pode já carregar o delta aplicado na tela — gravá-lo
+            // aqui e somá-lo de novo pelo movimento contaria em dobro.
+            const linha = item2row(item)
+            rows.push({ id, data: { ...linha.data, estoque: 0 } })
+          } else {
+            rows.push(item2row(item))
+          }
         }
       } else {
         rows = paraGravar.map(item2row)
@@ -1080,6 +1191,141 @@ export function AppProvider({ children }) {
   const setGastos       = makeSet('gastos',           'gastos',        _setGastos)
   const setInsumos      = makeSet('insumos',          'insumos',       _setInsumos)
 
+  // ── KARDEX: a porta única de movimentação de estoque ────────────────────────
+  //
+  // TODA mudança de saldo passa por aqui. Nada mais escreve `estoque` de peça
+  // por setEstoque — o setter continua existindo para o CADASTRO (nome, preço,
+  // mínimo...), e a mescla (mesclarPeca) garante que ele nunca leva o saldo.
+  //
+  // O caminho é deliberadamente diferente do motor de diff:
+  // 1. o saldo muda por SOMA no servidor (função registrar_movimentos), nunca
+  //    por foto — dois aparelhos ao mesmo tempo somam os dois;
+  // 2. cada movimento vira uma linha de extrato que só INSERE, nunca apaga;
+  // 3. o uuid do movimento torna o reenvio da fila inofensivo: o banco
+  //    reconhece o id e não soma de novo.
+  //
+  // Aceita um movimento ou uma lista:
+  //   { pecaId, qtd (com sinal: entrada +, saída −), tipo, motivo?, origem?,
+  //     custoUnit?, criarSeFaltar?, chave? }
+  // `chave` (lista de partes) torna o id DETERMINÍSTICO: a mesma ação feita
+  // em dois aparelhos gera o mesmo uuid e o banco conta uma vez só. Sem chave,
+  // o id é aleatório (ajuste manual, edição de quantidade).
+  // Devolve { ok, ... } aguardável — quem é crítico espera, quem não é segue.
+
+  // Efeito imediato na tela: soma o delta no estado local. O servidor é quem
+  // soma DE VERDADE; quando ele responde, o saldo dele vence (ver abaixo).
+  // Sem trava em zero: saldo negativo é um AVISO de que a prateleira e o
+  // sistema divergem — esconder atrás do zero é o que corrompia.
+  function aplicarDeltaLocal(rows) {
+    const delta = new Map()
+    for (const m of rows) delta.set(m.peca_id, (delta.get(m.peca_id) || 0) + m.qtd)
+    const atual = r.current.estoque
+    let mudou = false
+    const next = atual.map(p => {
+      const d = delta.get(String(p.id))
+      if (!d) return p
+      mudou = true
+      return { ...p, estoque: (Number(p.estoque) || 0) + d }
+    })
+    if (mudou) {
+      r.current.estoque = next
+      _setEstoque(next)
+    }
+  }
+
+  // Deltas deste aparelho ainda sem resposta do servidor, por peça. Quando o
+  // servidor devolve o saldo de um lote, o saldo local vira
+  // "saldo do servidor + o que ainda está em voo" — assim a tela converge
+  // mesmo se o eco do realtime se perder, sem pisar num movimento posterior.
+  const deltasEmVoo = useRef(new Map())
+
+  function somarEmVoo(rows, sinal) {
+    for (const m of rows) {
+      const k = m.peca_id
+      const v = (deltasEmVoo.current.get(k) || 0) + sinal * m.qtd
+      if (v === 0) deltasEmVoo.current.delete(k)
+      else deltasEmVoo.current.set(k, v)
+    }
+  }
+
+  function aplicarSaldoDoServidor(resposta) {
+    const resultados = Array.isArray(resposta?.resultados) ? resposta.resultados : []
+    const saldoPorPeca = new Map()
+    for (const m of resultados) {
+      if (m && m.ok && typeof m.saldo === 'number' && Number.isFinite(m.saldo)) saldoPorPeca.set(String(m.peca_id), m.saldo)
+    }
+    if (saldoPorPeca.size === 0) return
+    let mudou = false
+    const next = r.current.estoque.map(p => {
+      const k = String(p.id)
+      if (!saldoPorPeca.has(k)) return p
+      const alvo = saldoPorPeca.get(k) + (deltasEmVoo.current.get(k) || 0)
+      if (Number(p.estoque) === alvo) return p
+      mudou = true
+      return { ...p, estoque: alvo }
+    })
+    if (mudou) {
+      r.current.estoque = next
+      _setEstoque(next)
+    }
+  }
+
+  function movimentarEstoque(movOuLista) {
+    const lista = Array.isArray(movOuLista) ? movOuLista : [movOuLista]
+    const rows = []
+    for (const m of lista) {
+      const qtd = Number(m.qtd)
+      if (m.pecaId == null || m.pecaId === '' || !Number.isFinite(qtd) || qtd === 0) continue
+      const custo = parseValorBR(m.custoUnit)
+      rows.push({
+        id: Array.isArray(m.chave) && m.chave.length > 0
+          ? idMovimentoDeterministico(...m.chave, String(m.pecaId))
+          : novoIdMovimento(),
+        peca_id: String(m.pecaId),
+        qtd,
+        tipo: m.tipo || 'ajuste',
+        motivo: m.motivo || '',
+        origem_tipo: m.origem?.tipo || '',
+        origem_id: m.origem?.id != null ? String(m.origem.id) : '',
+        custo_unit: custo > 0 ? custo : null,
+        autor_id: currentUser?.id != null ? String(currentUser.id) : '',
+        autor_nome: currentUser?.nome || '',
+        // Só o cadastro de peça nova usa: se o movimento chegar ao banco antes
+        // da linha da peça, a linha nasce com o saldo e o cadastro completa depois.
+        ...(m.criarSeFaltar ? { criar_se_faltar: true } : {}),
+      })
+    }
+    if (rows.length === 0) return Promise.resolve({ ok: true, vazio: true })
+
+    aplicarDeltaLocal(rows)
+    somarEmVoo(rows, +1)
+
+    // marcarGravando segura o eco do realtime enquanto a soma viaja — sem isso
+    // um evento antigo de 'estoque' poderia pisar no delta recém-aplicado.
+    marcarGravando('estoque')
+    // Na MESMA fila do diff de 'estoque' (encadearEscrita): o cadastro da
+    // peça gravado neste aparelho e o movimento dela nunca se cruzam — o
+    // upsert do cadastro vai primeiro, o movimento depois. O trigger do
+    // banco protege o saldo entre aparelhos; a fila protege dentro deste.
+    return encadearEscrita('estoque', () => enviarMovimentos(rows))
+      .then(res => {
+        somarEmVoo(rows, -1)
+        if (!res.ok) {
+          registrarFalha({ tabela: 'estoque_mov', tipo: 'movimento', rows, motivo: res.motivo })
+        } else {
+          aplicarSaldoDoServidor(res.resposta)
+        }
+        return res
+      })
+      .catch(e => {
+        somarEmVoo(rows, -1)
+        console.error('[kardex] falha inesperada ao movimentar estoque:', e)
+        registrarFalha({ tabela: 'estoque_mov', tipo: 'movimento', rows, motivo: MOTIVO.REDE })
+        return { ok: false, motivo: MOTIVO.REDE }
+      })
+      .finally(() => fimGravando('estoque'))
+  }
+
   function setCaixaTurno(valOrFn) {
     const prev = r.current.caixaTurno
     const next = valOrFn instanceof Function ? valOrFn(prev) : valOrFn
@@ -1318,10 +1564,21 @@ export function AppProvider({ children }) {
       responsavelNome: dados.responsavelNome || '',
     }
     if (nova.pecas && nova.pecas.length > 0) {
-      setEstoque(prev => prev.map(item => {
-        const usada = nova.pecas.find(p => p.estoqueId === item.id)
-        if (usada) return { ...item, estoque: Math.max(0, Number(item.estoque) - Number(usada.qtd)) }
-        return item
+      // Cada linha vira um movimento próprio: a mesma peça em duas linhas do
+      // orçamento baixa duas vezes (o find antigo via só a primeira). E o id
+      // compara como texto — id numérico vs string não quebra mais a baixa.
+      movimentarEstoque(nova.pecas.map((p, i) => {
+        const prod = r.current.estoque.find(e => String(e.id) === String(p.estoqueId))
+        return {
+          pecaId: p.estoqueId,
+          qtd: -(parseBR(p.qtd) || 0),
+          tipo: 'saida_os',
+          origem: { tipo: 'os', id },
+          custoUnit: prod?.precoCusto,
+          // Id do item (único por aparelho) + orçamento de origem: duas OS que
+          // um dia recebam o mesmo número não colidem na chave.
+          chave: ['saida_os', id, 'conversao', p.itemId ?? i, dados.orcamentoId ?? ''],
+        }
       }))
     }
     setOrdens(prev => [nova, ...prev])
@@ -1363,9 +1620,13 @@ export function AppProvider({ children }) {
   // em OS nenhuma — some do estoque e ninguém cobra. É a dor nº 1 que a
   // pesquisa de mercado encontrou em oficina.
   //
-  // Agora a OS grava primeiro e a baixa só acontece se ela confirmou. A falha
-  // que sobra é a oposta e bem menos grave: item cobrado com o saldo do estoque
-  // atrasado — visível, e a fila reenvia.
+  // Agora a OS grava primeiro e a baixa vai JUNTO com o item: se a OS não
+  // confirmar na hora, os dois ficam na fila e sobem juntos (o id do movimento
+  // é determinístico por OS + item, então reenviar nunca baixa duas vezes).
+  // Pular a baixa quando a OS falhava deixava item cobrado sem saída no
+  // estoque — e um estorno depois devolvia o que nunca saiu. O caso que sobra
+  // é raro e visível: OS recusada de vez pelo banco (erro permanente, tarja
+  // acesa) com a baixa feita — revisão humana, como toda pendência permanente.
   async function adicionarItemOrdem(id, item) {
     const novo = { ...item, id: gerarId() }
     let produto = null
@@ -1374,20 +1635,31 @@ export function AppProvider({ children }) {
       // com o tempo; sem congelar, reajustar uma peça hoje reescreveria a margem
       // de todas as OS antigas que a usaram — o resultado de meses fechados
       // mudava sozinho.
-      produto = r.current.estoque.find(p => Number(p.id) === Number(item.produtoId))
+      produto = r.current.estoque.find(p => String(p.id) === String(item.produtoId))
       const custo = parseBR(produto?.precoCusto)
       if (custo > 0) novo.custoUnitario = produto.precoCusto
     }
 
     const resOS = await setOrdens(prev => prev.map(o => o.id === id ? { ...o, itens: [...(o.itens || []), novo] } : o))
+    // O item ficou na OS local de qualquer jeito (e na fila, se a OS não
+    // confirmou). A baixa acompanha o item: vai junto para a fila em vez de
+    // ser pulada — pular deixava o item cobrado sem saída no estoque, e um
+    // estorno futuro devolvia o que nunca saiu. O id determinístico
+    // (OS + item) garante que reenviar nunca baixa duas vezes.
+    const resEstoque = produto
+      ? await movimentarEstoque({
+          pecaId: item.produtoId,
+          qtd: -(Number(item.quantidade) || 1),
+          tipo: 'saida_os',
+          origem: { tipo: 'os', id },
+          custoUnit: produto.precoCusto,
+          chave: ['saida_os', id, novo.id],
+        })
+      : { ok: true }
     if (!resOS?.ok) {
-      console.error('[adicionarItemOrdem] item nao confirmado na OS — peca NAO foi baixada do estoque', resOS)
+      console.error('[adicionarItemOrdem] item nao confirmado na OS — ficou na fila junto com a baixa', resOS)
       return { ok: false, etapa: 'os' }
     }
-    if (!produto) return { ok: true }
-
-    const resEstoque = await setEstoque(prev => prev.map(p => p.id === Number(item.produtoId)
-      ? { ...p, estoque: Math.max(0, Number(p.estoque) - (Number(item.quantidade) || 1)) } : p))
     if (!resEstoque?.ok) {
       console.error('[adicionarItemOrdem] item lancado na OS, mas a baixa do estoque nao confirmou', resEstoque)
       return { ok: false, etapa: 'estoque' }
@@ -1396,41 +1668,72 @@ export function AppProvider({ children }) {
   }
 
   function removerItemOrdem(id, itemId) {
-    setOrdens(prev => prev.map(o => {
-      if (o.id !== id) return o
-      const item = (o.itens || []).find(i => i.id === itemId)
-      if (item && item.tipo === 'peca' && item.produtoId) {
-        setEstoque(ep => ep.map(p => p.id === Number(item.produtoId)
-          ? { ...p, estoque: Number(p.estoque) + (Number(item.quantidade) || 1) } : p))
-      }
-      return { ...o, itens: (o.itens || []).filter(i => i.id !== itemId) }
-    }))
+    // O item é lido ANTES do updater — chamar movimentarEstoque de dentro do
+    // updater de setOrdens era um efeito colateral aninhado esperando acidente.
+    const o = r.current.ordens.find(x => x.id === id)
+    const item = (o?.itens || []).find(i => i.id === itemId)
+    setOrdens(prev => prev.map(x => x.id === id
+      ? { ...x, itens: (x.itens || []).filter(i => i.id !== itemId) } : x))
+    if (item && item.tipo === 'peca' && item.produtoId) {
+      movimentarEstoque({
+        pecaId: item.produtoId,
+        qtd: Number(item.quantidade) || 1,
+        tipo: 'estorno_os',
+        motivo: 'Item removido da OS',
+        origem: { tipo: 'os', id },
+        chave: ['estorno_os', id, 'remover', itemId],
+      })
+    }
   }
 
   function editarItemOrdem(osId, itemId, dados) {
-    setOrdens(prev => prev.map(o => {
-      if (o.id !== osId) return o
-      const antigo = (o.itens || []).find(i => i.id === itemId)
-      if (antigo && antigo.tipo === 'peca' && antigo.produtoId) {
-        const novoProdutoId = dados.produtoId ?? antigo.produtoId
-        const antigoProdId = Number(antigo.produtoId)
-        const novoProdId = Number(novoProdutoId)
-        if (antigoProdId !== novoProdId) {
-          setEstoque(ep => ep.map(p => {
-            if (p.id === antigoProdId) return { ...p, estoque: Number(p.estoque) + (Number(antigo.quantidade) || 1) }
-            if (p.id === novoProdId) return { ...p, estoque: Math.max(0, Number(p.estoque) - (Number(dados.quantidade) || 1)) }
-            return p
-          }))
-        } else {
-          const diff = (Number(dados.quantidade) || 1) - (Number(antigo.quantidade) || 1)
-          if (diff !== 0) {
-            setEstoque(ep => ep.map(p => p.id === antigoProdId
-              ? { ...p, estoque: Math.max(0, Number(p.estoque) - diff) } : p))
-          }
+    // Como no remover: lê o item antes, grava a OS, e o estoque anda por
+    // movimento — troca de peça devolve a antiga e baixa a nova; mudança de
+    // quantidade movimenta só a diferença.
+    const o = r.current.ordens.find(x => x.id === osId)
+    const antigo = (o?.itens || []).find(i => i.id === itemId)
+    setOrdens(prev => prev.map(x => x.id === osId
+      ? { ...x, itens: (x.itens || []).map(i => i.id === itemId ? { ...i, ...dados } : i) } : x))
+    if (antigo && antigo.tipo === 'peca' && antigo.produtoId) {
+      const novoProdutoId = dados.produtoId ?? antigo.produtoId
+      const movs = []
+      if (String(antigo.produtoId) !== String(novoProdutoId)) {
+        movs.push({
+          pecaId: antigo.produtoId,
+          qtd: Number(antigo.quantidade) || 1,
+          tipo: 'estorno_os',
+          motivo: 'Peça trocada no item',
+          origem: { tipo: 'os', id: osId },
+        })
+        const prod = r.current.estoque.find(e => String(e.id) === String(novoProdutoId))
+        movs.push({
+          pecaId: novoProdutoId,
+          qtd: -(Number(dados.quantidade) || 1),
+          tipo: 'saida_os',
+          origem: { tipo: 'os', id: osId },
+          custoUnit: prod?.precoCusto,
+        })
+      } else {
+        const diff = (Number(dados.quantidade) || 1) - (Number(antigo.quantidade) || 1)
+        if (diff > 0) {
+          movs.push({
+            pecaId: antigo.produtoId,
+            qtd: -diff,
+            tipo: 'saida_os',
+            origem: { tipo: 'os', id: osId },
+          })
+        } else if (diff < 0) {
+          movs.push({
+            pecaId: antigo.produtoId,
+            qtd: -diff,
+            tipo: 'estorno_os',
+            motivo: 'Quantidade reduzida no item',
+            origem: { tipo: 'os', id: osId },
+          })
         }
       }
-      return { ...o, itens: (o.itens || []).map(i => i.id === itemId ? { ...i, ...dados } : i) }
-    }))
+      if (movs.length > 0) movimentarEstoque(movs)
+    }
   }
 
   // Status a partir dos quais sair exige estorno do financeiro/caixa
@@ -1448,8 +1751,18 @@ export function AppProvider({ children }) {
     const voltandoParaAtivo = !STATUS_FINALIZADOS.includes(novoStatus) && novoStatus !== 'Cancelada'
     const precisaEstorno = saindoDeFinalizado && (voltandoParaAtivo || novoStatus === 'Cancelada')
 
+    // Estoque: cancelar devolve as peças ao saldo; reativar uma OS que já
+    // devolveu baixa de novo. A marca `estoqueEstornado` na própria OS impede
+    // devolver duas vezes (e vale também para o cancelamento feito no Pátio,
+    // que escreve o status por fora desta função).
+    const pecasDaOS = (o.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
+    const devolvePecas = novoStatus === 'Cancelada' && !o.estoqueEstornado && pecasDaOS.length > 0
+    const rebaixaPecas = o.estoqueEstornado && voltandoParaAtivo && pecasDaOS.length > 0
+
     const eventos = []
     if (precisaEstorno) eventos.push(evento('Estorno automático (saída de status finalizado)'))
+    if (devolvePecas) eventos.push(evento('Peças devolvidas ao estoque (OS cancelada)'))
+    if (rebaixaPecas) eventos.push(evento('Peças baixadas de novo do estoque (OS reativada)'))
     eventos.push(evento(`Status alterado para "${novoStatus}"`))
     const historico = [...eventos, ...(o.historico || [])]
 
@@ -1462,8 +1775,36 @@ export function AppProvider({ children }) {
       extra.pago = false
       extra.dataConclusao = ''
     }
+    // `estoqueCiclo` conta quantas vezes a OS já devolveu e rebaixou: entra na
+    // chave do id determinístico. Dois aparelhos cancelando a MESMA OS no
+    // mesmo ciclo geram o mesmo id e o banco devolve uma vez só; depois de
+    // reativar (ciclo + 1), um novo cancelamento devolve de novo, como deve.
+    const ciclo = o.estoqueCiclo || 0
+    if (devolvePecas) extra.estoqueEstornado = true
+    if (rebaixaPecas) { extra.estoqueEstornado = false; extra.estoqueCiclo = ciclo + 1 }
 
     setOrdens(prev => prev.map(x => x.id === id ? { ...x, status: novoStatus, historico, etapaEm: Date.now(), ...extra } : x))
+
+    if (devolvePecas) {
+      movimentarEstoque(pecasDaOS.map(p => ({
+        pecaId: p.produtoId,
+        qtd: Number(p.quantidade) || 1,
+        tipo: 'estorno_os',
+        motivo: 'OS cancelada',
+        origem: { tipo: 'os', id },
+        chave: ['estorno_os', id, 'cancelar', p.id, ciclo],
+      })))
+    }
+    if (rebaixaPecas) {
+      movimentarEstoque(pecasDaOS.map(p => ({
+        pecaId: p.produtoId,
+        qtd: -(Number(p.quantidade) || 1),
+        tipo: 'saida_os',
+        motivo: 'OS reativada',
+        origem: { tipo: 'os', id },
+        chave: ['saida_os', id, 'reativar', p.id, ciclo],
+      })))
+    }
 
     if (precisaEstorno) {
       setFinanceiro(fp => fp.filter(f => f.osId !== id))
@@ -1483,12 +1824,18 @@ export function AppProvider({ children }) {
     const o = r.current.ordens.find(x => x.id === id)
     if (o) {
       const pecas = (o.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
-      if (pecas.length > 0) {
-        setEstoque(prev => prev.map(item => {
-          const usada = pecas.find(p => Number(p.produtoId) === item.id)
-          if (usada) return { ...item, estoque: Number(item.estoque) + (Number(usada.quantidade) || 1) }
-          return item
-        }))
+      // OS cancelada já devolveu as peças (estoqueEstornado) — excluir depois
+      // do cancelamento não pode devolver de novo. E cada linha devolve a sua
+      // quantidade: a mesma peça em dois itens devolvia só a primeira.
+      if (pecas.length > 0 && !o.estoqueEstornado) {
+        movimentarEstoque(pecas.map(p => ({
+          pecaId: p.produtoId,
+          qtd: Number(p.quantidade) || 1,
+          tipo: 'estorno_os',
+          motivo: 'OS excluída',
+          origem: { tipo: 'os', id },
+          chave: ['estorno_os', id, 'excluir', p.id, o.estoqueCiclo || 0],
+        })))
       }
     }
     setFinanceiro(fp => fp.filter(f => f.osId !== id))
@@ -1504,8 +1851,25 @@ export function AppProvider({ children }) {
   function reabrirOrdem(osId) {
     const o = r.current.ordens.find(x => x.id === osId)
     if (!o) return
-    const historico = [evento('OS reaberta (estorno)'), ...(o.historico || [])]
-    setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Em Execução', pago: false, dataConclusao: '', historico, etapaEm: Date.now() } : x))
+    // OS que devolveu as peças (cancelada ou recusada) volta a usá-las ao
+    // reabrir: baixa de novo e limpa a marca.
+    const pecasDaOS = (o.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
+    const rebaixaPecas = o.estoqueEstornado && pecasDaOS.length > 0
+    const eventos = [evento('OS reaberta (estorno)')]
+    if (rebaixaPecas) eventos.push(evento('Peças baixadas de novo do estoque (OS reaberta)'))
+    const historico = [...eventos, ...(o.historico || [])]
+    const ciclo = o.estoqueCiclo || 0
+    setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Em Execução', pago: false, dataConclusao: '', historico, etapaEm: Date.now(), ...(rebaixaPecas ? { estoqueEstornado: false, estoqueCiclo: ciclo + 1 } : {}) } : x))
+    if (rebaixaPecas) {
+      movimentarEstoque(pecasDaOS.map(p => ({
+        pecaId: p.produtoId,
+        qtd: -(Number(p.quantidade) || 1),
+        tipo: 'saida_os',
+        motivo: 'OS reaberta',
+        origem: { tipo: 'os', id: osId },
+        chave: ['saida_os', osId, 'reativar', p.id, ciclo],
+      })))
+    }
     setFinanceiro(fp => fp.filter(f => f.osId !== osId))
     setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.osId !== osId) } : t)
   }
@@ -1686,13 +2050,29 @@ export function AppProvider({ children }) {
     const texto = cobrar
       ? `Diagnóstico cobrado e veículo entregue (orçamento recusado)`
       : `Veículo entregue sem cobrança do diagnóstico (liberado por ${currentUser?.nome || 'usuário'})`
+    // As peças lançadas no diagnóstico não foram vendidas — voltam ao saldo.
+    // Antes elas ficavam baixadas para sempre: fora da prateleira no sistema,
+    // dentro dela na vida real. A marca impede devolver duas vezes.
+    const pecasDaOS = (o.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
+    const devolvePecas = pecasDaOS.length > 0 && !o.estoqueEstornado
     mudarOrdem(osId, {
       status: FLUXO.ENTREGUE,
       pago: !!cobrar,
       diagnosticoCobrado: !!cobrar,
       dataConclusao: o.dataConclusao || new Date().toLocaleDateString('pt-BR'),
       etapaEm: Date.now(),
+      ...(devolvePecas ? { estoqueEstornado: true } : {}),
     }, texto)
+    if (devolvePecas) {
+      movimentarEstoque(pecasDaOS.map(p => ({
+        pecaId: p.produtoId,
+        qtd: Number(p.quantidade) || 1,
+        tipo: 'estorno_os',
+        motivo: 'Orçamento recusado — peça de volta à prateleira',
+        origem: { tipo: 'os', id: osId },
+        chave: ['estorno_os', osId, 'recusa', p.id, o.estoqueCiclo || 0],
+      })))
+    }
     if (cobrar && parseBR(valorDiagnostico) > 0) {
       registrarVendaCaixa({
         osId,
@@ -1868,32 +2248,61 @@ export function AppProvider({ children }) {
     const compra = r.current.compras.find(c => c.id === id)
     if (!compra || compra.recebida) return
 
-    // Atualiza quantidade dos itens já cadastrados no estoque
-    setEstoque(prev => prev.map(item => {
-      const entrada = compra.itens.find(i => Number(i.produtoId) === item.id)
-      // Quantidade vazia virava NaN e gravava `estoque: NaN` na linha do
-      // produto — corrompendo o cadastro de vez, porque toda conta com NaN
-      // continua NaN. Vale para os dois caminhos abaixo.
-      if (entrada) return { ...item, estoque: (Number(item.estoque) || 0) + (parseBR(entrada.quantidade) || 0) }
-      return item
-    }))
+    // Entrada dos itens já cadastrados: um movimento POR LINHA da compra — a
+    // mesma peça em duas linhas entra duas vezes (o find antigo via só a
+    // primeira, e o dinheiro da segunda virava despesa sem peça).
+    // Chave por (compra, posição do item): dois caixas confirmando o mesmo
+    // recebimento geram os mesmos ids e a entrada conta uma vez só.
+    movimentarEstoque(compra.itens
+      .map((i, idx) => ({ i, idx }))
+      .filter(({ i }) => i.produtoId && !i.cadastrarNova)
+      .map(({ i, idx }) => ({
+        pecaId: i.produtoId,
+        qtd: parseBR(i.quantidade) || 0,
+        tipo: 'entrada_compra',
+        origem: { tipo: 'compra', id },
+        custoUnit: i.valorUnitario,
+        // Id do item da compra (CompraDetalhe dá gerarId a cada linha); índice só
+        // para compra antiga sem id — dois caixas recebendo a mesma compra com
+        // listas defasadas geram o mesmo uuid por item, não por posição.
+        chave: ['entrada_compra', id, i.id ?? idx],
+      })))
 
-    // Cadastra novas peças no estoque (itens marcados com cadastrarNova)
+    // Cadastra novas peças no estoque (itens marcados com cadastrarNova).
+    // A peça nasce com saldo ZERO e a quantidade entra por movimento — assim o
+    // extrato explica o saldo desde o primeiro dia. O id criado fica gravado
+    // no item da compra (novoProdutoId) para o estorno achar a peça se a
+    // compra for excluída.
     const novasEntradas = compra.itens.filter(i => i.cadastrarNova && i.novoItemDados?.nome)
+    const idPorItem = new Map()
     if (novasEntradas.length > 0) {
+      for (const i of novasEntradas) idPorItem.set(i, gerarId())
       setEstoque(prev => [
         ...prev,
         ...novasEntradas.map(i => ({
-          id: gerarId(),
+          id: idPorItem.get(i),
           nome: i.novoItemDados.nome,
           codigo: i.novoItemDados.codigo || '',
           categoria: i.novoItemDados.categoria || '',
           precoCusto: i.valorUnitario || '0',
           preco: i.novoItemDados.precoVenda || '0',
           minimo: Number(i.novoItemDados.minimo) || 0,
-          estoque: parseBR(i.quantidade) || 0,
+          estoque: 0,
         })),
       ])
+      movimentarEstoque(novasEntradas.map(i => ({
+        pecaId: idPorItem.get(i),
+        qtd: parseBR(i.quantidade) || 0,
+        tipo: 'entrada_compra',
+        origem: { tipo: 'compra', id },
+        custoUnit: i.valorUnitario,
+        // Se o movimento chegar ao banco antes da linha da peça, a linha nasce
+        // com o saldo e o cadastro completa em seguida (mesclarPeca preserva).
+        criarSeFaltar: true,
+        // Sem chave determinística: a peça nova tem id próprio deste aparelho
+        // (gerarId); dois recebimentos simultâneos criariam duas peças, não
+        // uma entrada dobrada — problema de cadastro, não de kardex.
+      })))
     }
 
     const parcelas = compra.parcelas || []
@@ -1922,10 +2331,39 @@ export function AppProvider({ children }) {
         compraId: id,
       })
     }
-    atualizarCompra(id, { recebida: true, status: 'Recebida' })
+    atualizarCompra(id, {
+      recebida: true,
+      status: 'Recebida',
+      // Vínculo item da compra → peça criada: sem ele, excluir a compra não
+      // teria como estornar a entrada das peças que nasceram aqui.
+      ...(idPorItem.size > 0
+        ? { itens: compra.itens.map(i => idPorItem.has(i) ? { ...i, novoProdutoId: idPorItem.get(i) } : i) }
+        : {}),
+    })
   }
 
   function excluirCompra(id) {
+    // Compra recebida pôs peça no estoque; excluir a compra estorna essa
+    // entrada. Antes o saldo ficava inflado para sempre — sumia a dívida,
+    // ficava a peça fantasma.
+    const compra = r.current.compras.find(c => c.id === id)
+    if (compra?.recebida) {
+      const movs = []
+      for (const i of compra.itens || []) {
+        const qtd = parseBR(i.quantidade) || 0
+        const pecaId = i.produtoId || i.novoProdutoId
+        if (!qtd || !pecaId) continue
+        movs.push({
+          pecaId,
+          qtd: -qtd,
+          tipo: 'estorno_compra',
+          motivo: `Compra ${compra.numero || ''} excluída`.trim(),
+          origem: { tipo: 'compra', id },
+          chave: ['estorno_compra', id, i.id ?? (compra.itens || []).indexOf(i)],
+        })
+      }
+      if (movs.length > 0) movimentarEstoque(movs)
+    }
     setFinanceiro(fp => fp.filter(f => f.compraId !== id))
     setCompras(prev => prev.filter(c => c.id !== id))
   }
@@ -2154,6 +2592,24 @@ export function AppProvider({ children }) {
   // o faturamento do mês seguia contando um dinheiro que ninguém mais via. Com a
   // taxa lançada junto, sobrariam duas linhas órfãs em vez de uma.
   function excluirVendaCaixa(vendaId) {
+    // Venda de BALCÃO devolve as peças ao saldo — elas saíram por esta venda e
+    // a venda deixou de existir. Venda nascida de OS não devolve nada: as peças
+    // pertencem à OS, que continua entregue (excluir essa venda é um problema
+    // financeiro, não de prateleira).
+    const venda = (r.current.caixaTurno?.vendas || []).find(v => v.id === vendaId)
+    if (venda && !venda.osId) {
+      const pecas = (venda.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
+      if (pecas.length > 0) {
+        movimentarEstoque(pecas.map(p => ({
+          pecaId: p.produtoId,
+          qtd: pNum(p.qtd) || 1,
+          tipo: 'estorno_venda',
+          motivo: 'Venda excluída',
+          origem: { tipo: 'venda', id: venda.numero || vendaId },
+          chave: ['estorno_venda', vendaId, p.id],
+        })))
+      }
+    }
     setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.id !== vendaId) } : t)
     setFinanceiro(fp => fp.filter(f => f.vendaId !== vendaId))
   }
@@ -2322,7 +2778,7 @@ export function AppProvider({ children }) {
       aprovarOrcamento, recusarOrcamento, fecharRecusa,
       iniciarReparo, marcarAguardandoPeca, pecaChegou, concluirReparo,
       liberarConferencia, reprovarConferencia, criarOSGarantia,
-      estoque, setEstoque,
+      estoque, setEstoque, movimentarEstoque,
       financeiro, setFinanceiro, adicionarLancamento,
       agenda, setAgenda,
       funcionarios, setFuncionarios,

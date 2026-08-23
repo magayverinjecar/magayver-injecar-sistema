@@ -89,7 +89,7 @@ export default function PainelAdicionarItem({
   // Mesma regra de busca de sempre: serviço por nome, peça por nome OU código.
   const lista = tipo === 'servico'
     ? servicos.filter(s => s.nome.toLowerCase().includes(alvo))
-    : estoque.filter(p => p.nome.toLowerCase().includes(alvo) || (p.codigo || '').toLowerCase().includes(alvo))
+    : estoque.filter(p => (p.nome || '').toLowerCase().includes(alvo) || (p.codigo || '').toLowerCase().includes(alvo))
 
   function limparItem() {
     setSelId('')

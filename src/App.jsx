@@ -13,6 +13,7 @@ import OrdemDetalhe from './pages/OrdemDetalhe'
 import Orcamentos from './pages/Orcamentos'
 import Servicos from './pages/Servicos'
 import Estoque from './pages/Estoque'
+import EstoqueMovimentacoes from './pages/EstoqueMovimentacoes'
 import Compras from './pages/Compras'
 import CompraDetalhe from './pages/CompraDetalhe'
 import Fornecedores from './pages/Fornecedores'
@@ -115,6 +116,7 @@ export default function App() {
           <Route path="orcamentos"          element={<Rota perm="orcamentos"><Orcamentos /></Rota>} />
           <Route path="servicos"            element={<Rota perm="servicos"><Servicos /></Rota>} />
           <Route path="estoque"             element={<Rota perm="estoque"><Estoque /></Rota>} />
+          <Route path="estoque/movimentacoes" element={<Rota perm="estoque"><EstoqueMovimentacoes /></Rota>} />
           <Route path="compras"             element={<Rota perm="compras"><Compras /></Rota>} />
           <Route path="compras/:id"         element={<Rota perm="compras"><CompraDetalhe /></Rota>} />
           <Route path="fornecedores"        element={<Rota perm="fornecedores"><Fornecedores /></Rota>} />

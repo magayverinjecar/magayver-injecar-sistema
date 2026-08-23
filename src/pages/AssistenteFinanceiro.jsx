@@ -182,7 +182,9 @@ export default function AssistenteFinanceiro() {
     const modeloTop = Object.entries(contModelos).sort((a, b) => b[1] - a[1])[0]
 
     const itensCriticos = estoque.filter(i => Number(i.estoque) < Number(i.minimo))
-    const itensSemEstoque = estoque.filter(i => Number(i.estoque) === 0)
+    // <= 0: desde o kardex o saldo pode ficar NEGATIVO (saiu mais peça do que o
+    // sistema conhecia) — e esse é o caso mais urgente, não pode sumir da lista.
+    const itensSemEstoque = estoque.filter(i => Number(i.estoque) <= 0)
     const valorTotalEstoque = estoque.reduce((s, i) => s + parseVal(i.preco) * Number(i.estoque), 0)
 
     const agendaHoje = agenda.filter(a => a.data === hojeStr)
@@ -338,8 +340,8 @@ export default function AssistenteFinanceiro() {
       if (d.itensCriticos.length === 0) return `✅ Estoque em ordem! Nenhum item está abaixo do mínimo.`
       let texto = `📦 Itens com estoque crítico:\n\n`
       if (d.itensSemEstoque.length > 0) {
-        texto += `🔴 ZERADOS (urgente):\n`
-        d.itensSemEstoque.forEach(i => { texto += `• ${i.nome}\n` })
+        texto += `🔴 ZERADOS OU NEGATIVOS (urgente):\n`
+        d.itensSemEstoque.forEach(i => { texto += `• ${i.nome}${Number(i.estoque) < 0 ? ` (saldo ${i.estoque} — acerte por ajuste)` : ''}\n` })
         texto += `\n`
       }
       const abaixo = d.itensCriticos.filter(i => Number(i.estoque) > 0)
@@ -355,7 +357,7 @@ export default function AssistenteFinanceiro() {
       texto += `• Valor total: ${fmt(d.valorTotalEstoque)}\n`
       texto += `• Itens cadastrados: ${estoque.length}\n`
       texto += `• Itens críticos: ${d.itensCriticos.length}\n`
-      texto += `• Itens zerados: ${d.itensSemEstoque.length}`
+      texto += `• Itens zerados ou negativos: ${d.itensSemEstoque.length}`
       return texto
     }
 

@@ -39,6 +39,7 @@ export default function PatioLimpeza() {
     ordens, setOrdens, checklists, setChecklists,
     getCliente, getVeiculo, totalOrdem, entregarOrdem,
     financeiro, setFinanceiro, setCaixaTurno, caixaTurno,
+    movimentarEstoque,
   } = useApp()
 
   const [filtro, setFiltro] = useState('todos')
@@ -119,12 +120,32 @@ export default function PatioLimpeza() {
         return { ...o, status: 'Concluída', retirado: true, dataConclusao: o.dataConclusao || hoje, historico: hist }
       }))
     } else if (acao === 'cancelar') {
+      // Cancelar também devolve as PEÇAS ao estoque (kardex) — antes só o
+      // financeiro era estornado e a peça ficava baixada para sempre. A marca
+      // `estoqueEstornado` na OS impede devolver duas vezes (aqui, no dropdown
+      // de status e na exclusão).
+      const pecasDaOS = (os.itens || []).filter(i => i.tipo === 'peca' && i.produtoId)
+      const devolvePecas = pecasDaOS.length > 0 && !os.estoqueEstornado && os.status !== 'Cancelada'
+      if (devolvePecas) {
+        // Mesma chave que o cancelamento pelo AppContext usa: dois aparelhos
+        // cancelando a mesma OS no mesmo ciclo geram o mesmo id de movimento
+        // e o banco devolve as peças uma vez só.
+        movimentarEstoque(pecasDaOS.map(p => ({
+          pecaId: p.produtoId,
+          qtd: Number(p.quantidade) || 1,
+          tipo: 'estorno_os',
+          motivo: 'OS cancelada',
+          origem: { tipo: 'os', id: os.id },
+          chave: ['estorno_os', os.id, 'cancelar', p.id, os.estoqueCiclo || 0],
+        })))
+      }
       setOrdens(prev => prev.map(o => {
         if (o.id !== os.id) return o
         const entries = []
         if (o.status === 'Concluída') entries.push({ id: gerarId(), texto: 'OS reaberta (estorno)', data: agora })
+        if (devolvePecas) entries.push({ id: gerarId(), texto: 'Peças devolvidas ao estoque (OS cancelada)', data: agora })
         entries.push({ id: gerarId(), texto: 'Status alterado para "Cancelada"', data: agora })
-        return { ...o, status: 'Cancelada', pago: false, historico: [...entries, ...(o.historico || [])] }
+        return { ...o, status: 'Cancelada', pago: false, ...(devolvePecas ? { estoqueEstornado: true } : {}), historico: [...entries, ...(o.historico || [])] }
       }))
       setFinanceiro(fp => fp.filter(f => f.osId !== os.id))
       setCaixaTurno(t => t ? { ...t, vendas: (t.vendas || []).filter(v => v.osId !== os.id) } : t)

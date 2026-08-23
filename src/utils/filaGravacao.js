@@ -55,7 +55,10 @@ export function normalizarPendencia(p, agora) {
   const tabela = typeof p.tabela === 'string' ? p.tabela.trim() : ''
   if (!tabela) return null
 
-  const tipo = p.tipo === 'apagar' ? 'apagar' : 'gravar'
+  // 'movimento' é o kardex: linhas que vão para a função registrar_movimentos,
+  // não para um upsert. Rebaixá-lo para 'gravar' inseriria o extrato SEM somar
+  // o saldo — por isso o tipo sobrevive à normalização.
+  const tipo = p.tipo === 'apagar' ? 'apagar' : (p.tipo === 'movimento' ? 'movimento' : 'gravar')
 
   // `delId` é o formato da fila antiga em memória (uma linha por pendência).
   // Aceitar os dois evita perder o que já estava na fila na hora da migração.
@@ -66,8 +69,11 @@ export function normalizarPendencia(p, agora) {
 
   const rows = (Array.isArray(p.rows) ? p.rows : []).filter(r => r && typeof r === 'object')
 
-  // Pendência de gravar sem linha, ou de apagar sem id, não tem o que enviar.
-  if (tipo === 'gravar' ? rows.length === 0 : ids.length === 0) return null
+  // Pendência de gravar/movimento sem linha, ou de apagar sem id, não tem o
+  // que enviar. 'movimento' carrega rows como 'gravar' — testar ids aqui
+  // descartava toda baixa de estoque que falhasse, e apagava a tarja junto.
+  const precisaRows = tipo !== 'apagar'
+  if (precisaRows ? rows.length === 0 : ids.length === 0) return null
 
   const criadoEm = Number.isFinite(p.criadoEm)
     ? p.criadoEm
@@ -140,7 +146,9 @@ export function dedupPendencias(lista) {
         // Linha sem id não é deduplicável; some perder uma gravação é pior que
         // reenviar duas vezes, ela fica.
         if (!id) return true
-        const chave = chaveDaLinha(p.tabela, 'gravar', id)
+        // O tipo real entra na chave: 'movimento' (kardex) e 'gravar' da mesma
+        // tabela nunca se anulam entre si.
+        const chave = chaveDaLinha(p.tabela, p.tipo, id)
         if (vistas.has(chave)) return false
         vistas.add(chave)
         return true

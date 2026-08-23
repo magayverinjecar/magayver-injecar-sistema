@@ -74,7 +74,10 @@ export default function Compras() {
                       </button>
                       <button onClick={e => {
                         e.stopPropagation()
-                        if (confirm(`Excluir compra ${c.numero}?`)) excluirCompra(c.id)
+                        const msg = c.recebida
+                          ? `A compra ${c.numero} já foi recebida. Excluir vai RETIRAR do estoque o que entrou com ela e apagar os lançamentos financeiros dela. Confirmar exclusão?`
+                          : `Excluir compra ${c.numero}?`
+                        if (confirm(msg)) excluirCompra(c.id)
                       }} className="p-1.5 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors" title="Excluir">
                         <Trash2 size={16} />
                       </button>

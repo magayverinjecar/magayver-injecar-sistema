@@ -16,6 +16,7 @@ const titles = {
   '/funcionarios': 'Funcionários',
   '/produtividade': 'Produtividade',
   '/estoque': 'Estoque',
+  '/estoque/movimentacoes': 'Movimentações de Estoque',
   '/compras': 'Compras',
   '/insumos': 'Insumos',
   '/fornecedores': 'Fornecedores',

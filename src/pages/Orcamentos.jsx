@@ -26,7 +26,7 @@ const fmt = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2,
 export default function Orcamentos() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, getCliente, getVeiculo, novaOrdem } = useApp()
+  const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, movimentarEstoque, getCliente, getVeiculo, novaOrdem } = useApp()
 
   const [aba, setAba] = useState('salvos')
   const [orcamentoEditandoId, setOrcamentoEditandoId] = useState(null)
@@ -212,9 +212,22 @@ export default function Orcamentos() {
       setServicos(prev => [...prev, novo])
       setSelecaoPainel(novo)
     } else {
-      const novo = { id, nome: novoForm.nome, codigo: novoForm.codigo || '', categoria: novoForm.categoria || '', precoCusto: novoForm.precoCusto || '', preco: novoForm.preco || '0', estoque: Number(novoForm.estoque) || 0, minimo: Number(novoForm.minimo) || 0 }
+      // A peça nasce com saldo zero e a quantidade entra por movimento de
+      // "saldo inicial" — o extrato explica o saldo desde o primeiro dia.
+      const qtdInicial = Number(novoForm.estoque) || 0
+      const novo = { id, nome: novoForm.nome, codigo: novoForm.codigo || '', categoria: novoForm.categoria || '', precoCusto: novoForm.precoCusto || '', preco: novoForm.preco || '0', estoque: 0, minimo: Number(novoForm.minimo) || 0 }
       setEstoque(prev => [...prev, novo])
-      setSelecaoPainel(novo)
+      if (qtdInicial !== 0) {
+        movimentarEstoque({
+          pecaId: id,
+          qtd: qtdInicial,
+          tipo: 'saldo_inicial',
+          motivo: 'Cadastro rápido pelo orçamento',
+          custoUnit: novo.precoCusto,
+          criarSeFaltar: true,
+        })
+      }
+      setSelecaoPainel({ ...novo, estoque: qtdInicial })
     }
     setNovoForm({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
     setCriarNovo(false)
@@ -299,6 +312,19 @@ export default function Orcamentos() {
   }
 
   function converterEmOS(orc) {
+    // Converter duas vezes criava DUAS OS e baixava as peças em dobro — o botão
+    // continuava vivo depois da conversão. Orçamento convertido aponta para a
+    // OS que já existe em vez de fabricar outra.
+    // A prova de conversão é o `osId` gravado, não só o status — o status
+    // pode ser trocado à mão no dropdown da lista.
+    if (orc.osId || orc.status === 'Convertido') {
+      if (orc.osId && confirm(`Este orçamento já virou a OS ${orc.osId}.\n\nAbrir a OS existente?`)) {
+        navigate(`/ordens-servico/${encodeURIComponent(orc.osId)}`)
+      } else if (!orc.osId) {
+        alert('Este orçamento já está marcado como convertido.')
+      }
+      return
+    }
     // Orçamento que o cliente já aprovou não precisa de diagnóstico: a OS nasce
     // liberada e o carro cai direto na lista do reparador como "Iniciar reparo".
     const jaAprovado = orc.status === 'Aprovado'
@@ -331,7 +357,7 @@ export default function Orcamentos() {
     // As peças precisam sair do estoque — novaOrdem só desconta o que vem em `pecas`
     const pecasOS = itensOS
       .filter(i => i.tipo === 'peca' && i.produtoId)
-      .map(i => ({ estoqueId: i.produtoId, qtd: i.quantidade }))
+      .map(i => ({ estoqueId: i.produtoId, qtd: i.quantidade, itemId: i.id }))
 
     const osId = novaOrdem({
       clienteId: orc.clienteId ? Number(orc.clienteId) : null,
@@ -431,7 +457,7 @@ export default function Orcamentos() {
                           const veic = veicsOrc.find(v => v.placa === o.placa) || veicsOrc[0] || null
                           imprimirOrcamento(o, cli, veic)
                         }} className="p-1.5 rounded hover:bg-slate-100 hover:text-slate-600 transition-colors"><Printer size={15} /></button>
-                        <button title="Converter em OS" onClick={() => converterEmOS(o)} className="p-1.5 rounded hover:bg-blue-50 hover:text-blue-500 transition-colors"><ArrowRight size={15} /></button>
+                        <button title={(o.osId || o.status === 'Convertido') ? 'Já convertido — abre a OS' : 'Converter em OS'} onClick={() => converterEmOS(o)} className={`p-1.5 rounded transition-colors ${(o.osId || o.status === 'Convertido') ? 'text-slate-200 hover:bg-slate-50 hover:text-slate-400' : 'hover:bg-blue-50 hover:text-blue-500'}`}><ArrowRight size={15} /></button>
                         <button title="Excluir" onClick={() => excluir(o.id)} className="p-1.5 rounded hover:bg-red-50 hover:text-red-400 transition-colors"><Trash2 size={15} /></button>
                       </div>
                     </td>

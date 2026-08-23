@@ -135,7 +135,7 @@ export default function CompraDetalhe() {
 
   function excluir() {
     const msg = recebida
-      ? 'Esta compra já foi recebida. Excluir não desfaz as entradas no estoque nem os lançamentos financeiros. Confirmar exclusão?'
+      ? 'Esta compra já foi recebida. Excluir vai RETIRAR do estoque o que entrou com ela e apagar os lançamentos financeiros dela. Confirmar exclusão?'
       : 'Excluir esta compra?'
     if (confirm(msg)) {
       excluirCompra(compra.id)
