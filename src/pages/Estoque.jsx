@@ -12,6 +12,9 @@ import { PECA_VAZIA } from '../utils/pecaCampos'
 import { kitsDoConfig } from '../utils/kits'
 import { rotuloDoTipo, rotuloDaOrigem, mensagemErroExtrato } from '../utils/movimentos'
 import { pecaComCodigo, pecaAtiva, gruposDuplicados } from '../utils/pecas'
+import { parseValorBR } from '../utils/numero'
+
+const fmtBRL = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const vazio = PECA_VAZIA
 
@@ -130,6 +133,8 @@ export default function Estoque() {
     (i.codigo || '').toLowerCase().includes(busca.toLowerCase())
   )
   const qtdInativas = estoque.length - estoque.filter(pecaAtiva).length
+  const totalUnidades = filtrados.reduce((s, i) => s + (Number(i.estoque) || 0), 0)
+  const valorEstoque = filtrados.reduce((s, i) => s + (Number(i.estoque) || 0) * parseValorBR(i.precoCusto), 0)
 
   const emFalta = estoque.filter(i => pecaAtiva(i) && Number(i.estoque) <= Number(i.minimo)).length
 
@@ -309,10 +314,13 @@ export default function Estoque() {
             <tr className="border-b border-slate-100 bg-slate-50">
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Código</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Produto</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoria</th>
+              {/* Marca no lugar de categoria: 82 das 543 peças tinham categoria
+                  preenchida, e existem 16 peças de nome igual que só a marca e a
+                  aplicação distinguem. */}
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Marca</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Custo</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Venda</th>
+              <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Custo</th>
+              <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Venda</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
@@ -336,7 +344,10 @@ export default function Estoque() {
                       </span>
                     )}
                   </td>
-                  <td className="px-5 py-3.5"><span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{item.categoria || '—'}</span></td>
+                  <td className="px-5 py-3.5 text-sm text-slate-600">
+                    {item.marca || item.categoria || <span className="text-slate-300">—</span>}
+                    {item.aplicacao && <span className="block text-[11px] text-slate-400 truncate max-w-[16rem]">{item.aplicacao}</span>}
+                  </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">
                       {baixo && !negativo && <AlertTriangle size={13} className="text-yellow-500" />}
@@ -356,8 +367,8 @@ export default function Estoque() {
                       </div>
                     )}
                   </td>
-                  <td className="px-5 py-3.5 text-sm text-slate-700">{item.precoCusto ? `R$ ${item.precoCusto}` : '—'}</td>
-                  <td className="px-5 py-3.5 text-sm text-slate-700">{item.preco ? `R$ ${item.preco}` : '—'}</td>
+                  <td className="px-5 py-3.5 text-sm text-slate-700 text-right tabular-nums">{item.precoCusto || <span className="text-slate-300">—</span>}</td>
+                  <td className="px-5 py-3.5 text-sm text-slate-700 text-right tabular-nums">{item.preco || <span className="text-slate-300">—</span>}</td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1">
                       <button onClick={() => setExtratoDe(item)} className="p-1.5 rounded hover:bg-slate-100 text-slate-300 hover:text-slate-500 transition-colors" title="Extrato de movimentação">
@@ -377,6 +388,22 @@ export default function Estoque() {
           </tbody>
         </table>
         {filtrados.length === 0 && <p className="text-center text-sm text-slate-400 py-8">Nenhum item encontrado.</p>}
+        {/* Rodapé de sistema: os números que o dono quer saber sem abrir
+            relatório — quantas peças, quantas unidades, quanto vale a
+            prateleira pelo custo. */}
+        {filtrados.length > 0 && (
+          <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
+            <span>
+              {filtrados.length} {filtrados.length === 1 ? 'peça' : 'peças'}
+              {busca && ` (de ${visiveis.length})`}
+              {emFalta > 0 && <span className="ml-2 text-yellow-700">· {emFalta} abaixo do mínimo</span>}
+            </span>
+            <span className="flex items-center gap-4 tabular-nums">
+              <span>{totalUnidades.toLocaleString('pt-BR')} unidades</span>
+              <span>Custo na prateleira: <strong className="font-medium">{fmtBRL(valorEstoque)}</strong></span>
+            </span>
+          </div>
+        )}
       </div>
       </>)}
 

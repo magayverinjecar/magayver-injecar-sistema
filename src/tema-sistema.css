@@ -1,0 +1,155 @@
+/* ═══════════════════════════════════════════════════════════════
+   TEMA SISTEMA — a cara de programa de balcão, no computador
+   ═══════════════════════════════════════════════════════════════
+
+   O app nasceu com visual de site: cards brancos flutuando, cantos
+   bem arredondados, muito respiro. Bonito, mas na recepção cabiam
+   três peças na tela e a pessoa rolava o dia inteiro.
+
+   Este arquivo troca o VOCABULÁRIO VISUAL sem reescrever as 45
+   telas. Dá para fazer porque o app inteiro usa as mesmas oito
+   peças repetidas (o card `bg-white rounded-xl`, o cabeçalho de
+   tabela, o campo de formulário...) — e porque o modo escuro já
+   provou que o caminho funciona: ele são 85 linhas que redefinem
+   essas mesmas classes.
+
+   REGRAS DESTE ARQUIVO
+   1. Só a partir de 1024px (computador e tablet deitado). No
+      celular do reparador o dedo precisa de alvo grande, então lá
+      nada muda.
+   2. Mexe em espaçamento, cantos, bordas e tipografia — quase
+      nunca em cor. É o que deixa o modo escuro intacto.
+   3. Cada bloco diz o que muda e por quê, para quem mexer depois
+      saber o que pode desfazer.
+   ═══════════════════════════════════════════════════════════════ */
+
+@media (min-width: 1024px) {
+
+  /* ── Fundo e tipografia base ─────────────────────────────────
+     Fundo um tom mais frio e texto 1px menor: cabe mais linha na
+     tela sem virar letra de bula. */
+  body {
+    background-color: #eef1f5;
+    font-size: 13.5px;
+  }
+  html.dark body { background-color: #0b1220; }
+
+  /* Números em fonte tabular: coluna de saldo e de preço alinham
+     na vírgula, que é o que faz uma tabela parecer sistema. */
+  table, .tabular-nums, input[type="number"] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── O card ──────────────────────────────────────────────────
+     De caixa flutuante arredondada para painel encostado: canto
+     quase reto, borda visível, sem sombra. */
+  .rounded-xl  { border-radius: 3px !important; }
+  .rounded-lg  { border-radius: 3px !important; }
+  .rounded-md  { border-radius: 2px !important; }
+  .shadow-sm   { box-shadow: none !important; }
+  .shadow-xl   { box-shadow: 0 2px 12px rgba(15, 23, 42, .18) !important; }
+
+  .bg-white.rounded-xl,
+  .bg-white.rounded-lg {
+    border: 1px solid #c9ced6 !important;
+  }
+  html.dark .bg-white.rounded-xl,
+  html.dark .bg-white.rounded-lg {
+    border-color: #334155 !important;
+  }
+
+  /* Pílulas e selos continuam redondos: são etiqueta, não caixa. */
+  .rounded-full { border-radius: 9999px !important; }
+
+  /* ── Tabelas: o coração do visual de sistema ─────────────────
+     Cabeçalho cinza com borda em baixo, linhas apertadas, zebra e
+     divisória vertical entre colunas. */
+  thead tr {
+    background: #e7eaee !important;
+    border-bottom: 1px solid #c9ced6 !important;
+  }
+  html.dark thead tr {
+    background: #1e293b !important;
+    border-bottom-color: #475569 !important;
+  }
+  thead th {
+    padding: 5px 10px !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    color: #39424e !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    border-right: 1px solid #d3d8de !important;
+  }
+  thead th:last-child { border-right: 0 !important; }
+  html.dark thead th { color: #cbd5e1 !important; border-right-color: #334155 !important; }
+
+  tbody td {
+    padding: 5px 10px !important;
+    font-size: 12.5px !important;
+    border-bottom: 1px solid #edeff2 !important;
+  }
+  html.dark tbody td { border-bottom-color: #253449 !important; }
+
+  /* Zebra: a linha alternada é o que deixa o olho seguir a linha
+     inteira sem perder a coluna. */
+  tbody tr:nth-child(even) { background: #f7f8fa; }
+  html.dark tbody tr:nth-child(even) { background: #16233a; }
+  tbody tr:hover { background: #dbe8f7 !important; }
+  html.dark tbody tr:hover { background: #1e3a5f !important; }
+
+  /* ── Campos de formulário ────────────────────────────────────
+     Menores e com borda mais firme: caixa de digitar de sistema,
+     não campo de cadastro de site. */
+  input, select, textarea {
+    border-radius: 2px !important;
+    border-color: #b9c0c9 !important;
+  }
+  html.dark input, html.dark select, html.dark textarea {
+    border-color: #475569 !important;
+  }
+  input:not([type="checkbox"]):not([type="radio"]),
+  select {
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    font-size: 13px !important;
+  }
+  label { font-size: 12px !important; }
+
+  /* ── Botões ──────────────────────────────────────────────────
+     Compactos, canto reto. O laranja da marca continua sendo o
+     laranja da marca — só o formato muda. */
+  button {
+    border-radius: 2px !important;
+  }
+  button.rounded-full { border-radius: 9999px !important; }
+
+  /* ── Cabeçalho de página ─────────────────────────────────────
+     O título de tela deixa de ser manchete. */
+  main h2 { font-size: 15px !important; font-weight: 600 !important; }
+  main h3 { font-size: 13.5px !important; }
+
+  /* ── Espaçamento geral ───────────────────────────────────────
+     O respiro entre blocos cai pela metade — é o que faz caber
+     cinco peças no lugar de três. */
+  main .space-y-6 > * + * { margin-top: 0.75rem !important; }
+  main .space-y-4 > * + * { margin-top: 0.5rem !important; }
+  main .p-5 { padding: 0.75rem !important; }
+  main .p-4 { padding: 0.625rem !important; }
+  main .gap-4 { gap: 0.5rem !important; }
+
+  /* ── Menu lateral ────────────────────────────────────────────
+     Mais itens visíveis sem rolar. */
+  aside nav a {
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    font-size: 13px !important;
+    border-radius: 2px !important;
+  }
+  aside nav p { font-size: 9.5px !important; }
+
+  /* ── Barra do topo ───────────────────────────────────────────
+     Menos altura, mais tela para o trabalho. */
+  header { min-height: 44px !important; }
+  header h1 { font-size: 14px !important; }
+}

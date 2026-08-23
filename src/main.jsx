@@ -1,6 +1,9 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+// Tema de sistema: densidade e cantos retos no computador (>= 1024px).
+// Entra DEPOIS do index.css de proposito — as regras dele vencem.
+import './tema-sistema.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
