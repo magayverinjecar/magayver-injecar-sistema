@@ -516,7 +516,10 @@ export default function NovaEntrada() {
       {/* Modelo A: no computador as quatro seções ficam à vista, cliente e
           veículo lado a lado — a recepção preenche na ordem que a conversa dá.
           No celular continua um passo por vez, que é o que cabe na mão. */}
-      <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
+      {/* Modelo de FAIXAS: cada seção ocupa a largura inteira e fica baixa,
+          porque os campos se espalham na horizontal em vez de empilhar. As
+          duas colunas de antes cortavam no monitor e sobrava rolagem. */}
+      <div className="lg:space-y-2">
 
         <div className={`bg-white border border-slate-200 rounded-2xl p-6 space-y-5 ${passo === 1 ? '' : 'hidden'} lg:block lg:p-4`}>
           <div>
@@ -524,7 +527,7 @@ export default function NovaEntrada() {
             <p className="text-sm text-slate-400 lg:hidden">Identificação e contato para cadastro</p>
           </div>
 
-            <div className="relative">
+            <div className="relative lg:mb-2">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Buscar cliente existente</label>
               <div className="relative">
                 <Search size={15} className="absolute left-3 top-3 text-slate-400" />
@@ -548,8 +551,10 @@ export default function NovaEntrada() {
               )}
             </div>
 
-            <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-12 sm:col-span-4">
+            <div className="grid grid-cols-12 gap-4 lg:gap-2">
+              {/* No computador a linha vira: buscar · documento · nome ·
+                  telefone · telefone 2 — a ordem em que a recepção pergunta. */}
+              <div className="col-span-12 sm:col-span-4 lg:col-span-2 lg:order-2">
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Documento</label>
                   <div className="flex gap-1">
@@ -567,42 +572,42 @@ export default function NovaEntrada() {
                   inputMode="numeric"
                   className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" />
               </div>
-              <div className="col-span-12 sm:col-span-8">
+              <div className="col-span-12 sm:col-span-8 lg:col-span-4 lg:order-3">
                 <CampoInput label="Nome Completo" obrigatorio erro={erros.nome}
                   value={cliente.nome} onChange={e => setCliente(p => ({ ...p, nome: e.target.value.toUpperCase() }))} placeholder="NOME DO CLIENTE" />
               </div>
-              <div className="col-span-4 sm:col-span-3">
+              <div className="col-span-4 sm:col-span-3 lg:col-span-2 lg:order-6">
                 <CampoInput label="CEP" hint={buscandoCep ? '🔍 Buscando...' : ''}
                   value={cliente.cep} onChange={e => { const v = formatCep(e.target.value); setCliente(p => ({ ...p, cep: v })); buscarCep(v) }}
                   placeholder="00000-000" inputMode="numeric" />
               </div>
-              <div className="col-span-8 sm:col-span-7">
+              <div className="col-span-8 sm:col-span-7 lg:col-span-3 lg:order-7">
                 <CampoInput label="Logradouro (Rua)" value={cliente.endereco}
                   onChange={e => setCliente(p => ({ ...p, endereco: e.target.value.toUpperCase() }))} placeholder="RUA DAS FLORES" />
               </div>
-              <div className="col-span-2">
+              <div className="col-span-2 lg:col-span-1 lg:order-8">
                 <CampoInput label="Nº" value={cliente.numero}
                   onChange={e => setCliente(p => ({ ...p, numero: e.target.value }))} placeholder="123" />
               </div>
-              <div className="col-span-6">
+              <div className="col-span-6 lg:col-span-2 lg:order-9">
                 <CampoInput label="Bairro" value={cliente.bairro}
                   onChange={e => setCliente(p => ({ ...p, bairro: e.target.value.toUpperCase() }))} placeholder="CENTRO" />
               </div>
-              <div className="col-span-6">
+              <div className="col-span-6 lg:col-span-2 lg:order-10">
                 <CampoInput label="Cidade/UF" value={cliente.cidadeEstado}
                   onChange={e => setCliente(p => ({ ...p, cidadeEstado: e.target.value.toUpperCase() }))} placeholder="SÃO PAULO/SP" />
               </div>
-              <div className="col-span-6">
+              <div className="col-span-6 lg:col-span-2 lg:order-4">
                 <CampoInput label="Telefone 1" obrigatorio erro={erros.telefone}
                   value={cliente.telefone} onChange={e => setCliente(p => ({ ...p, telefone: formatTelefone(e.target.value) }))}
                   placeholder="(00) 00000-0000" inputMode="tel" />
               </div>
-              <div className="col-span-6">
+              <div className="col-span-6 lg:col-span-2 lg:order-5">
                 <CampoInput label="Telefone 2" value={cliente.telefone2}
                   onChange={e => setCliente(p => ({ ...p, telefone2: formatTelefone(e.target.value) }))}
                   placeholder="(00) 00000-0000" inputMode="tel" />
               </div>
-              <div className="col-span-12">
+              <div className="col-span-12 lg:col-span-2 lg:order-11">
                 <CampoInput label="Email" value={cliente.email}
                   onChange={e => setCliente(p => ({ ...p, email: e.target.value.toLowerCase() }))}
                   placeholder="email@exemplo.com" type="email" inputMode="email" />
@@ -636,41 +641,41 @@ export default function NovaEntrada() {
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-12 sm:col-span-4">
+            <div className="grid grid-cols-12 gap-4 lg:gap-2">
+              <div className="col-span-12 sm:col-span-4 lg:col-span-3">
                 <CampoInput label="Modelo do Veículo" obrigatorio erro={erros.modelo}
                   value={veiculo.modelo} onChange={e => setVeiculo(p => ({ ...p, modelo: e.target.value.toUpperCase() }))} placeholder="GOL G5 1.6" />
               </div>
-              <div className="col-span-6 sm:col-span-4">
+              <div className="col-span-6 sm:col-span-4 lg:col-span-2">
                 <CampoInput label="Placa" obrigatorio erro={erros.placa}
                   value={veiculo.placa} onChange={e => setVeiculo(p => ({ ...p, placa: formatPlaca(e.target.value) }))} placeholder="ABC-1234" maxLength={8} />
               </div>
-              <div className="col-span-6 sm:col-span-4">
+              <div className="col-span-6 sm:col-span-4 lg:col-span-1">
                 <CampoInput label="Motor" value={veiculo.motor}
                   onChange={e => setVeiculo(p => ({ ...p, motor: e.target.value.toUpperCase() }))} placeholder="1.6 16V" />
               </div>
-              <div className="col-span-6 sm:col-span-3">
+              <div className="col-span-6 sm:col-span-3 lg:col-span-1">
                 <CampoInput label="Cor" value={veiculo.cor}
                   onChange={e => setVeiculo(p => ({ ...p, cor: e.target.value.toUpperCase() }))} placeholder="PRATA" />
               </div>
-              <div className="col-span-6 sm:col-span-3">
+              <div className="col-span-6 sm:col-span-3 lg:col-span-1">
                 <CampoInput label="Ano/Modelo" value={veiculo.ano}
                   onChange={e => setVeiculo(p => ({ ...p, ano: e.target.value }))} placeholder="2010/2011" />
               </div>
-              <div className="col-span-6 sm:col-span-3">
+              <div className="col-span-6 sm:col-span-3 lg:col-span-1">
                 <CampoInput label="Km Atual (Painel)" value={veiculo.kmEntrada}
                   onChange={e => setVeiculo(p => ({ ...p, kmEntrada: e.target.value }))} placeholder="120.000" inputMode="numeric" />
               </div>
-              <div className="col-span-6 sm:col-span-3">
+              <div className="col-span-6 sm:col-span-3 lg:col-span-1">
                 <CampoInput label="Condutores" value={veiculo.numCondutores}
                   onChange={e => setVeiculo(p => ({ ...p, numCondutores: e.target.value }))} placeholder="1" inputMode="numeric" />
               </div>
-              <div className="col-span-12">
+              <div className="col-span-12 lg:col-span-2">
                 <CampoInput label="Última Manutenção" value={veiculo.ultimaRevisao}
                   onChange={e => setVeiculo(p => ({ ...p, ultimaRevisao: e.target.value }))} placeholder="Data ou Km" />
               </div>
-              <div className="col-span-12">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Combustível Utilizado (No Tanque)</label>
+              <div className="col-span-12 lg:col-span-4">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 lg:mb-1">Combustível Utilizado (No Tanque)</label>
                 <div className="flex gap-2">
                   {COMBUSTIVEIS.map(c => (
                     <button key={c} onClick={() => setVeiculo(p => ({ ...p, combustivel: c }))}
@@ -680,20 +685,22 @@ export default function NovaEntrada() {
                   ))}
                 </div>
               </div>
-              <div className="col-span-12">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <div className="col-span-12 lg:col-span-8">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 lg:mb-1 flex items-center gap-1.5">
                   <AlertTriangle size={12} className="text-amber-500" />
                   Luzes Acesas no Painel (Check Visual)
                   {luzesPainel.length > 0 && (
                     <span className="ml-1 text-xs font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">{luzesPainel.length}</span>
                   )}
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {/* Oito por linha no computador: as 16 luzes cabem em duas
+                    linhas em vez de quatro. */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5 lg:gap-1">
                   {DASHBOARD_LIGHTS.map(luz => {
                     const ativo = luzesPainel.includes(luz)
                     return (
                       <button key={luz} onClick={() => toggleLuz(luz)}
-                        className={`py-2 px-2 rounded-lg border text-[11px] font-bold uppercase transition-all text-center ${
+                        className={`py-2 lg:py-1 px-2 lg:px-1 rounded-lg border text-[11px] lg:text-[10px] font-bold uppercase transition-all text-center leading-tight ${
                           ativo ? 'bg-red-500/20 border-red-500 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-400'
                         }`}>{luz}</button>
                     )
@@ -711,14 +718,18 @@ export default function NovaEntrada() {
             <textarea rows={10} value={relatoCliente}
               onChange={e => setRelatoCliente(e.target.value.toUpperCase())}
               placeholder="DESCREVA O DEFEITO RELATADO OU SERVIÇO SOLICITADO..."
-              className="w-full lg:rows-4 border border-slate-200 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none uppercase leading-relaxed" />
+              className="w-full lg:h-24 border border-slate-200 rounded-xl px-4 py-3.5 lg:px-2 lg:py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none uppercase leading-relaxed" />
         </div>
 
-        <div className={`bg-white border border-slate-200 rounded-2xl p-6 space-y-5 ${passo === 4 ? '' : 'hidden'} lg:block lg:p-4 lg:mt-3`}>
-          <div className="text-center lg:text-left mb-2">
-            <h3 className="text-xl lg:text-sm lg:font-semibold text-slate-800 mb-1">Autorização de Entrada</h3>
+        {/* No computador o termo, o envio do link e a assinatura ficam lado a
+            lado: o texto jurídico rola dentro da própria caixa em vez de
+            empurrar a assinatura para fora da tela. */}
+        <div className={`bg-white border border-slate-200 rounded-2xl p-6 space-y-5 ${passo === 4 ? '' : 'hidden'} lg:block lg:p-4 lg:space-y-0`}>
+          <div className="text-center lg:text-left mb-2 lg:mb-1">
+            <h3 className="text-xl lg:text-sm lg:font-semibold text-slate-800 mb-1 lg:mb-0">Autorização de Entrada</h3>
           </div>
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-600 leading-relaxed text-justify">
+          <div className="lg:grid lg:grid-cols-12 lg:gap-2 lg:items-start">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 lg:p-2 lg:col-span-5 text-sm lg:text-[11px] text-slate-600 leading-relaxed text-justify lg:h-28 lg:overflow-y-auto">
               "Autorizo a <strong>Magayver Injecar</strong> a realizar o diagnóstico técnico eletrônico
               (injeção eletrônica e sistemas eletrônicos) do meu veículo. Declaro que recebi informações
               claras sobre o serviço (CDC art. 6°, III). Estou ciente de que o diagnóstico é um serviço
@@ -726,8 +737,8 @@ export default function NovaEntrada() {
               oficina). Qualquer reparo e/ou troca de peças somente será feito mediante orçamento prévio
               e autorização expressa do cliente (CDC arts. 39, VI e 40)."
             </div>
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-              <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 lg:p-2 lg:col-span-3">
+              <h4 className="font-bold text-slate-700 mb-2 lg:mb-1 lg:text-xs flex items-center gap-2">
                 <Smartphone size={16} className="text-green-600" /> Assinatura Remota (Cliente)
               </h4>
               <p className="text-xs text-slate-500 mb-3">Envie um link para o cliente assinar pelo próprio celular.</p>
@@ -742,17 +753,20 @@ export default function NovaEntrada() {
                 </button>
               </div>
             </div>
-            <div className="relative flex items-center">
+            <div className="relative flex items-center lg:hidden">
               <div className="flex-grow border-t border-slate-200" />
               <span className="mx-4 text-xs text-slate-400 uppercase font-bold">ou assinar abaixo</span>
               <div className="flex-grow border-t border-slate-200" />
             </div>
+            <div className="lg:col-span-4">
             <PainelAssinatura onSave={data => setAssinatura(data)} onClear={() => setAssinatura(null)} assinaturaInicial={null} />
             {!assinatura && (
-              <p className="text-center text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+              <p className="text-center text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg lg:py-1">
                 A assinatura é opcional, mas recomendada para autorização formal.
               </p>
             )}
+            </div>
+          </div>
         </div>
       </div>
 
