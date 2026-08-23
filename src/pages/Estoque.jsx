@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react'
 import { Search, Plus, AlertTriangle, Trash2, Pencil, Package, Boxes, History, RefreshCw, Merge, EyeOff } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabase'
 import gerarId from '../utils/id'
 import Modal from '../components/ui/Modal'
 import AbaKits from '../components/AbaKits'
 import AbaDuplicadas from '../components/AbaDuplicadas'
+import FormularioPeca from '../components/FormularioPeca'
+import { PECA_VAZIA } from '../utils/pecaCampos'
 import { kitsDoConfig } from '../utils/kits'
 import { rotuloDoTipo, rotuloDaOrigem, mensagemErroExtrato } from '../utils/movimentos'
 import { pecaComCodigo, pecaAtiva, gruposDuplicados } from '../utils/pecas'
 
-const vazio = { codigo: '', nome: '', categoria: '', estoque: '', minimo: '', precoCusto: '', preco: '' }
+const vazio = PECA_VAZIA
 
 // ── Extrato de movimentação de uma peça (kardex) ─────────────────────────────
 // Lê a tabela estoque_mov sob demanda — ela não fica sincronizada no app, é
@@ -107,6 +110,7 @@ function ExtratoPeca({ item, onClose }) {
 
 export default function Estoque() {
   const { estoque, setEstoque, movimentarEstoque, reservadoDe, config } = useApp()
+  const { currentUser } = useAuth()
   // Kits ficam nesta tela, e não em Configurações: quem monta kit é quem mexe
   // em estoque — as peças e as referências estão aqui.
   const [aba, setAba] = useState('pecas')
@@ -146,7 +150,18 @@ export default function Estoque() {
     // "saldo inicial" no kardex: o extrato explica o saldo desde o primeiro dia.
     const id = gerarId()
     const qtdInicial = Number(form.estoque) || 0
-    setEstoque(prev => [...prev, { ...form, nome: form.nome.toUpperCase().trim(), categoria: (form.categoria || '').toUpperCase(), id, estoque: 0, minimo: Number(form.minimo) || 0 }])
+    setEstoque(prev => [...prev, {
+      ...form, id, estoque: 0,
+      nome: form.nome.toUpperCase().trim(),
+      categoria: (form.categoria || '').toUpperCase(),
+      marca: (form.marca || '').toUpperCase(),
+      aplicacao: (form.aplicacao || '').toUpperCase(),
+      localizacao: (form.localizacao || '').toUpperCase(),
+      minimo: Number(form.minimo) || 0,
+      ativo: true,
+      criadoEm: Date.now(),
+      criadoPor: currentUser?.nome || '',
+    }])
     if (qtdInicial !== 0) {
       movimentarEstoque({
         pecaId: id,
@@ -176,7 +191,16 @@ export default function Estoque() {
     // e mínimo. Saldo muda por movimentação (botões −/+ com motivo), senão a
     // foto do formulário apagaria baixas feitas em outro aparelho.
     setEstoque(prev => prev.map(i => i.id === editando.id
-      ? { ...editando, nome: editando.nome.toUpperCase().trim(), categoria: (editando.categoria || '').toUpperCase(), estoque: i.estoque, minimo: Number(editando.minimo) || 0 }
+      ? {
+          ...editando,
+          nome: editando.nome.toUpperCase().trim(),
+          categoria: (editando.categoria || '').toUpperCase(),
+          marca: (editando.marca || '').toUpperCase(),
+          aplicacao: (editando.aplicacao || '').toUpperCase(),
+          localizacao: (editando.localizacao || '').toUpperCase(),
+          estoque: i.estoque,
+          minimo: Number(editando.minimo) || 0,
+        }
       : i
     ))
     setEditando(null)
@@ -217,55 +241,6 @@ export default function Estoque() {
     })
     setAjustando(null)
   }
-
-  const camposForm = (f, set, { comSaldo = true } = {}) => (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Código</label>
-          <input value={f.codigo} onChange={e => set(x => ({ ...x, codigo: e.target.value }))} placeholder="FLT-001" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Categoria</label>
-          <input value={f.categoria} onChange={e => set(x => ({ ...x, categoria: e.target.value }))} spellCheck lang="pt-BR" placeholder="FILTROS, ÓLEOS..." className="w-full uppercase border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-        </div>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Nome do Produto *</label>
-        <input value={f.nome} onChange={e => set(x => ({ ...x, nome: e.target.value }))} spellCheck lang="pt-BR" placeholder="EX: FILTRO DE ÓLEO" className="w-full uppercase border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        {comSaldo ? (
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Qtd. em Estoque</label>
-            <input type="number" value={f.estoque} onChange={e => set(x => ({ ...x, estoque: e.target.value }))} placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-          </div>
-        ) : (
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Qtd. em Estoque</label>
-            <div className="w-full border border-slate-100 bg-slate-50 rounded-lg px-3 py-2 text-sm text-slate-500">
-              {f.estoque}
-              <span className="block text-[11px] text-slate-400">muda pelos botões − / + da lista, com motivo</span>
-            </div>
-          </div>
-        )}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Qtd. Mínima</label>
-          <input type="number" value={f.minimo} onChange={e => set(x => ({ ...x, minimo: e.target.value }))} placeholder="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Preço de Custo (R$)</label>
-          <input value={f.precoCusto} onChange={e => set(x => ({ ...x, precoCusto: e.target.value }))} placeholder="0,00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Preço de Venda (R$)</label>
-          <input value={f.preco} onChange={e => set(x => ({ ...x, preco: e.target.value }))} placeholder="0,00" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-        </div>
-      </div>
-    </div>
-  )
 
   const qtdKits = kitsDoConfig(config).length
   const qtdDuplicadas = gruposDuplicados(estoque.filter(pecaAtiva)).length
@@ -408,7 +383,7 @@ export default function Estoque() {
       {/* Modal Nova Peça */}
       {modal && (
         <Modal title="Nova Peça / Item" onClose={() => setModal(false)}>
-          {camposForm(form, setForm)}
+          <FormularioPeca f={form} set={setForm} />
           <div className="flex gap-3 pt-4">
             <button type="button" onClick={() => setModal(false)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
             <button type="button" onClick={salvar} className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">Salvar</button>
@@ -419,7 +394,7 @@ export default function Estoque() {
       {/* Modal Editar Peça — sem o campo de saldo: saldo muda por movimentação */}
       {editando && (
         <Modal title="Editar Peça" onClose={() => setEditando(null)}>
-          {camposForm(editando, setEditando, { comSaldo: false })}
+          <FormularioPeca f={editando} set={setEditando} comSaldo={false} />
           <div className="flex gap-3 pt-4">
             <button type="button" onClick={() => setEditando(null)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
             <button type="button" onClick={salvarEdicao} className="flex-1 bg-primary-500 hover:bg-primary-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">Salvar Alterações</button>
