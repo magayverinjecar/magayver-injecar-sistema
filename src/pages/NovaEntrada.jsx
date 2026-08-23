@@ -19,6 +19,27 @@ const DASHBOARD_LIGHTS = [
 
 const COMBUSTIVEIS = ['Gasolina', 'Etanol', 'Diesel', 'Misturado']
 
+// Nome curto para caber numa linha só no marcador. O que fica GRAVADO na OS
+// continua sendo o nome completo de DASHBOARD_LIGHTS — encurtar o dado faria a
+// luz marcada hoje não bater com a de uma OS de ontem.
+const LUZ_CURTA = {
+  'Injeção (Check Engine)': 'Injeção',
+  'Bateria / Alternador': 'Bateria',
+  'Pressão de Óleo': 'Pressão de óleo',
+  'Freio / Fluido': 'Freio / fluido',
+  'Temperatura Motor': 'Temperatura',
+  'Airbag (SRS)': 'Airbag',
+  'EPC (Aceleração)': 'EPC',
+  'Direção Assistida': 'Direção assistida',
+  'Controle Estabilidade (ESP)': 'Estabilidade',
+  'Pressão Pneus (TPMS)': 'Pneus (TPMS)',
+  'Câmbio / Transmissão': 'Câmbio',
+  'Filtro de Partículas': 'Filtro partículas',
+  'Imobilizador (Code)': 'Imobilizador',
+  'Pastilha de Freio': 'Pastilha de freio',
+  'Pré-aquecimento (Velas)': 'Pré-aquecimento',
+}
+
 // A recepção registra dados e defeito. As fotos e a vistoria de entrada são
 // feitas depois pelo reparador, no login dele, na tela Fotos e Vistoria.
 const PASSOS = [
@@ -663,7 +684,7 @@ export default function NovaEntrada() {
                   onChange={e => setVeiculo(p => ({ ...p, ano: e.target.value }))} placeholder="2010/2011" />
               </div>
               <div className="col-span-6 sm:col-span-3 lg:col-span-1">
-                <CampoInput label="Km Atual (Painel)" value={veiculo.kmEntrada}
+                <CampoInput label="Km Atual" value={veiculo.kmEntrada}
                   onChange={e => setVeiculo(p => ({ ...p, kmEntrada: e.target.value }))} placeholder="120.000" inputMode="numeric" />
               </div>
               <div className="col-span-6 sm:col-span-3 lg:col-span-1">
@@ -676,13 +697,24 @@ export default function NovaEntrada() {
               </div>
               <div className="col-span-12 lg:col-span-4">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 lg:mb-1">Combustível Utilizado (No Tanque)</label>
-                <div className="flex gap-2">
-                  {COMBUSTIVEIS.map(c => (
-                    <button key={c} onClick={() => setVeiculo(p => ({ ...p, combustivel: c }))}
-                      className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
-                        veiculo.combustivel === c ? 'bg-primary-500 text-white border-primary-500' : 'border-slate-200 text-slate-500 hover:border-slate-300'
-                      }`}>{c}</button>
-                  ))}
+                {/* Marcador redondo: é escolha única, e clicar no nome também
+                    seleciona — alvo maior que o botão de antes. Dois por linha
+                    no computador, deixando a metade da faixa para as luzes. */}
+                <div className="grid grid-cols-2 gap-2 lg:gap-1">
+                  {COMBUSTIVEIS.map(c => {
+                    const ativo = veiculo.combustivel === c
+                    return (
+                      <label key={c}
+                        className={`flex items-center gap-2 px-2 py-2 lg:py-1 rounded-xl lg:rounded-sm border text-xs cursor-pointer transition-colors ${
+                          ativo ? 'bg-primary-50 border-primary-500 text-primary-700 font-semibold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}>
+                        <input type="radio" name="combustivel" checked={ativo}
+                          onChange={() => setVeiculo(p => ({ ...p, combustivel: c }))}
+                          className="accent-primary-500 flex-shrink-0" />
+                        {c}
+                      </label>
+                    )
+                  })}
                 </div>
               </div>
               <div className="col-span-12 lg:col-span-8">
@@ -693,16 +725,21 @@ export default function NovaEntrada() {
                     <span className="ml-1 text-xs font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">{luzesPainel.length}</span>
                   )}
                 </label>
-                {/* Oito por linha no computador: as 16 luzes cabem em duas
-                    linhas em vez de quatro. */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5 lg:gap-1">
+                {/* Caixa de marcar: várias luzes podem estar acesas ao mesmo
+                    tempo. Quatro por linha no computador, com nome curto para
+                    cada uma caber numa linha só. */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5 lg:gap-1">
                   {DASHBOARD_LIGHTS.map(luz => {
                     const ativo = luzesPainel.includes(luz)
                     return (
-                      <button key={luz} onClick={() => toggleLuz(luz)}
-                        className={`py-2 lg:py-1 px-2 lg:px-1 rounded-lg border text-[11px] lg:text-[10px] font-bold uppercase transition-all text-center leading-tight ${
-                          ativo ? 'bg-red-500/20 border-red-500 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-400'
-                        }`}>{luz}</button>
+                      <label key={luz} title={luz}
+                        className={`flex items-center gap-2 px-2 py-2 lg:py-1 rounded-lg lg:rounded-sm border text-[11px] cursor-pointer transition-colors ${
+                          ativo ? 'bg-red-50 border-red-500 text-red-700 font-semibold' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}>
+                        <input type="checkbox" checked={ativo} onChange={() => toggleLuz(luz)}
+                          className="accent-red-500 flex-shrink-0" />
+                        <span className="truncate">{LUZ_CURTA[luz] || luz}</span>
+                      </label>
                     )
                   })}
                 </div>
