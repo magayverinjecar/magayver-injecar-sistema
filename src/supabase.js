@@ -43,6 +43,48 @@ export async function uploadFoto(blob, caminho, contentType = 'image/jpeg') {
   return urlData.publicUrl
 }
 
+// Por que o envio da foto falhou, em português e sem chutar.
+//
+// A mensagem antiga era "Verifique a conexão e tente de novo" para QUALQUER
+// falha. Em 24/08 o upload parou por PERMISSÃO: o bucket liberava `anon` e não
+// `authenticated`, e o login por pessoa fez todo mundo virar `authenticated`.
+// A tela mandou conferir a internet — que estava ótima.
+//
+// Uma mensagem que chuta o motivo é pior que uma que assume não saber: manda a
+// pessoa procurar no lugar errado. Por isso o texto cru do erro vai junto no
+// fim — feio, mas é o que permite dizer o que houve sem adivinhar.
+export function motivoDoErroDeFoto(err) {
+  // Erro de fetch e erro do Storage tem formatos diferentes, e um objeto
+  // solto viraria "[object Object]" — que nao diz nada a quem le nem a quem
+  // for consertar. Serializa antes de desistir.
+  let texto = typeof err === 'string' ? err
+    : String(err?.message || err?.error || err?.statusCode || '')
+  if (!texto) { try { texto = JSON.stringify(err) } catch { texto = '' } }
+  if (['{}', '[object Object]', 'null', 'undefined'].includes(texto)) texto = ''
+
+  if (/row-level security|Unauthorized|AccessDenied|not authorized|\b40[13]\b/i.test(texto)) {
+    return 'O servidor recusou a foto por PERMISSÃO — não é a sua internet. '
+      + 'Avise quem cuida do sistema: falta liberar o envio de foto para quem tem login.'
+  }
+  if (/abort|timeout|prazo/i.test(texto)) {
+    return 'A foto demorou demais e o envio foi cancelado. '
+      + 'Tente de novo perto do wi-fi.'
+  }
+  if (/failed to fetch|networkerror|load failed|offline/i.test(texto)) {
+    return 'Não consegui falar com o servidor. Confira a internet e tente de novo.'
+  }
+  if (/compress|canvas|decode|imagem/i.test(texto)) {
+    return 'Não consegui ler essa imagem. Tire a foto de novo ou escolha outra da galeria.'
+  }
+  if (/exceeded|too large|payload|size/i.test(texto)) {
+    return 'A foto ficou grande demais para o servidor aceitar.'
+  }
+  return texto
+    ? 'Erro ao enviar a foto: ' + texto
+    : 'A foto não subiu e o servidor não disse por quê. Tente de novo; '
+      + 'se repetir, avise quem cuida do sistema.'
+}
+
 // A rubrica do cliente vira arquivo no Storage. Guardá-la em base64 dentro da
 // linha da OS inflava a tabela toda (~3 MB) e cada sincronização rebaixava
 // todas as rubricas de novo. Quem chamar deve cair no base64 se isto falhar —

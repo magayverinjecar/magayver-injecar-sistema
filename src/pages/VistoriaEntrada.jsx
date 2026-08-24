@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { nomeVeiculo } from '../utils/datas'
-import { uploadFoto } from '../supabase'
+import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import { comprimirImagem } from '../utils/imagem'
 import {
   CATEGORIAS_FOTO, normalizarInspecao, linkVistoria,
@@ -159,7 +159,7 @@ export default function VistoriaEntrada() {
       persistir([...listaFotos, nova], listaInspecao)
     } catch (err) {
       console.error('Erro ao enviar imagem:', err)
-      alert('Erro ao enviar imagem. Verifique a conexão e tente de novo.')
+      alert(motivoDoErroDeFoto(err))
     } finally {
       setUploading(null)
       e.target.value = ''

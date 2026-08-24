@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { nomeVeiculo } from '../utils/datas'
-import { uploadFoto } from '../supabase'
+import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import { comprimirImagem } from '../utils/imagem'
 import {
   CATEGORIAS_REPARO, MOMENTO_REPARO, fotosDaEntrada, fotosDoReparo, linkVistoria,
@@ -81,7 +81,7 @@ export default function FotosReparo() {
         })
       } catch (err) {
         console.error('Erro ao enviar foto:', err)
-        alert(`Não foi possível enviar "${arquivo.name}". Verifique a conexão e tente de novo.`)
+        alert(`Não foi possível enviar "${arquivo.name}".\n\n` + motivoDoErroDeFoto(err))
       }
     }
     if (novas.length > 0) persistir([...todas, ...novas])

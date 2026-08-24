@@ -6,7 +6,7 @@ import {
   Save, User, Clock, Car, X, ZoomIn, ChevronLeft, ChevronRight, Copy, Check
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { uploadFoto } from '../supabase'
+import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 
 // ─── Constantes iguais ao original ───────────────────────────
 const CATEGORIAS = [
@@ -203,8 +203,9 @@ export default function ChecklistFotosDetalhe() {
       const novasFotos = [...fotos, novaFoto]
       setFotos(novasFotos)
       salvarNoContexto(novasFotos, inspecao)
-    } catch {
-      alert('Erro ao enviar imagem.')
+    } catch (err) {
+      console.error('Erro ao enviar imagem:', err)
+      alert(motivoDoErroDeFoto(err))
     } finally {
       setUploading(null)
       e.target.value = ''

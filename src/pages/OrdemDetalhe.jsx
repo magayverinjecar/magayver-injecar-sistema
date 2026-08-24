@@ -9,7 +9,7 @@ import { STATUS_OS, statusColor } from './OrdensServico'
 import { imprimirOS, imprimirOrcamento } from '../utils/print'
 import { nomeVeiculo } from '../utils/datas'
 import { comprimirImagem } from '../utils/imagem'
-import { uploadFoto } from '../supabase'
+import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
 import MargemDaOS from '../components/MargemDaOS'
 import PainelAdicionarItem from '../components/PainelAdicionarItem'
@@ -257,7 +257,7 @@ export default function OrdemDetalhe() {
         })
       } catch (err) {
         console.error('Erro ao enviar foto:', err)
-        alert(`Não foi possível enviar "${arquivo.name}". Verifique sua conexão e tente novamente.`)
+        alert(`Não foi possível enviar "${arquivo.name}".\n\n` + motivoDoErroDeFoto(err))
       }
     }
     // fotosLocal guarda o array COMPLETO — mexer só no subconjunto de entrada
