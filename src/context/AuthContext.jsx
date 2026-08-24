@@ -108,6 +108,42 @@ export function AuthProvider({ children }) {
     setCurrentUser(atualizado)
   }, []) // roda só 1x ao montar
 
+  // Permissão mudada no cadastro chega neste aparelho ao abrir o sistema.
+  //
+  // Antes ela só chegava de duas formas: refazendo login, ou editando a pessoa
+  // a partir do MESMO navegador em que ela está logada. Na prática isso queria
+  // dizer que liberar (ou tirar) uma tela para o reparador não surtia efeito no
+  // tablet dele até ele sair e entrar — e ninguém sai do sistema por vontade
+  // própria. Quem liberou ficava achando que não funcionou.
+  //
+  // A tranca de verdade continua sendo do banco (RLS) e a desativação continua
+  // cortando o acesso na hora, em todos os aparelhos. Isto aqui é só a lista de
+  // menus, que é o que a pessoa enxerga.
+  //
+  // Falha de rede não desloga nem apaga nada: sem resposta, segue com o que já
+  // estava guardado.
+  useEffect(() => {
+    if (!currentUser?.id) return
+    let vivo = true
+    supabase
+      .from('funcionarios')
+      .select('id, data')
+      .eq('id', String(currentUser.id))
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!vivo || error || !data?.data) return
+        const f = data.data
+        const perfil = f.perfil || 'personalizado'
+        const permissoes = garantirMenus(perfil, f.permissoes)
+        const atual = JSON.stringify(currentUser.permissoes) + currentUser.perfil
+        if (JSON.stringify(permissoes) + perfil === atual) return
+        const atualizado = { ...currentUser, nome: f.nome || currentUser.nome, perfil, permissoes }
+        localStorage.setItem('auth-user', JSON.stringify(atualizado))
+        setCurrentUser(atualizado)
+      })
+    return () => { vivo = false }
+  }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function login(funcionario) {
     // Usa as permissões do funcionário + garante os menus universais (ex.: patio)
     const perfil = funcionario.perfil || 'personalizado'
