@@ -341,7 +341,15 @@ export default function OrdemDetalhe() {
     return null
   })()
 
+  // Mesma regra de quem adiciona: serviço não fica sem dono. Sem isto daria
+  // para adicionar com reparador e tirar na edição logo depois.
+  const edicaoSemReparador = editandoItem?.tipo === 'servico' && !editandoItem?.mecanicoId
+
   function salvarItemEditado() {
+    if (edicaoSemReparador) {
+      alert('Escolha o reparador deste serviço.\n\nSem dono, o trabalho não entra na produtividade de ninguém e o faturamento fica sem responsável.')
+      return
+    }
     editarItemOrdem(os.id, editandoItem.id, {
       descricao: editandoItem.descricao,
       quantidade: parseQtd(editandoItem.quantidade),
@@ -1076,6 +1084,7 @@ export default function OrdemDetalhe() {
                   esta oficina ja cobrou por aquele servico, separando este
                   modelo dos outros carros. `custoHora` liga a regua. */}
               <PainelAdicionarItem
+                exigirReparador
                 servicos={servicos}
                 estoque={estoque}
                 reservadoDe={reservadoDe}

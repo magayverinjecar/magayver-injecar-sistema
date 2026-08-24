@@ -39,6 +39,12 @@ export default function PainelAdicionarItem({
   onFechar,
   desabilitado = false,
   mostrarReparador = true,
+  // Serviço não entra sem reparador. Nasce DESLIGADO: quem liga é a OS.
+  //
+  // O orçamento não liga porque lá ninguém sabe ainda quem vai pegar o carro, e
+  // o kit não liga porque é molde. Quem cobra as duas pontas é a trava de
+  // conclusão em utils/reparador.js — nenhum serviço vira número sem dono.
+  exigirReparador = false,
   // Orçamentos tem o botão "+ Criar novo" e o formulário de cadastro rápido;
   // eles entram por aqui para as duas telas usarem o mesmo painel.
   acaoCadastro = null,
@@ -176,6 +182,9 @@ export default function PainelAdicionarItem({
 
   function adicionar() {
     if (!descricao.trim()) return
+    // O botão já está desabilitado; isto é a segunda tranca, para o Enter e
+    // qualquer caminho que não passe pelo clique.
+    if (faltaReparador) return
     // Kit não tem preço para conferir — o preço só existe quando ele é aplicado.
     if (!esconderPrecos && semValor && !confirm('Este item está sem valor. Adicionar mesmo assim por R$ 0,00?')) return
     const item = {
@@ -203,7 +212,10 @@ export default function PainelAdicionarItem({
     refBusca.current?.focus()
   }
 
-  const podeAdicionar = !desabilitado && !!descricao.trim()
+  // Falta o reparador obrigatório? Só vale para serviço, e só onde o campo
+  // aparece — exigir um campo escondido travaria a tela sem dizer por quê.
+  const faltaReparador = exigirReparador && tipo === 'servico' && mostrarReparador && !mecanicoId
+  const podeAdicionar = !desabilitado && !!descricao.trim() && !faltaReparador
 
   // O que a oficina ja cobrou por este servico. So calcula quando ha um
   // servico escolhido e a tela passou as ordens — nas outras (kit) fica nulo.
@@ -393,11 +405,21 @@ export default function PainelAdicionarItem({
         </div>
         {tipo === 'servico' && mostrarReparador && (
           <div>
-            <label className={ROTULO} htmlFor="painel-reparador-item">Reparador</label>
-            <select id="painel-reparador-item" value={mecanicoId} onChange={e => setMecanicoId(e.target.value)} className={INP}>
-              <option value="">Sem reparador</option>
+            <label className={ROTULO} htmlFor="painel-reparador-item">
+              Reparador{exigirReparador && ' *'}
+            </label>
+            <select id="painel-reparador-item" value={mecanicoId} onChange={e => setMecanicoId(e.target.value)}
+              className={faltaReparador ? `${INP} border-amber-400 bg-amber-50` : INP}>
+              <option value="">{exigirReparador ? '— escolha quem vai fazer —' : 'Sem reparador'}</option>
               {(funcionarios || []).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
             </select>
+            {/* Botão desabilitado sem dizer o motivo é o que faz a pessoa achar
+                que o sistema travou. O motivo fica embaixo do campo que resolve. */}
+            {faltaReparador && (
+              <p className="text-[11px] text-amber-700 mt-1 leading-snug">
+                Obrigatório. Sem dono, o serviço não entra na produtividade de ninguém.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -502,6 +524,7 @@ export default function PainelAdicionarItem({
           </div>
         )}
         <button type="button" onClick={adicionar} disabled={!podeAdicionar}
+          title={faltaReparador ? 'Escolha o reparador antes de adicionar o serviço' : undefined}
           className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
           <Plus size={15} />{textoBotao}
         </button>

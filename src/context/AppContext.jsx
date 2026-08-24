@@ -9,6 +9,7 @@ import { intervaloDe, periodoAnteriorDe, resumirFinanceiro } from '../utils/peri
 import gerarId from '../utils/id'
 import { novoIdMovimento, idMovimentoDeterministico } from '../utils/movimentos'
 import { aplicarRegraNasOrdens, derivarMovimentosDaOS, reservasPorPeca } from '../utils/reserva'
+import { bloqueioDeConclusao } from '../utils/reparador'
 import {
   enfileirar as enfileirarPendencia,
   listar as listarPendencias,
@@ -1799,11 +1800,25 @@ export function AppProvider({ children }) {
 
   const STATUS_FINALIZADOS = ['Entregue', 'Concluída']
 
+  // Fechar OS com serviço sem reparador é o buraco que deixou 23 OS e R$ 24 mil
+  // órfãos. A guarda mora AQUI, no contexto, e não nas telas: são quatro portas
+  // diferentes para o mesmo destino (o dropdown, o botão de concluir, a entrega
+  // cobrando e a entrega sem cobrar), e uma delas ia ficar de fora.
+  //
+  // Só morde na entrada de "Concluída"/"Entregue" — ver utils/reparador.js.
+  function barradoPorFaltarReparador(o, novoStatus) {
+    const bloqueio = bloqueioDeConclusao(o, novoStatus)
+    if (!bloqueio) return false
+    alert(bloqueio.texto)
+    return true
+  }
+
   function mudarStatusOrdem(id, novoStatus) {
     const lista = r.current.ordens
     const o = lista.find(x => x.id === id)
     if (!o) return
     if (o.status === novoStatus) return
+    if (barradoPorFaltarReparador(o, novoStatus)) return
 
     // Sair de um status finalizado (ou de OS já paga) reverte o financeiro —
     // impede que o dropdown burle o fluxo de "Reabrir OS".
@@ -1889,6 +1904,7 @@ export function AppProvider({ children }) {
     const o = r.current.ordens.find(x => x.id === osId)
     if (!o) return
     if (o.status === 'Entregue' || o.status === 'Cancelada' || o.status === 'Concluída') return
+    if (barradoPorFaltarReparador(o, 'Concluída')) return
     const hoje = new Date().toLocaleDateString('pt-BR')
     const historico = [evento('Serviço concluído — aguardando retirada'), ...(o.historico || [])]
     setOrdens(prev => prev.map(x => x.id === osId ? { ...x, status: 'Concluída', dataConclusao: hoje, historico, etapaEm: Date.now() } : x))
@@ -1898,6 +1914,9 @@ export function AppProvider({ children }) {
     const o = r.current.ordens.find(x => x.id === osId)
     if (!o) return { ok: false, motivo: 'os-nao-encontrada' }
     if (o.status === 'Entregue') return { ok: true }   // evita duplo-clique gerando venda duplicada no caixa
+    // Esta devolve resultado em vez de só alertar, para a tela de cobrança não
+    // seguir para o caixa achando que entregou.
+    if (barradoPorFaltarReparador(o, 'Entregue')) return { ok: false, motivo: 'servico-sem-reparador' }
     // A recepção pode cobrar sem esperar a conferência (cliente no balcão), mas
     // isso não passa em branco: fica escrito quem liberou o carro sem conferir.
     const semConferencia = !o.conferencia?.aprovado
@@ -1957,6 +1976,7 @@ export function AppProvider({ children }) {
   function entregarSemCobrar(osId) {
     const o = r.current.ordens.find(x => x.id === osId)
     if (!o || o.status === 'Entregue') return
+    if (barradoPorFaltarReparador(o, 'Entregue')) return
     const hoje = new Date().toLocaleDateString('pt-BR')
     // As fichas migradas vieram sem itens e sem a marca de pagas — o dinheiro
     // ficou só no sistema antigo. O motivo certo vai para o histórico.
