@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Check, AlertTriangle } from 'lucide-react'
 
@@ -30,11 +30,22 @@ export default function TelaCadastro({
   // ("nada preenchido") e corrigir ("nada alterado") — a mesma frase nos dois
   // casos soa errada em um deles.
   rotuloLimpo = 'Nada preenchido ainda',
+  // Grava e FICA na tela, com o formulário zerado para o próximo.
+  //
+  // Existe para o cadastro em lote. Lançar as contas do mês são vinte e tantos
+  // registros parecidos: sem isto é gravar → voltar para a lista → achar o botão
+  // → abrir de novo, vinte e tantas vezes. É justamente o trabalho em lote que
+  // faz a pessoa desistir de cadastrar tudo — e custo fixo pela metade estraga
+  // o custo da hora inteiro.
+  //
+  // `{ rotulo, onDepois }`: quem chama zera o próprio formulário no `onDepois`.
+  acaoSecundaria = null,
   onSalvar,
   children,
 }) {
   const navigate = useNavigate()
   const salvouRef = useRef(false)
+  const [gravados, setGravados] = useState(0)
 
   useEffect(() => {
     if (!sujo) return
@@ -56,6 +67,18 @@ export default function TelaCadastro({
     if (ok === false) return
     salvouRef.current = true
     navigate(voltarPara)
+  }
+
+  // Mesma gravação, sem sair da tela.
+  function salvarEContinuar() {
+    const ok = onSalvar?.()
+    if (ok === false) return
+    setGravados(n => n + 1)
+    acaoSecundaria.onDepois?.()
+    // O formulário volta a zero, então a próxima saída com coisa digitada tem
+    // de avisar de novo. Sem esta linha, o `salvouRef` de um registro já gravado
+    // silenciaria o aviso do SEGUINTE, que ainda está por gravar.
+    salvouRef.current = false
   }
 
   return (
@@ -85,6 +108,11 @@ export default function TelaCadastro({
 
       <div className="flex items-center justify-between gap-4 mt-4 px-4 py-3 bg-slate-100 border border-slate-300 rounded text-xs text-slate-600">
         <span>
+          {gravados > 0 && (
+            <span className="text-green-700 font-medium mr-2">
+              {gravados} gravado{gravados === 1 ? '' : 's'} aqui ·
+            </span>
+          )}
           {faltando
             ? <>Falta: <strong className="font-medium text-amber-700">{faltando}</strong></>
             : sujo
@@ -96,6 +124,12 @@ export default function TelaCadastro({
             className="border border-slate-300 text-slate-600 px-4 py-1.5 rounded text-xs font-medium hover:bg-white transition-colors">
             Cancelar
           </button>
+          {acaoSecundaria && (
+            <button onClick={salvarEContinuar} title="Grava e deixa a tela pronta para o próximo"
+              className="border border-green-600 text-green-700 px-4 py-1.5 rounded text-xs font-semibold hover:bg-green-50 transition-colors">
+              {acaoSecundaria.rotulo}
+            </button>
+          )}
           <button onClick={salvar}
             className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white px-5 py-1.5 rounded text-xs font-semibold transition-colors">
             <Check size={14} /> {rotuloSalvar}

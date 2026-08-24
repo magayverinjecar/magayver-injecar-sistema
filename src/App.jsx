@@ -20,6 +20,7 @@ import ClienteCadastro from './pages/ClienteCadastro'
 import ServicoCadastro from './pages/ServicoCadastro'
 import VeiculoCadastro from './pages/VeiculoCadastro'
 import OrdemCadastro from './pages/OrdemCadastro'
+import GastoCadastro from './pages/GastoCadastro'
 import OrdemEditar from './pages/OrdemEditar'
 import CompraImportarXml from './pages/CompraImportarXml'
 import Gestao from './pages/Gestao'
@@ -142,6 +143,10 @@ export default function App() {
           <Route path="fornecedores"        element={<Rota perm="fornecedores"><Fornecedores /></Rota>} />
           <Route path="insumos"             element={<Rota perm="insumos"><Insumos /></Rota>} />
           <Route path="gastos"              element={<Rota perm="gastos"><Gastos /></Rota>} />
+          {/* O último cadastro que ainda era popup. Rota estática antes da
+              dinâmica para "novo" não cair no ramo de edição. */}
+          <Route path="gastos/novo"         element={<Rota perm="gastos"><GastoCadastro /></Rota>} />
+          <Route path="gastos/:id"          element={<Rota perm="gastos"><GastoCadastro /></Rota>} />
           <Route path="financeiro"          element={<Rota perm="financeiro"><Financeiro /></Rota>} />
           {/* Faturamento, margem, quem fatura quanto e de quem a oficina
               depende. Permissao propria: nao e tela de balcao. */}
