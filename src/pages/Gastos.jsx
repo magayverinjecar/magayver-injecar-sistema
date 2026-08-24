@@ -9,7 +9,12 @@ const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDi
 // versao antiga lia "1.500" como 1,5.
 const parseNum = parseValorBR
 
-const CATEGORIAS = ['Outros', 'Aluguel', 'Água', 'Energia', 'Internet', 'Telefone', 'Salário', 'Impostos', 'Manutenção', 'Marketing']
+// "Retirada" e "Pró-labore" escritos EXATAMENTE assim: o DRE reconhece a
+// categoria pelo nome e tira o valor de dentro do custo fixo, para a retirada
+// aparecer depois do resultado, como distribuição — e não como despesa da
+// oficina. Antes disso a detecção dependia de a pessoa escrever a frase certa
+// na descrição, e retirada rotulada errado fazia o mês parecer pior do que foi.
+const CATEGORIAS = ['Outros', 'Aluguel', 'Água', 'Energia', 'Internet', 'Telefone', 'Salário', 'Impostos', 'Manutenção', 'Marketing', 'Retirada', 'Pró-labore']
 const STATUS_COR = {
   Pago: 'bg-orange-100 text-orange-700',
   Pendente: 'bg-yellow-100 text-yellow-700',

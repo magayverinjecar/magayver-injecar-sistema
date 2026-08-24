@@ -113,19 +113,27 @@ function Linha({ rotulo, explicacao, valor, percentual, base, subirEhBom, rotulo
 }
 
 export default function DRE({ intervalo, anterior }) {
-  const { financeiro, ordens, estoque, totalOrdem, gastos } = useApp()
+  const { financeiro, ordens, estoque, totalOrdem, gastos, caixaTurno, caixaHistorico } = useApp()
   const [verConferencia, setVerConferencia] = useState(false)
 
+  // Todas as vendas de balcão — as do turno aberto e as dos turnos já fechados.
+  // O DRE precisa delas para somar o custo das peças vendidas fora de OS; sem
+  // isso a margem de contribuição saía otimista na proporção do balcão.
+  const vendas = useMemo(() => [
+    ...(caixaTurno?.vendas || []),
+    ...(caixaHistorico || []).flatMap(t => t?.vendas || []),
+  ], [caixaTurno, caixaHistorico])
+
   const dados = useMemo(
-    () => dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, intervalo }),
-    [financeiro, ordens, estoque, totalOrdem, gastos, intervalo],
+    () => dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, intervalo, vendas }),
+    [financeiro, ordens, estoque, totalOrdem, gastos, intervalo, vendas],
   )
 
   // O mesmo demonstrativo no período anterior, só para as variações. Sem base de
   // comparação ("Tudo"), `anterior` é null e as setas simplesmente não aparecem.
   const base = useMemo(
-    () => (anterior ? dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, intervalo: anterior }) : null),
-    [financeiro, ordens, estoque, totalOrdem, gastos, anterior],
+    () => (anterior ? dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, intervalo: anterior, vendas }) : null),
+    [financeiro, ordens, estoque, totalOrdem, gastos, anterior, vendas],
   )
 
   const rotuloAnterior = anterior?.rotulo || ''
@@ -238,7 +246,7 @@ export default function DRE({ intervalo, anterior }) {
                 rotulo="Retirada do sócio"
                 explicacao={dados.gastosRetirada > 0
                   ? `${dados.gastosRetirada} lançamento${dados.gastosRetirada === 1 ? '' : 's'} reconhecido${dados.gastosRetirada === 1 ? '' : 's'} como retirada/pró-labore, tirado${dados.gastosRetirada === 1 ? '' : 's'} de dentro do custo fixo para não contar duas vezes.`
-                  : 'Não existe categoria de retirada no sistema, então esta linha sai zerada — não porque não houve retirada, mas porque ela não é registrada como tal.'}
+                  : 'Zerada porque nenhum gasto foi lançado como retirada no período — não porque não houve retirada. Em Gastos existem as categorias "Retirada" e "Pró-labore": marcadas assim, elas saem do custo fixo e aparecem aqui, depois do resultado.'}
                 valor={dados.retirada} percentual={dados.percentual.retirada} indisponivel={semFixo}
                 base={base?.retirada} subirEhBom={null} rotuloAnterior={rotuloAnterior}
               />

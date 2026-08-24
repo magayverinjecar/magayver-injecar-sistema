@@ -55,31 +55,7 @@
 
 import { parseValorBR, cent } from './numero.js'
 import { dentroDoPeriodo, resumirFinanceiro } from './periodo.js'
-import { margemDoPeriodo, custoFixoMensal, mesesDoIntervalo } from './margem.js'
-
-// ── Retirada do sócio ────────────────────────────────────────────────────────
-// Hoje NÃO existe categoria de retirada no sistema (as categorias de Gastos são
-// Aluguel, Água, Energia, Internet, Telefone, Salário, Impostos, Manutenção,
-// Marketing e Outros). Então o normal é esta linha sair zerada — e a tela diz
-// isso em vez de fingir que a oficina não distribui lucro.
-//
-// A detecção por texto existe para quem já cadastra a retirada escrevendo, e é
-// DE PROPÓSITO conservadora: só pega o que é inequivocamente retirada. Um falso
-// positivo TIRARIA um custo real de dentro do custo fixo e faria o resultado
-// parecer melhor do que é — o erro caro. Deixar de detectar só mantém o
-// comportamento atual (a retirada fica dentro do custo fixo), que é o menos pior.
-//
-// "Retirada de entulho" e "ferramentas retiradas" não batem: a palavra sozinha
-// não basta, precisa vir acompanhada de sócio/lucro/dono/proprietário.
-const RE_RETIRADA = /(pr[óo]\s*-?\s*labore|prolabore)|retirada\s+(d[oae]s?\s+)?(s[óo]cio|lucro|dono|propriet[áa]ri)|distribui[çc][ãa]o\s+d[eo]s?\s+lucro/i
-
-export function ehRetirada(registro) {
-  if (!registro) return false
-  const categoria = String(registro.categoria || '').trim()
-  // Categoria criada à mão exatamente para isso — vale sem precisar de frase.
-  if (/^(retirada|pr[óo]-?labore)$/i.test(categoria)) return true
-  return RE_RETIRADA.test(`${categoria} ${registro.descricao || ''}`)
-}
+import { margemDoPeriodo, custoFixoMensal, mesesDoIntervalo, ehRetirada } from './margem.js'
 
 // Quanto foi retirado no período.
 //
@@ -87,7 +63,10 @@ export function ehRetirada(registro) {
 // mesma tela: retirada cadastrada como "Fixo" é mensal e entra uma vez por mês
 // do período; cadastrada como "Variável" entra se o vencimento cair dentro dele.
 function somarRetiradas(gastosRetirada, intervalo) {
-  const fixas = custoFixoMensal(gastosRetirada.filter(g => g?.tipo === 'Fixo'), intervalo)
+  // `incluirRetirada` porque aqui a retirada é justamente o que se quer somar —
+  // `custoFixoMensal` a exclui por padrão, para ela não inflar o custo da
+  // oficina no ponto de equilíbrio e no custo da hora.
+  const fixas = custoFixoMensal(gastosRetirada.filter(g => g?.tipo === 'Fixo'), intervalo, { incluirRetirada: true })
   let variaveis = 0
   for (const g of gastosRetirada) {
     if (g?.tipo === 'Fixo') continue
@@ -122,7 +101,7 @@ function participacao(valor, receitaBruta) {
 }
 
 // ── O DRE ────────────────────────────────────────────────────────────────────
-export function dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, intervalo } = {}) {
+export function dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, intervalo, vendas = [] } = {}) {
   // Receita e despesa totais saem da MESMA função que alimenta os cards do topo
   // da tela. Reimplementar a soma aqui abriria a porta para o DRE mostrar um
   // faturamento e o card mostrar outro.
@@ -162,10 +141,47 @@ export function dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, 
 
   const receitaLiquida = cent(receitaBruta - taxaCartao)
 
-  // CMV — única fonte possível: o custo congelado nos itens das OS.
+  // CMV das OS: o custo congelado nos itens.
   const ordensDoPeriodo = ordensConcluidasNoPeriodo(ordens, intervalo)
   const os = margemDoPeriodo(ordensDoPeriodo, { estoque, totalOrdem })
-  const cmv = os.custoPecas
+
+  // CMV do BALCÃO.
+  //
+  // Até aqui a venda de balcão entrava no faturamento e o custo das peças dela
+  // não era apurado em lugar nenhum — a margem de contribuição saía otimista na
+  // proporção do que a oficina vende no balcão, e isso era só sinalizado.
+  //
+  // A venda é datada pelo LANÇAMENTO dela no financeiro, e não pela data do
+  // turno: assim custo e receita caem sempre no mesmo mês. Venda paga em duas
+  // parcelas tem dois lançamentos, então o `vistas` garante que o custo entre
+  // uma vez só. Venda nascida de OS (`osId`) fica de fora — o CMV dela já veio
+  // pelas ordens, e contar de novo dobraria o custo.
+  const porVenda = new Map((vendas || []).filter(v => v?.id != null).map(v => [String(v.id), v]))
+  const vistas = new Set()
+  let cmvBalcao = 0
+  let itensBalcaoSemCusto = 0
+  for (const l of financeiro || []) {
+    if (!l || l.pendente || l.tipo !== 'receita') continue
+    if (!l.vendaId || l.osId) continue
+    if (!dentroDoPeriodo(l.data, intervalo)) continue
+    const chave = String(l.vendaId)
+    if (vistas.has(chave)) continue
+    vistas.add(chave)
+    const venda = porVenda.get(chave)
+    if (!venda) continue
+    for (const item of venda.itens || []) {
+      if (item?.tipo !== 'peca') continue
+      const custo = parseValorBR(item.custoUnitario)
+      const qtd = parseValorBR(item.qtd ?? item.quantidade) || 1
+      // Item sem custo congelado é venda antiga, de antes desta apuração
+      // existir. Contar zero mentiria para melhor; por isso ele é CONTADO
+      // à parte e a conferência diz quantos são.
+      if (custo > 0) cmvBalcao = cent(cmvBalcao + custo * qtd)
+      else itensBalcaoSemCusto++
+    }
+  }
+
+  const cmv = cent(os.custoPecas + cmvBalcao)
 
   const margemContribuicao = cent(receitaLiquida - cmv)
 
@@ -228,14 +244,31 @@ export function dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, 
   // ── Onde o número é aproximado, e o que preencher para deixar de ser ────────
   const lacunas = []
 
-  if (receitaBruta > 0 && receitaSemOS > 0) {
+  // Venda de balcão passou a apurar o custo da peça, mas só a partir do dia em
+  // que isso existe: as vendas antigas não guardaram o custo, e para elas a
+  // margem continua otimista. É esse resto que a lacuna mede agora — antes ela
+  // dizia que o custo do balcão não era apurado "em lugar nenhum", o que
+  // deixou de ser verdade.
+  if (itensBalcaoSemCusto > 0) {
+    lacunas.push({
+      chave: 'balcaoSemCusto',
+      valor: 0,
+      texto: `${itensBalcaoSemCusto} peça(s) vendida(s) no balcão neste período não guardaram o preço de custo — `
+        + 'são vendas feitas antes desta apuração existir. O CMV abaixo não inclui o custo delas, '
+        + 'então a margem de contribuição real é um pouco menor que a mostrada.',
+      acao: 'Nada a fazer nas antigas. As vendas de balcão daqui para a frente já guardam o custo sozinhas.',
+    })
+  }
+
+  if (receitaBruta > 0 && receitaSemOS > 0 && itensBalcaoSemCusto === 0) {
     lacunas.push({
       chave: 'receitaSemOS',
       valor: receitaSemOS,
-      texto: 'Parte do faturamento veio de venda de balcão ou de quitação de dívida, fora de OS. '
-        + 'O custo das peças dessas vendas não é apurado em lugar nenhum, então ele NÃO está no CMV abaixo — '
-        + 'a margem de contribuição real é menor que a mostrada.',
-      acao: 'Lance essas vendas como OS quando houver peça envolvida, ou trate a margem como um teto.',
+      informativo: true,
+      texto: 'Parte do faturamento veio de fora de OS — venda de balcão ou quitação de dívida antiga. '
+        + 'O custo das peças de balcão está incluído no CMV abaixo; quitação de dívida não tem custo próprio '
+        + '(ele já contou no mês da venda original).',
+      acao: '',
     })
   }
 
@@ -326,6 +359,10 @@ export function dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, 
     custoFixoDisponivel,
     receitaComOS,
     receitaSemOS,
+    // Quebra do CMV, para a tela poder explicar de onde veio cada parte.
+    cmvOS: os.custoPecas,
+    cmvBalcao,
+    itensBalcaoSemCusto,
     lancamentos: resumo.quantidade,
     lancamentosTaxa,
     ordens: os.ordens,

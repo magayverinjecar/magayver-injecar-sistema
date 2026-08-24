@@ -144,7 +144,16 @@ export default function NovaVenda() {
     setItens(prev => [...prev, item])
   }
   function addPeca(p) {
-    addItem({ id: gerarId(), tipo: 'peca', nome: p.nome, produtoId: p.id, preco: p.preco, qtd: '1', desc: '0' })
+    // `custoUnitario` congelado AQUI, e nao lido depois: o preco de custo da
+    // peca muda a cada compra, e ler o custo de hoje para uma venda de tres
+    // meses atras reescreveria a margem do passado. E sem ele o custo do
+    // balcao nao entrava no CMV — a margem da oficina saia otimista na
+    // proporcao do que ela vende no balcao.
+    addItem({
+      id: gerarId(), tipo: 'peca', nome: p.nome, produtoId: p.id,
+      preco: p.preco, qtd: '1', desc: '0',
+      ...(parseValorBR(p.precoCusto) > 0 ? { custoUnitario: p.precoCusto } : {}),
+    })
   }
   function addServico(s) {
     addItem({ id: gerarId(), tipo: 'servico', nome: s.nome, preco: s.preco, qtd: '1', desc: '0' })

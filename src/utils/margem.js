@@ -244,13 +244,48 @@ export function mesesDoIntervalo(intervalo) {
 // Sem `intervalo` a resposta é "quanto custa um mês típico": só os recorrentes.
 // Os pontuais ficam de fora porque não há período para dizer a qual mês eles
 // pertencem, e é justamente somá-los sem critério que produzia o bug.
-export function custoFixoMensal(gastos, intervalo) {
+// ── Retirada do sócio ────────────────────────────────────────────────────────
+// Hoje NÃO existe categoria de retirada no sistema (as categorias de Gastos são
+// Aluguel, Água, Energia, Internet, Telefone, Salário, Impostos, Manutenção,
+// Marketing e Outros). Então o normal é esta linha sair zerada — e a tela diz
+// isso em vez de fingir que a oficina não distribui lucro.
+//
+// A detecção por texto existe para quem já cadastra a retirada escrevendo, e é
+// DE PROPÓSITO conservadora: só pega o que é inequivocamente retirada. Um falso
+// positivo TIRARIA um custo real de dentro do custo fixo e faria o resultado
+// parecer melhor do que é — o erro caro. Deixar de detectar só mantém o
+// comportamento atual (a retirada fica dentro do custo fixo), que é o menos pior.
+//
+// "Retirada de entulho" e "ferramentas retiradas" não batem: a palavra sozinha
+// não basta, precisa vir acompanhada de sócio/lucro/dono/proprietário.
+const RE_RETIRADA = /(pr[óo]\s*-?\s*labore|prolabore)|retirada\s+(d[oae]s?\s+)?(s[óo]cio|lucro|dono|propriet[áa]ri)|distribui[çc][ãa]o\s+d[eo]s?\s+lucro/i
+
+export function ehRetirada(registro) {
+  if (!registro) return false
+  const categoria = String(registro.categoria || '').trim()
+  // Categoria criada à mão exatamente para isso — vale sem precisar de frase.
+  if (/^(retirada|pr[óo]-?labore)$/i.test(categoria)) return true
+  return RE_RETIRADA.test(`${categoria} ${registro.descricao || ''}`)
+}
+
+// Custo fixo do período.
+//
+// RETIRADA NÃO É CUSTO FIXO e por isso sai daqui por padrão. Isso importa mais
+// do que parece: no dia em que a retirada passar a ser cadastrada com categoria
+// própria — que é o certo —, ela entraria no custo fixo e inflaria de uma vez o
+// ponto de equilíbrio, o custo da hora em Configurações e a régua de preço do
+// orçamento. O dono faria a coisa certa e três números piorariam juntos.
+//
+// `incluirRetirada` existe só para o DRE, que soma a retirada de propósito na
+// linha de distribuição do resultado.
+export function custoFixoMensal(gastos, intervalo, { incluirRetirada = false } = {}) {
   const recorte = mesesDoIntervalo(intervalo)
   const meses = recorte ?? 1
 
   let total = 0
   for (const g of gastos || []) {
     if (g?.tipo !== 'Fixo') continue
+    if (!incluirRetirada && ehRetirada(g)) continue
     const valor = parseValorBR(g.valor)
     // `recorrente` é o que distingue "um aluguel que se repete" de "doze
     // lançamentos de aluguel, um por mês". Tratar todo Fixo como recorrente
