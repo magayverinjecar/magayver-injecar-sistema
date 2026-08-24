@@ -37,6 +37,64 @@ export function codigosDaPeca(peca) {
   return saida
 }
 
+// Os códigos pelos quais a peça pode ser PROCURADA.
+//
+// SEPARADO DE `codigosDaPeca` DE PROPÓSITO — não junte os dois.
+//
+// `codigosDaPeca` responde "qual é a identidade desta peça?" e é o que impede
+// cadastrar código repetido e o que casa o item da nota fiscal. Se o código do
+// fabricante entrasse lá, uma peça nova poderia ser RECUSADA porque o código
+// interno dela é igual ao código-de-fabricante de outra — coisas diferentes,
+// tratadas como a mesma. Identidade tem de ser estreita.
+//
+// Busca é o contrário: quanto mais caminhos levarem à peça certa, melhor. Aqui
+// entra tudo que está escrito na embalagem ou na nota.
+export function codigosDeBusca(peca) {
+  const lista = [
+    peca?.codigo,
+    peca?.codigoFabricante,   // o código original (GM, VW, Bosch...)
+    peca?.ean,                // o código de barras
+    ...(Array.isArray(peca?.codigos) ? peca.codigos.map(c => c?.valor ?? c) : []),
+  ]
+  const vistos = new Set()
+  const saida = []
+  for (const c of lista) {
+    const k = normalizar(c)
+    if (!k || vistos.has(k)) continue
+    vistos.add(k)
+    saida.push(k)
+  }
+  return saida
+}
+
+// Sem acento e minúsculo, mas SEM tirar espaço — para o nome. `normalizar`
+// gruda tudo, o que é certo para código e errado para texto: quem digita
+// "filtro ar" não acharia "FILTRO DE AR" se o espaço sumisse dos dois lados.
+function texto(valor) {
+  return String(valor ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().trim()
+}
+
+// Esta peça atende a busca?
+//
+// Ponto único usado pelo Estoque, pelo painel de itens da OS/orçamento, pela
+// Venda Balcão e pelas Movimentações — antes cada tela tinha a própria cópia
+// com `nome OU codigo`, e o código do fabricante não era achado em lugar
+// nenhum, mesmo estando cadastrado e vindo preenchido do XML da nota.
+//
+// NOME casa por pedaço do texto; CÓDIGO casa normalizado, então "9334-2049",
+// "9334 2049" e "93342049" acham a mesma peça — que é como o código aparece na
+// embalagem, na nota e na cabeça de quem digita.
+export function casaBusca(peca, termo) {
+  const t = texto(termo)
+  if (!t) return true
+  if (texto(peca?.nome).includes(t)) return true
+  const k = normalizar(termo)
+  if (!k) return false
+  return codigosDeBusca(peca).some(c => c.includes(k))
+}
+
 // Peça ativa? Peça desativada continua no histórico e no extrato, mas some da
 // busca e do lançamento. Sem a marca, é ativa (todo o cadastro de hoje).
 export function pecaAtiva(peca) {

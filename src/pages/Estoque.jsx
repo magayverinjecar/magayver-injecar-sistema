@@ -8,7 +8,7 @@ import AbaKits from '../components/AbaKits'
 import AbaDuplicadas from '../components/AbaDuplicadas'
 import { kitsDoConfig } from '../utils/kits'
 import { rotuloDoTipo, rotuloDaOrigem, mensagemErroExtrato } from '../utils/movimentos'
-import { pecaAtiva, gruposDuplicados } from '../utils/pecas'
+import { pecaAtiva, gruposDuplicados, casaBusca } from '../utils/pecas'
 import { parseValorBR } from '../utils/numero'
 
 const fmtBRL = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -120,10 +120,7 @@ export default function Estoque() {
   // Peça desativada (juntada em outra, fora de linha) sai da lista, mas
   // continua no banco e no extrato — o interruptor traz de volta para conferir.
   const visiveis = mostrarInativas ? estoque : estoque.filter(pecaAtiva)
-  const filtrados = visiveis.filter(i =>
-    (i.nome || '').toLowerCase().includes(busca.toLowerCase()) ||
-    (i.codigo || '').toLowerCase().includes(busca.toLowerCase())
-  )
+  const filtrados = visiveis.filter(i => casaBusca(i, busca))
   const qtdInativas = estoque.length - estoque.filter(pecaAtiva).length
   const totalUnidades = filtrados.reduce((s, i) => s + (Number(i.estoque) || 0), 0)
   const valorEstoque = filtrados.reduce((s, i) => s + (Number(i.estoque) || 0) * parseValorBR(i.precoCusto), 0)

@@ -8,7 +8,7 @@ import gerarId from '../utils/id'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
 import { ehCartao, maquinaPadrao, enriquecerPagamento } from '../utils/cartao'
 import { parseValorBR } from '../utils/numero'
-import { pecaAtiva } from '../utils/pecas'
+import { pecaAtiva, casaBusca } from '../utils/pecas'
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 // Parser unico em utils/numero.js — cada tela tinha a propria copia, e a
@@ -110,7 +110,7 @@ export default function NovaVenda() {
     : []
 
   const pecasAtivas = estoque.filter(pecaAtiva)
-  const pecasFiltradas = buscaPeca ? pecasAtivas.filter(p => (p.nome || '').toLowerCase().includes(buscaPeca.toLowerCase()) || (p.codigo || '').toLowerCase().includes(buscaPeca.toLowerCase())) : pecasAtivas
+  const pecasFiltradas = buscaPeca ? pecasAtivas.filter(p => casaBusca(p, buscaPeca)) : pecasAtivas
   const servicosFiltrados = buscaServico ? servicos.filter(s => s.nome.toLowerCase().includes(buscaServico.toLowerCase())) : servicos
 
   // === importar OS / orçamento ===

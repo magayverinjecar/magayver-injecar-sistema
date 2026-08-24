@@ -3,6 +3,7 @@ import { Search, RefreshCw, History } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../supabase'
 import { TIPOS_MOV, rotuloDoTipo, rotuloDaOrigem, mensagemErroExtrato } from '../utils/movimentos'
+import { casaBusca } from '../utils/pecas'
 
 const POR_PAGINA = 300
 
@@ -89,8 +90,10 @@ export default function EstoqueMovimentacoes() {
     if (tipo !== 'todos' && m.tipo !== tipo) return false
     if (busca) {
       const peca = nomePorPeca.get(String(m.peca_id))
-      const alvo = `${peca?.nome || ''} ${peca?.codigo || ''} ${m.peca_id} ${m.motivo || ''} ${rotuloDaOrigem(m)}`.toLowerCase()
-      if (!alvo.includes(busca.toLowerCase())) return false
+      // Duas buscas somadas: a da peça (nome, código, código do fabricante,
+      // EAN) e a do próprio movimento (id, motivo, de onde veio).
+      const doMovimento = `${m.peca_id} ${m.motivo || ''} ${rotuloDaOrigem(m)}`.toLowerCase()
+      if (!casaBusca(peca, busca) && !doMovimento.includes(busca.toLowerCase())) return false
     }
     return true
   })

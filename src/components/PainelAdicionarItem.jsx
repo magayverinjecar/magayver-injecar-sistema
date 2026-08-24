@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo } from 'react'
 import { Plus, X, Search, Check, AlertTriangle } from 'lucide-react'
 import { parseValorBR } from '../utils/numero'
-import { pecaAtiva } from '../utils/pecas'
+import { pecaAtiva, casaBusca } from '../utils/pecas'
 import { historicoDePreco, conferirPiso, DIFICULDADES } from '../utils/precoHistorico'
 
 // Painel de lançar item — embutido no quadro de itens, não em popup.
@@ -115,12 +115,13 @@ export default function PainelAdicionarItem({
   }
 
   const alvo = busca.toLowerCase()
-  // Mesma regra de busca de sempre: serviço por nome, peça por nome OU código.
+  // Serviço por nome; peça por nome, código interno, código do fabricante ou
+  // EAN — a regra mora em utils/pecas.js e é a mesma de todas as telas.
   const lista = tipo === 'servico'
     ? servicos.filter(s => s.nome.toLowerCase().includes(alvo))
     // Peça desativada (juntada em outra, ou fora de linha) não pode ser
     // lançada de novo — mas continua existindo no histórico e no extrato.
-    : estoque.filter(p => pecaAtiva(p) && ((p.nome || '').toLowerCase().includes(alvo) || (p.codigo || '').toLowerCase().includes(alvo)))
+    : estoque.filter(p => pecaAtiva(p) && casaBusca(p, busca))
 
   function limparItem() {
     setSelId('')
