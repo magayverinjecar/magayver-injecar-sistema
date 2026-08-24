@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus, X, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Clock, Phone } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
 
@@ -142,6 +142,23 @@ export default function Agenda() {
     setAgenda(prev => prev.filter(a => a.id !== id))
   }
 
+  // O agendamento avulso guarda o telefone; o de cliente cadastrado nao guarda,
+  // porque ele ja esta na ficha. Aqui os dois viram a mesma coisa para a tela.
+  function telefoneDe(a) {
+    return a.telefone || getCliente(a.clienteId)?.telefone || ''
+  }
+
+  // Confirmar agendamento por WhatsApp e a coisa que mais se faz com esta tela,
+  // e ate agora exigia sair dela, abrir a ficha do cliente e copiar o numero.
+  function whatsapp(a) {
+    const fone = String(telefoneDe(a) || '').replace(/\D/g, '')
+    if (!fone) return null
+    const num = fone.length <= 11 ? `55${fone}` : fone
+    const texto = `*Magayver Injecar*%0AOlá ${a.nomeCliente || ''}! Passando para confirmar seu agendamento`
+      + `${a.nomeVeiculo ? ` do ${a.nomeVeiculo}` : ''} no dia ${a.data} às ${a.hora}.%0A%0APodemos confirmar?`
+    return `https://wa.me/${num}?text=${texto}`
+  }
+
   return (
     <div className="flex flex-col h-full space-y-4">
       {/* Header */}
@@ -184,8 +201,11 @@ export default function Agenda() {
         <span className="text-sm font-medium text-slate-600">{inicioStr} — {fimStr}</span>
       </div>
 
-      {/* Grade do calendário */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex-1">
+      {/* Grade do calendário — SÓ no computador.
+          No celular ela dividia a tela em sete colunas de ~53px: cada
+          agendamento virava uma tira onde só a hora cabia, e o resto era
+          reticências. Sete dias lado a lado é uma ideia de monitor. */}
+      <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex-1">
         <div className={`grid border-b border-slate-100`} style={{ gridTemplateColumns: `repeat(${diaVisao.length}, 1fr)` }}>
           {diaVisao.map((dia, i) => {
             const ehHoje = toLocaleDateStr(dia) === toLocaleDateStr(hoje)
@@ -215,29 +235,121 @@ export default function Agenda() {
                 {ags.length === 0 && (
                   <p className="text-xs text-slate-300 text-center mt-4">Sem agendamentos</p>
                 )}
-                {ags.map(a => (
-                  <div key={a.id} className={`rounded-lg border px-2 py-1.5 text-xs cursor-pointer group relative ${TIPO_COR[a.tipo] || TIPO_COR['Outro']}`}
-                    style={{ minHeight: calcAltura(a.duracao) }}>
-                    <div className="flex items-start justify-between gap-1">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold flex items-center gap-1 truncate">
-                          <Clock size={10} className="flex-shrink-0" />
-                          {a.hora} — {a.duracao}
-                        </p>
-                        <p className="font-bold truncate mt-0.5">⚡ {a.nomeCliente}</p>
-                        {a.nomeVeiculo && <p className="truncate opacity-75">{a.nomeVeiculo}</p>}
-                        {a.servico && <p className="truncate opacity-75 mt-0.5">{a.tipo} · {a.servico}</p>}
+                {ags.map(a => {
+                  const fone = telefoneDe(a)
+                  const zap = whatsapp(a)
+                  return (
+                    <div key={a.id}
+                      // Tudo que a coluna estreita nao mostra fica no title: passar
+                      // o mouse conta o resto sem precisar abrir nada.
+                      title={[
+                        `${a.hora} · ${a.duracao} · ${a.tipo}`,
+                        a.nomeCliente, a.nomeVeiculo, fone && `Tel: ${fone}`,
+                        a.servico, a.observacoes,
+                      ].filter(Boolean).join('\n')}
+                      className={`rounded-lg border px-2 py-1.5 text-xs group relative ${TIPO_COR[a.tipo] || TIPO_COR['Outro']}`}
+                      style={{ minHeight: calcAltura(a.duracao) }}>
+                      <div className="flex items-start justify-between gap-1">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold flex items-center gap-1">
+                            <Clock size={10} className="flex-shrink-0" />
+                            {a.hora}<span className="opacity-70 font-normal">· {a.duracao}</span>
+                          </p>
+                          {/* O veiculo vem ANTES do cliente: na oficina o
+                              agendamento e lembrado pelo carro. E sem truncar —
+                              se nao couber numa linha, quebra em duas. */}
+                          {a.nomeVeiculo && <p className="font-bold leading-tight mt-0.5 break-words">{a.nomeVeiculo}</p>}
+                          <p className={`leading-tight ${a.nomeVeiculo ? 'opacity-80' : 'font-bold'}`}>
+                            {a.avulso && '⚡ '}{a.nomeCliente}
+                          </p>
+                          {a.servico && <p className="opacity-75 mt-0.5 leading-tight break-words">{a.servico}</p>}
+                          {fone && (
+                            zap ? (
+                              <a href={zap} target="_blank" rel="noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 mt-1 font-medium underline decoration-dotted hover:opacity-100 opacity-80">
+                                <Phone size={9} className="flex-shrink-0" />{fone}
+                              </a>
+                            ) : <span className="inline-flex items-center gap-1 mt-1 opacity-70"><Phone size={9} />{fone}</span>
+                          )}
+                        </div>
+                        <button onClick={() => excluir(a.id)} title="Excluir agendamento"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black/10 flex-shrink-0">
+                          <X size={10} />
+                        </button>
                       </div>
-                      <button onClick={() => excluir(a.id)} className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black/10 flex-shrink-0">
-                        <X size={10} />
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )
           })}
         </div>
+      </div>
+
+
+      {/* Celular: lista, um dia embaixo do outro. Cada agendamento ocupa a
+          largura toda e mostra tudo — e o telefone vira botao de WhatsApp,
+          que e o que a recepcao faz com esta tela o dia inteiro. */}
+      <div className="lg:hidden space-y-3">
+        {diaVisao.every(d => agendamentosNoDia(d).length === 0) && (
+          <div className="bg-white border border-slate-200 rounded-xl py-10 text-center">
+            <p className="text-sm text-slate-500 font-medium">Nenhum agendamento nesta semana.</p>
+            <p className="text-xs text-slate-400 mt-1">Use o botão Agendar para marcar o primeiro.</p>
+          </div>
+        )}
+        {diaVisao.map((dia, i) => {
+          const ags = agendamentosNoDia(dia)
+          if (ags.length === 0) return null
+          const ehHoje = toLocaleDateStr(dia) === toLocaleDateStr(hoje)
+          return (
+            <div key={i} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+              <div className={`px-4 py-2 flex items-center justify-between ${ehHoje ? 'bg-primary-50' : 'bg-slate-50'}`}>
+                <p className={`text-sm font-bold ${ehHoje ? 'text-primary-700' : 'text-slate-700'}`}>
+                  {DIAS_SEMANA[dia.getDay()]}, {dia.getDate()} {MESES[dia.getMonth()]}
+                  {ehHoje && <span className="ml-2 text-[11px] font-semibold uppercase">hoje</span>}
+                </p>
+                <button onClick={() => abrirModal(dia)}
+                  className="text-xs font-medium text-primary-600 border border-primary-200 rounded px-2 py-1">
+                  + Agendar
+                </button>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {ags.map(a => {
+                  const fone = telefoneDe(a)
+                  const zap = whatsapp(a)
+                  return (
+                    <div key={a.id} className="px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-base font-bold text-slate-800">{a.hora}</span>
+                            <span className="text-xs text-slate-400">{a.duracao}</span>
+                            <span className={`text-[11px] px-2 py-0.5 rounded border ${TIPO_COR[a.tipo] || TIPO_COR['Outro']}`}>{a.tipo}</span>
+                          </div>
+                          {a.nomeVeiculo && <p className="text-sm font-semibold text-slate-800 mt-1">{a.nomeVeiculo}</p>}
+                          <p className="text-sm text-slate-600">{a.avulso && '⚡ '}{a.nomeCliente}</p>
+                          {a.servico && <p className="text-xs text-slate-500 mt-1">{a.servico}</p>}
+                          {a.observacoes && <p className="text-xs text-slate-400 mt-0.5">{a.observacoes}</p>}
+                        </div>
+                        <button onClick={() => excluir(a.id)} title="Excluir agendamento"
+                          className="p-2 rounded text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors flex-shrink-0">
+                          <X size={15} />
+                        </button>
+                      </div>
+                      {fone && zap && (
+                        <a href={zap} target="_blank" rel="noreferrer"
+                          className="mt-2 flex items-center justify-center gap-2 border border-green-200 text-green-700 bg-green-50 rounded-lg py-2 text-sm font-medium">
+                          <Phone size={14} /> Confirmar por WhatsApp · {fone}
+                        </a>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Modal */}
