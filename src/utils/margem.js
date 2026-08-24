@@ -268,6 +268,75 @@ export function ehRetirada(registro) {
   return RE_RETIRADA.test(`${categoria} ${registro.descricao || ''}`)
 }
 
+
+// ── Compromisso financeiro ───────────────────────────────────────────
+// Empréstimo, financiamento, parcela de equipamento e compra de bem NÃO são
+// custo de operar a oficina — e por isso não podem entrar no custo da hora nem
+// no ponto de equilíbrio.
+//
+// A razão não é contabilidade, é PREÇO. Se a parcela do empréstimo entra no custo
+// da hora, ela vira preço; o preço sobe acima do mercado e a oficina perde
+// serviço. E quando a dívida acabar, ninguém vai baixar a tabela. O custo da
+// hora responde "quanto custa manter a bancada rodando", e isso não muda quando
+// um empréstimo termina.
+//
+// Dívida é uma cobrança sobre a MARGEM, não um componente do CUSTO. Ela aparece
+// no DRE abaixo do resultado, junto da retirada — onde dá para ver o quanto come.
+//
+// ISTO IMPORTA MUITO NESTA OFICINA: dos gastos levantados pelo dono, 8 credores
+// somam R$ 21.617/mês, 61% de tudo que sai. Se isso entrasse no custo da hora,
+// o custo da hora quase triplicaria e a tabela de preços ficaria impraticável.
+//
+// Conservador de propósito, pelo mesmo motivo da retirada ao contrário: um
+// falso positivo TIRA custo real de dentro do custo fixo e faz o preço sair
+// barato demais. Por isso vale a categoria própria, e no texto só o inequívoco.
+//
+// O que FICA no custo fixo, e é fácil confundir: Seguro, Contabilidade e
+// Depreciação. Depreciação é justamente o custo do equipamento diluido na vida
+// util dele — é ela que deve entrar no preço, não a parcela do financiamento.
+const CATEGORIA_FINANCEIRA = /^(empr[ée]stimo|financiamento|cons[óo]rcio|equipamento|investimento)s?$/i
+const RE_FINANCEIRO = /(empr[ée]stimo|financiamento|cons[óo]rcio|amortiza[çc][ãa]o)/i
+
+export function ehFinanceiro(registro) {
+  if (!registro) return false
+  const categoria = String(registro.categoria || '').trim()
+  if (CATEGORIA_FINANCEIRA.test(categoria)) return true
+  return RE_FINANCEIRO.test(`${categoria} ${registro.descricao || ''}`)
+}
+
+// Quanto saiu no período de uma lista que fica ABAIXO da linha do resultado —
+// retirada e compromisso financeiro. Mora aqui, e não no DRE, porque a tela de
+// Gestão precisa do mesmo número: duas implementações acabariam divergindo e uma
+// tela desmentiria a outra.
+//
+// Mesma regra de data do custo fixo: "Fixo" é mensal e entra uma vez por mês do
+// período; "Variável" entra se o vencimento cair dentro dele.
+export function somarAbaixoDaLinha(lista, intervalo, portas) {
+  const itens = lista || []
+  const fixas = custoFixoMensal(itens.filter(g => g?.tipo === 'Fixo'), intervalo, portas)
+  let variaveis = 0
+  for (const g of itens) {
+    if (g?.tipo === 'Fixo') continue
+    if (!dentroDoPeriodo(g?.vencimento, intervalo)) continue
+    variaveis = cent(variaveis + parseValorBR(g?.valor))
+  }
+  return cent(fixas + variaveis)
+}
+
+// O compromisso financeiro do período: empréstimo, parcela de equipamento,
+// compra de bem. Sai do custo fixo e entra numa linha própria — ver
+// `ehFinanceiro` acima para o porquê.
+export function compromissoFinanceiro(gastos, intervalo) {
+  const so = (gastos || []).filter(g => !ehRetirada(g) && ehFinanceiro(g))
+  return somarAbaixoDaLinha(so, intervalo, { incluirFinanceiro: true })
+}
+
+// Um gasto é custo de operar a oficina? É o filtro único que o custo fixo, o
+// ponto de equilíbrio e o custo da hora usam — os três têm de concordar.
+export function ehCustoDeOperacao(registro) {
+  return !ehRetirada(registro) && !ehFinanceiro(registro)
+}
+
 // Custo fixo do período.
 //
 // RETIRADA NÃO É CUSTO FIXO e por isso sai daqui por padrão. Isso importa mais
@@ -278,7 +347,7 @@ export function ehRetirada(registro) {
 //
 // `incluirRetirada` existe só para o DRE, que soma a retirada de propósito na
 // linha de distribuição do resultado.
-export function custoFixoMensal(gastos, intervalo, { incluirRetirada = false } = {}) {
+export function custoFixoMensal(gastos, intervalo, { incluirRetirada = false, incluirFinanceiro = false } = {}) {
   const recorte = mesesDoIntervalo(intervalo)
   const meses = recorte ?? 1
 
@@ -286,6 +355,7 @@ export function custoFixoMensal(gastos, intervalo, { incluirRetirada = false } =
   for (const g of gastos || []) {
     if (g?.tipo !== 'Fixo') continue
     if (!incluirRetirada && ehRetirada(g)) continue
+    if (!incluirFinanceiro && ehFinanceiro(g)) continue
     const valor = parseValorBR(g.valor)
     // `recorrente` é o que distingue "um aluguel que se repete" de "doze
     // lançamentos de aluguel, um por mês". Tratar todo Fixo como recorrente

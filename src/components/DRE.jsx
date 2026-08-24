@@ -234,14 +234,29 @@ export default function DRE({ intervalo, anterior }) {
                 base={base?.resultado} subirEhBom rotuloAnterior={rotuloAnterior}
               />
 
-              {/* Abaixo da linha: distribuição, não custo. */}
+              {/* Abaixo da linha: consome o resultado, mas não é custo de operar. */}
               <tr>
                 <td colSpan={4} className="px-4 sm:px-5 pt-4 pb-1">
                   <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide border-t border-dashed border-slate-200 pt-3">
-                    Abaixo da linha — distribuição do lucro, não custo da oficina
+                    Abaixo da linha — come o resultado, mas não é custo de operar
                   </p>
                 </td>
               </tr>
+              <Linha
+                rotulo="Compromissos financeiros"
+                explicacao={dados.gastosFinanceiros > 0
+                  ? `${dados.gastosFinanceiros} lançamento${dados.gastosFinanceiros === 1 ? '' : 's'} de empréstimo, parcela de equipamento ou compra de bem. Fica aqui, e não no custo fixo, porque dívida não é custo de produzir — se entrasse no custo da hora viraria preço, e no dia que a dívida acabasse a tabela ficaria alta sem motivo.`
+                  : 'Zerada porque nenhum gasto foi lançado como Empréstimo, Equipamento ou Investimento no período — não porque não há parcela vencendo. Em Gastos essas três categorias existem, e o que for marcado assim sai do custo fixo e aparece aqui.'}
+                valor={dados.financeiras} percentual={dados.percentual.financeiras} indisponivel={semFixo}
+                base={base?.financeiras} subirEhBom={false} rotuloAnterior={rotuloAnterior}
+              />
+              <Linha
+                tipo="subtotal"
+                rotulo="Sobra depois do banco"
+                explicacao="O resultado do período menos o que foi para credor e para bem. É daqui que sai a retirada — e é este o número, não o de cima, que diz se a oficina pôde se pagar no mês."
+                valor={dados.sobraAposFinanceiras} percentual={dados.percentual.sobraAposFinanceiras} indisponivel={semFixo}
+                base={base?.sobraAposFinanceiras} subirEhBom rotuloAnterior={rotuloAnterior}
+              />
               <Linha
                 rotulo="Retirada do sócio"
                 explicacao={dados.gastosRetirada > 0
@@ -253,7 +268,7 @@ export default function DRE({ intervalo, anterior }) {
               <Linha
                 tipo="subtotal"
                 rotulo="Sobra em caixa"
-                explicacao="O que ficou na oficina depois de pagar tudo e distribuir o que foi distribuído."
+                explicacao="O que ficou na oficina depois de pagar as contas, os credores e distribuir o que foi distribuído."
                 valor={dados.sobraEmCaixa} percentual={dados.percentual.sobraEmCaixa} indisponivel={semFixo}
                 base={base?.sobraEmCaixa} subirEhBom rotuloAnterior={rotuloAnterior}
               />
@@ -318,7 +333,7 @@ export default function DRE({ intervalo, anterior }) {
               <p className="text-xs text-slate-600 leading-snug">
                 Cada linha do DRE lê de <strong>uma fonte só</strong>, e as fontes não se sobrepõem — é assim que a
                 mesma despesa não é contada duas vezes. Receita e taxa de cartão vêm dos lançamentos do financeiro;
-                o CMV vem das peças das OS (não existe no financeiro); o custo fixo e a retirada vêm dos Gastos. O
+                o CMV vem das peças das OS (não existe no financeiro); o custo fixo, os compromissos financeiros e a retirada vêm dos Gastos, em três conjuntos que não se cruzam. O
                 total de despesas do financeiro <strong>não é usado</strong> em nenhuma linha do resultado — ele já
                 contém a taxa, o espelho dos gastos pagos e a compra de estoque, e somá-lo seria contar tudo de novo.
               </p>
@@ -375,7 +390,7 @@ export default function DRE({ intervalo, anterior }) {
                   <tr>
                     <td className="py-2.5 pr-3">
                       <p className="text-slate-700">Do que o DRE reconhece como custo</p>
-                      <p className="text-[11px] text-slate-400">Taxa de cartão + custo fixo + retirada.</p>
+                      <p className="text-[11px] text-slate-400">Taxa de cartão + custo fixo + compromissos financeiros + retirada.</p>
                     </td>
                     <td className="py-2.5 text-right tabular-nums font-medium text-slate-800 whitespace-nowrap">{fmt(c.despesaReconhecida)}</td>
                   </tr>

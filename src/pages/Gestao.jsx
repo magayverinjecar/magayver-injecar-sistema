@@ -129,13 +129,22 @@ export default function Gestao() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         {[
           { r: 'Entrou no caixa', v: fmt(resumo.entrou), cor: 'text-green-700' },
           { r: 'Saiu do caixa', v: fmt(resumo.saiu), cor: 'text-red-600' },
           {
             r: 'Sobra de caixa', v: fmt(resumo.sobraDeCaixa), cor: 'text-slate-800',
             nota: lacunas.some(l => l.id === 'custo_fixo') ? 'não é lucro — falta o custo fixo' : `custo fixo do período: ${fmt(resumo.custoFixoPeriodo)}`,
+          },
+          // Empréstimo e parcela de bem não entram no custo fixo — se entrassem,
+          // virariam preço. Mas têm que aparecer: numa oficina alavancada este é
+          // o número que decide se a sobra do mês chega no bolso do dono.
+          {
+            r: 'Foi para credor', v: fmt(resumo.compromissoFinanceiro), cor: 'text-amber-700',
+            nota: resumo.gastosFinanceiros > 0
+              ? `${resumo.gastosFinanceiros} lançamento(s) — fora do custo da hora, de propósito`
+              : 'nada lançado como Empréstimo/Equipamento/Investimento',
           },
           { r: 'Faturado em OS', v: fmt(resumo.faturadoEmOS), cor: 'text-slate-800', nota: `${resumo.ordens} OS concluída(s)` },
           { r: 'Ticket médio', v: fmt(resumo.ticketMedio), cor: 'text-slate-800' },

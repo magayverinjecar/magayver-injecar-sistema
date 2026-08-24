@@ -55,26 +55,7 @@
 
 import { parseValorBR, cent } from './numero.js'
 import { dentroDoPeriodo, resumirFinanceiro } from './periodo.js'
-import { margemDoPeriodo, custoFixoMensal, mesesDoIntervalo, ehRetirada } from './margem.js'
-
-// Quanto foi retirado no período.
-//
-// Segue a MESMA regra do custo fixo para não haver dois critérios de data na
-// mesma tela: retirada cadastrada como "Fixo" é mensal e entra uma vez por mês
-// do período; cadastrada como "Variável" entra se o vencimento cair dentro dele.
-function somarRetiradas(gastosRetirada, intervalo) {
-  // `incluirRetirada` porque aqui a retirada é justamente o que se quer somar —
-  // `custoFixoMensal` a exclui por padrão, para ela não inflar o custo da
-  // oficina no ponto de equilíbrio e no custo da hora.
-  const fixas = custoFixoMensal(gastosRetirada.filter(g => g?.tipo === 'Fixo'), intervalo, { incluirRetirada: true })
-  let variaveis = 0
-  for (const g of gastosRetirada) {
-    if (g?.tipo === 'Fixo') continue
-    if (!dentroDoPeriodo(g?.vencimento, intervalo)) continue
-    variaveis = cent(variaveis + parseValorBR(g?.valor))
-  }
-  return cent(fixas + variaveis)
-}
+import { margemDoPeriodo, custoFixoMensal, mesesDoIntervalo, ehRetirada, ehFinanceiro, ehCustoDeOperacao, somarAbaixoDaLinha } from './margem.js'
 
 // ── OS que viraram resultado no período ──────────────────────────────────────
 // Mesma regra do Ponto de Equilíbrio, de propósito: as duas telas ficam no mesmo
@@ -188,9 +169,15 @@ export function dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, 
   // Custo fixo e retirada saem de `gastos`, e a retirada é retirada DE DENTRO do
   // custo fixo antes da soma. Sem essa separação ela apareceria duas vezes: uma
   // como despesa da oficina e outra na linha de distribuição.
+  //
+  // São TRÊS conjuntos disjuntos, e cada um entra numa linha diferente:
+  // operação (custo fixo), financeiro (empréstimo/parcela/investimento) e
+  // retirada. A retirada tem prioridade no desempate — um lançamento nunca
+  // pode cair em dois conjuntos, senão o mesmo dinheiro sai duas vezes.
   const listaGastos = gastos || []
   const gastosRetirada = listaGastos.filter(ehRetirada)
-  const gastosOperacionais = listaGastos.filter(g => !ehRetirada(g))
+  const gastosFinanceiros = listaGastos.filter(g => !ehRetirada(g) && ehFinanceiro(g))
+  const gastosOperacionais = listaGastos.filter(ehCustoDeOperacao)
 
   // "Tudo" não tem quantos meses de aluguel somar — o custo fixo sairia
   // arbitrário e o resultado seria ficção. O DRE para na margem de contribuição
@@ -199,16 +186,23 @@ export function dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, 
   const custoFixoDisponivel = meses != null
 
   const custoFixo = custoFixoDisponivel ? custoFixoMensal(gastosOperacionais, intervalo) : null
-  const retirada = custoFixoDisponivel ? somarRetiradas(gastosRetirada, intervalo) : 0
+  const retirada = custoFixoDisponivel ? somarAbaixoDaLinha(gastosRetirada, intervalo, { incluirRetirada: true }) : 0
+
+  // Empréstimo, parcela de equipamento e compra de bem. Fica ABAIXO do
+  // resultado porque não é custo de produzir — mas fica VISÍVEL porque é
+  // dinheiro que sai de verdade, e numa oficina alavancada é justamente aqui
+  // que o resultado do mês evapora antes de virar dinheiro do dono.
+  const financeiras = custoFixoDisponivel ? somarAbaixoDaLinha(gastosFinanceiros, intervalo, { incluirFinanceiro: true }) : 0
 
   const resultado = custoFixoDisponivel ? cent(margemContribuicao - custoFixo) : null
-  const sobraEmCaixa = resultado == null ? null : cent(resultado - retirada)
+  const sobraAposFinanceiras = resultado == null ? null : cent(resultado - financeiras)
+  const sobraEmCaixa = sobraAposFinanceiras == null ? null : cent(sobraAposFinanceiras - retirada)
 
   // ── Conferência: o que o DRE reconhece contra o que o financeiro registrou ──
   //
   // Não é erro a esconder. As duas fontes medem coisas diferentes de propósito,
   // e ver a diferença é o que impede alguém de confiar num número que não fecha.
-  const despesaReconhecida = cent(taxaCartao + (custoFixo || 0) + retirada)
+  const despesaReconhecida = cent(taxaCartao + (custoFixo || 0) + financeiras + retirada)
   const conferencia = {
     // Faturamento pelas OS concluídas × faturamento pelo dinheiro que entrou.
     // Divergem por três motivos legítimos: a OS conta na conclusão e o
@@ -338,6 +332,8 @@ export function dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, 
     margemContribuicao,
     custoFixo,
     resultado,
+    financeiras,
+    sobraAposFinanceiras,
     retirada,
     sobraEmCaixa,
 
@@ -350,6 +346,8 @@ export function dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, 
       margemContribuicao: participacao(margemContribuicao, receitaBruta),
       custoFixo: custoFixo == null ? null : participacao(custoFixo, receitaBruta),
       resultado: resultado == null ? null : participacao(resultado, receitaBruta),
+      financeiras: participacao(financeiras, receitaBruta),
+      sobraAposFinanceiras: sobraAposFinanceiras == null ? null : participacao(sobraAposFinanceiras, receitaBruta),
       retirada: participacao(retirada, receitaBruta),
       sobraEmCaixa: sobraEmCaixa == null ? null : participacao(sobraEmCaixa, receitaBruta),
     },
@@ -368,6 +366,7 @@ export function dreDoPeriodo({ financeiro, ordens, estoque, totalOrdem, gastos, 
     ordens: os.ordens,
     ordensComLacuna: os.comLacuna,
     gastosRetirada: gastosRetirada.length,
+    gastosFinanceiros: gastosFinanceiros.length,
 
     conferencia,
     lacunas,

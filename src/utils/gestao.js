@@ -21,7 +21,7 @@
 import { parseValorBR, cent } from './numero.js'
 import { dentroDoPeriodo, resumirFinanceiro } from './periodo.js'
 import { momentoEntrada } from './datas.js'
-import { custoFixoMensal } from './margem.js'
+import { custoFixoMensal, compromissoFinanceiro, ehFinanceiro, ehRetirada } from './margem.js'
 
 // As OS que já viraram resultado. Mesmo corte do DRE e do ponto de equilíbrio —
 // se esta tela usasse outro, ela contradiria as outras e ninguém acreditaria em
@@ -213,6 +213,35 @@ export function lacunasDaLeitura({ gastos = [], config = null, clientes = [], es
     })
   }
 
+  // Custo fixo cadastrado, mas SEM a maior conta da oficina.
+  //
+  // Este é o erro que mais custa caro numa oficina que começa a se organizar: a
+  // pessoa lança as contas que chegam por boleto — empréstimo, seguro, contador
+  // — e não lança folha e energia, que são justamente as duas maiores. O sistema
+  // então mostra um custo fixo cheio de dívida e vazio de operação: o custo da
+  // hora sai baixo demais e a oficina passa a vender barato achando que lucra.
+  //
+  // Só dispara depois que ele já começou a cadastrar — antes disso quem fala é a
+  // lacuna de cima, e duas mensagens sobre a mesma coisa viram ruído.
+  if (fixoMes >= 500) {
+    const temCategoria = (re) => (gastos || []).some(g =>
+      g?.tipo === 'Fixo' && re.test(`${g?.categoria || ''} ${g?.descricao || ''}`))
+    const faltando = []
+    if (!temCategoria(/sal[áa]rio|folha|funcion[áa]ri|encargo/i)) faltando.push('salários')
+    if (!temCategoria(/energia|luz|el[ée]tric/i)) faltando.push('energia')
+    if (faltando.length > 0) {
+      lacunas.push({
+        id: 'custo_incompleto',
+        peso: 'alto',
+        titulo: `Custo fixo sem ${faltando.join(' e ')}`,
+        texto: `Há gasto fixo cadastrado, mas nada de ${faltando.join(' nem ')}. `
+          + 'Numa oficina a folha é a maior conta que existe — sem ela o custo da hora sai barato demais e o preço sai junto. '
+          + 'Lance salário COM encargos: FGTS, 13º dividido por 12, férias dividido por 12 e o vale, se houver.',
+        onde: 'Gastos → tipo "Fixo" → categoria Salário / Energia',
+      })
+    }
+  }
+
   const cap = config?.capacidade || {}
   if (!(Number(cap.reparadores) > 0)) {
     lacunas.push({
@@ -256,6 +285,7 @@ export function resumoDaGestao({ financeiro = [], ordens = [], intervalo, totalO
   const doPeriodo = ordensDoPeriodo(ordens, intervalo)
   const faturado = cent(doPeriodo.reduce((s, o) => s + (Number(totalOrdem ? totalOrdem(o) : 0) || 0), 0))
   const fixo = custoFixoMensal(gastos, intervalo)
+  const banco = compromissoFinanceiro(gastos, intervalo)
 
   return {
     entrou: caixa.receitas,
@@ -265,6 +295,11 @@ export function resumoDaGestao({ financeiro = [], ordens = [], intervalo, totalO
     // avisa que não é resultado.
     sobraDeCaixa: caixa.lucro,
     custoFixoPeriodo: fixo,
+    // O que vai para credor e para bem no período. Fica FORA do custo fixo (ver
+    // `ehFinanceiro`), mas não pode ficar fora da vista: numa oficina alavancada
+    // é aqui que a sobra do mês evapora antes de virar dinheiro do dono.
+    compromissoFinanceiro: banco,
+    gastosFinanceiros: (gastos || []).filter(g => !ehRetirada(g) && ehFinanceiro(g)).length,
     faturadoEmOS: faturado,
     ordens: doPeriodo.length,
     ticketMedio: doPeriodo.length > 0 ? cent(faturado / doPeriodo.length) : 0,

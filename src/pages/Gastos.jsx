@@ -14,7 +14,34 @@ const parseNum = parseValorBR
 // aparecer depois do resultado, como distribuição — e não como despesa da
 // oficina. Antes disso a detecção dependia de a pessoa escrever a frase certa
 // na descrição, e retirada rotulada errado fazia o mês parecer pior do que foi.
-const CATEGORIAS = ['Outros', 'Aluguel', 'Água', 'Energia', 'Internet', 'Telefone', 'Salário', 'Impostos', 'Manutenção', 'Marketing', 'Retirada', 'Pró-labore']
+// As categorias estão em TRÊS blocos, e a ordem na lista é essa de propósito:
+// quem cadastra escolhe primeiro entre "custo de operar" e "dívida/bem", que é
+// exatamente a decisão que muda o custo da hora.
+//
+//   1. CUSTO DE OPERAR  → entra no custo fixo, no ponto de equilíbrio e no
+//      custo da hora. É o que se gasta para a bancada rodar.
+//   2. DÍVIDA E BEM     → fica FORA desses três cálculos e aparece no DRE numa
+//      linha própria, abaixo do resultado. Ver `ehFinanceiro` em margem.js.
+//   3. DISTRIBUIÇÃO     → retirada e pró-labore, também abaixo da linha.
+//
+// DEPRECIAÇÃO fica no bloco 1 e não é pegadinha: o custo do equipamento no preço
+// é o desgaste dele diluido na vida útil, não a parcela do financiamento. Máquina
+// de R$ 30.000 que dura 5 anos = R$ 500/mês, independente de como foi paga.
+//
+// NÃO EXISTE categoria "Cartão", e a falta é intencional: fatura de cartão é forma
+// de pagamento, não natureza de gasto. Uma fatura de R$ 2.500 pode ser peça
+// (custo variável, já apurado nas Compras), combustível ou parcela de máquina —
+// três linhas diferentes do DRE. Lançar "Cartão" esconderia as três em uma.
+const CATEGORIAS = [
+  'Outros',
+  // 1. custo de operar
+  'Aluguel', 'Água', 'Energia', 'Internet', 'Telefone', 'Salário', 'Impostos',
+  'Manutenção', 'Marketing', 'Seguro', 'Contabilidade', 'Depreciação',
+  // 2. dívida e bem — ficam fora do custo da hora
+  'Empréstimo', 'Equipamento', 'Investimento',
+  // 3. distribuição
+  'Retirada', 'Pró-labore',
+]
 const STATUS_COR = {
   Pago: 'bg-orange-100 text-orange-700',
   Pendente: 'bg-yellow-100 text-yellow-700',
