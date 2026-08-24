@@ -1820,7 +1820,16 @@ export function AppProvider({ children }) {
     const historico = [...eventos, ...(o.historico || [])]
 
     let extra = {}
-    if (novoStatus === 'Concluída') {
+    // "Entregue" tambem finaliza a OS, e antes so "Concluída" carimbava a data.
+    // Quem mudava o status direto para Entregue — o caminho normal de quem
+    // entrega o carro sem passar por Concluída — fechava a OS SEM data de
+    // conclusao. Sao 24 OS assim na base, 11 delas de um mes so.
+    //
+    // O estrago: produtividade do reparador, DRE, ponto de equilibrio e a tela
+    // de Gestao caem todos na data de ENTRADA quando a conclusao falta. Carro
+    // que entrou em junho e saiu em julho contava em junho — mes errado, e
+    // ninguem tinha como perceber.
+    if (['Concluída', 'Entregue'].includes(novoStatus)) {
       const hoje = new Date().toLocaleDateString('pt-BR')
       extra.dataConclusao = o.dataConclusao || hoje
     }
