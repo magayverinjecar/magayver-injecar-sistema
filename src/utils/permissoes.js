@@ -54,6 +54,7 @@ export const GRUPOS_MENU = [
     grupo: 'Financeiro',
     itens: [
       { id: 'caixa', label: 'Caixa' },
+      { id: 'gestao', label: 'Gestão (leitura geral)' },
       { id: 'financeiro', label: 'Financeiro' },
       { id: 'gastos', label: 'Gastos' },
     ],

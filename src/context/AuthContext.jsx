@@ -5,7 +5,7 @@ import { supabase } from '../supabase'
 export const MODELOS = {
   admin: {
     label: 'Administrador',
-    menus: ['patio','patio-limpeza','conferir-os','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','financeiro','caixa','venda','gastos','configuracoes'],
+    menus: ['patio','patio-limpeza','conferir-os','dashboard','agenda','checklist-novo','checklist-fotos','checklist-diagnostico','checklist-gerenciar','assistente-financeiro','ordens-servico','orcamentos','clientes','veiculos','servicos','funcionarios','produtividade','estoque','compras','insumos','fornecedores','gestao','financeiro','caixa','venda','gastos','configuracoes'],
     verPrecos: true,
     verFinanceiro: true,
     editarConfigs: true,

@@ -22,6 +22,7 @@ import VeiculoCadastro from './pages/VeiculoCadastro'
 import OrdemCadastro from './pages/OrdemCadastro'
 import OrdemEditar from './pages/OrdemEditar'
 import CompraImportarXml from './pages/CompraImportarXml'
+import Gestao from './pages/Gestao'
 import Compras from './pages/Compras'
 import CompraDetalhe from './pages/CompraDetalhe'
 import Fornecedores from './pages/Fornecedores'
@@ -142,6 +143,9 @@ export default function App() {
           <Route path="insumos"             element={<Rota perm="insumos"><Insumos /></Rota>} />
           <Route path="gastos"              element={<Rota perm="gastos"><Gastos /></Rota>} />
           <Route path="financeiro"          element={<Rota perm="financeiro"><Financeiro /></Rota>} />
+          {/* Faturamento, margem, quem fatura quanto e de quem a oficina
+              depende. Permissao propria: nao e tela de balcao. */}
+          <Route path="gestao"              element={<Rota perm="gestao"><Gestao /></Rota>} />
           <Route path="caixa"               element={<Rota perm="caixa"><Caixa /></Rota>} />
           {/* Venda de balcão tem permissão PRÓPRIA, separada de 'caixa': dá
               para contratar vendedor que só vende peça no balcão, sem abrir o

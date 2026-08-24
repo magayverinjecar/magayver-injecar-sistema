@@ -3,8 +3,7 @@ import {
   LayoutDashboard, Users, Car, CalendarDays, ClipboardList,
   Wrench, Package, DollarSign, ShoppingCart, UserCog, Settings,
   BarChart3, FileText, Truck, Factory, Droplets, Receipt, Brain,
-  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid, History, Tag
-} from 'lucide-react'
+  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid, History, Tag, PieChart } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 const grupos = [
@@ -66,6 +65,7 @@ const grupos = [
     titulo: 'FINANCEIRO',
     items: [
       { to: '/caixa', icon: ShoppingCart, label: 'Caixa' },
+      { to: '/gestao', icon: PieChart, label: 'Gestão' },
       { to: '/financeiro', icon: DollarSign, label: 'Financeiro' },
       { to: '/gastos', icon: Receipt, label: 'Gastos' },
     ],
