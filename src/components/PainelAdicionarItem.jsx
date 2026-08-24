@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useMemo } from 'react'
 import { Plus, X, Search, Check, AlertTriangle } from 'lucide-react'
 import { parseValorBR } from '../utils/numero'
 import { pecaAtiva } from '../utils/pecas'
+import { historicoDePreco, conferirPiso, DIFICULDADES } from '../utils/precoHistorico'
 
 // Painel de lançar item — embutido no quadro de itens, não em popup.
 //
@@ -48,6 +49,18 @@ export default function PainelAdicionarItem({
   selecaoExterna = null,
   tipoInicial = 'servico',
   modoInicial = 'cadastrado',
+  // --- PRECIFICACAO POR DIFICULDADE (Orcamento e OS) ---
+  // Nascem desligadas: quem ja usa este painel continua vendo o de sempre.
+  //
+  // A oficina nao cobra por hora nem por tabela fixa — cobra por dificuldade
+  // tecnica, carro a carro. O que o sistema pode fazer e devolver, no segundo
+  // da decisao, quanto ela JA cobrou por aquele servico. Sao 285 OS que ja
+  // existem e nunca foram lidas de volta.
+  ordens = null,          // para montar a referencia de preco
+  modeloAtual = '',       // o carro desta OS/orcamento
+  ignorarOS = null,       // a propria OS nao entra na sua referencia
+  custoHora = null,       // piso: custo fixo por hora de bancada
+  getModeloDaOS = null,   // (os) => texto do carro
   onTrocarTipo,
   onTrocarModo,
   textoBotao = 'Adicionar',
@@ -73,6 +86,11 @@ export default function PainelAdicionarItem({
   const [descricao, setDescricao] = useState('')
   const [quantidade, setQuantidade] = useState('1')
   const [valorUnitario, setValorUnitario] = useState('')
+  // Horas e dificuldade so existem para servico. Horas e OPCIONAL: sem ela o
+  // painel funciona como sempre funcionou — ela e o que permite conferir se o
+  // preco cobre o tempo de bancada, e o que alimenta o historico depois.
+  const [horas, setHoras] = useState('')
+  const [dificuldade, setDificuldade] = useState(null)
   const [custoAvulso, setCustoAvulso] = useState('')
   const [desconto, setDesconto] = useState('0')
   const [mecanicoId, setMecanicoId] = useState('')
@@ -105,6 +123,8 @@ export default function PainelAdicionarItem({
     setCustoAvulso('')
     setQuantidade('1')
     setDesconto('0')
+    setHoras('')
+    setDificuldade(null)
   }
 
   function trocarModo(m) {
@@ -167,6 +187,10 @@ export default function PainelAdicionarItem({
       valorUnitario,
       desconto,
       mecanicoId: tipo === 'servico' && mecanicoId ? Number(mecanicoId) : null,
+      // Guardados so quando preenchidos: item antigo nao ganha campo vazio, e
+      // o historico de amanha nasce de quem preencheu hoje.
+      ...(tipo === 'servico' && pNum(horas) > 0 ? { horas } : {}),
+      ...(tipo === 'servico' && dificuldade ? { dificuldade } : {}),
     }
     // Peça comprada na hora: sem isto a margem da OS fica incompleta e o CMV
     // sai por baixo. Só vai quando o dono realmente digitou o custo.
@@ -181,10 +205,32 @@ export default function PainelAdicionarItem({
 
   const podeAdicionar = !desabilitado && !!descricao.trim()
 
+  // O que a oficina ja cobrou por este servico. So calcula quando ha um
+  // servico escolhido e a tela passou as ordens — nas outras (kit) fica nulo.
+  const referencia = useMemo(() => {
+    if (tipo !== 'servico' || !ordens || !descricao.trim()) return null
+    const r = historicoDePreco(ordens, {
+      servicoId: selId || null,
+      descricao,
+      modeloAtual,
+      modeloDaOS: getModeloDaOS || (() => ''),
+      ignorarOS,
+    })
+    return r.total > 0 ? r : null
+  }, [tipo, ordens, descricao, selId, modeloAtual, getModeloDaOS, ignorarOS])
+
+  // A regua: nao e o metodo de preco, e a conferencia. Sem horas ou sem custo
+  // da hora ela nao aparece — inventar um piso seria pior que nao ter.
+  const piso = useMemo(
+    () => (tipo === 'servico' ? conferirPiso({ valor: valorUnitario, horas, custoHora }) : null),
+    [tipo, valorUnitario, horas, custoHora],
+  )
+
   // Quantas colunas a linha de números ocupa no desktop. Sem isto, esconder os
   // preços deixaria o botão "Adicionar" perdido no meio de colunas vazias.
-  const colunasNumeros = 1 + (pedeCusto ? 1 : 0) + (esconderPrecos ? 0 : 2) + 1
-  const gridNumeros = { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4', 5: 'sm:grid-cols-5' }[colunasNumeros]
+  const mostraHoras = tipo === 'servico' && !!ordens && !esconderPrecos
+  const colunasNumeros = 1 + (pedeCusto ? 1 : 0) + (esconderPrecos ? 0 : 2) + (mostraHoras ? 1 : 0) + 1
+  const gridNumeros = { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4', 5: 'sm:grid-cols-5', 6: 'sm:grid-cols-6' }[colunasNumeros]
 
   return (
     <div className="border border-slate-200 rounded-xl bg-slate-50 p-3 sm:p-4 space-y-3">
@@ -356,6 +402,64 @@ export default function PainelAdicionarItem({
         )}
       </div>
 
+      {/* A referencia de preco: o que esta oficina ja cobrou por este servico.
+          Nao sugere valor nem trava nada — mostra a faixa praticada no segundo
+          em que a pessoa decide. E o que transfere o preco da cabeca do dono
+          para o sistema, sem tirar a liberdade de precificar cada carro. */}
+      {referencia && (
+        <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs space-y-1">
+          <p className="text-slate-500">
+            Você já cobrou este serviço <strong className="font-semibold text-slate-700">{referencia.total}×</strong>:
+          </p>
+          <div className="flex flex-wrap gap-x-5 gap-y-1">
+            {referencia.noModelo && (
+              <span className="text-slate-600">
+                {modeloAtual ? <>em <strong className="font-medium">{String(modeloAtual).split(' ')[0]}</strong></> : 'neste modelo'}
+                {' — '}
+                <strong className="font-semibold text-slate-800 tabular-nums">
+                  {fmt(referencia.noModelo.min)} a {fmt(referencia.noModelo.max)}
+                </strong>
+                <span className="text-slate-400"> (mediana {fmt(referencia.noModelo.mediana)} · {referencia.noModelo.n}×)</span>
+              </span>
+            )}
+            {referencia.nosOutros && (
+              <span className="text-slate-500">
+                nos outros carros — <span className="tabular-nums">{fmt(referencia.nosOutros.min)} a {fmt(referencia.nosOutros.max)}</span>
+                <span className="text-slate-400"> (mediana {fmt(referencia.nosOutros.mediana)} · {referencia.nosOutros.n}×)</span>
+              </span>
+            )}
+          </div>
+          {referencia.ultimas.length > 0 && (
+            <p className="text-slate-400">
+              Últimas: {referencia.ultimas.slice(0, 3).map(u => `${u.modelo || 'sem carro'} ${fmt(u.valor)}`).join(' · ')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Dificuldade tecnica: e por ela que esta oficina precifica. Tres niveis
+          e nao cinco — quem escolhe esta com o cliente na frente, e escala longa
+          vira "sempre o do meio". */}
+      {tipo === 'servico' && !!ordens && (
+        <div>
+          <label className={ROTULO}>Dificuldade técnica <span className="font-normal text-slate-400">(opcional)</span></label>
+          <div className="grid grid-cols-3 gap-2">
+            {DIFICULDADES.map(d => {
+              const ativo = dificuldade === d.id
+              return (
+                <button key={d.id} type="button" title={d.ajuda}
+                  onClick={() => setDificuldade(ativo ? null : d.id)}
+                  className={`px-2 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    ativo ? 'bg-primary-50 border-primary-400 text-primary-700' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                  }`}>
+                  {d.rotulo}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Números + botão na mesma linha */}
       <div className={`grid grid-cols-2 ${gridNumeros} gap-3 sm:items-end`}>
         <div>
@@ -386,11 +490,38 @@ export default function PainelAdicionarItem({
             </div>
           </>
         )}
+        {mostraHoras && (
+          <div>
+            <label className={ROTULO} htmlFor="painel-horas-item">
+              Horas <span className="font-normal text-slate-400">(opcional)</span>
+            </label>
+            <input id="painel-horas-item" value={horas} onChange={e => setHoras(e.target.value)}
+              inputMode="decimal" placeholder="0,0"
+              title="Quanto tempo de bancada este serviço ocupa. Não muda o preço — serve para conferir se ele cobre o custo."
+              className={`${INP} text-right tabular-nums`} />
+          </div>
+        )}
         <button type="button" onClick={adicionar} disabled={!podeAdicionar}
           className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
           <Plus size={15} />{textoBotao}
         </button>
       </div>
+
+      {/* A regua. So avisa — nunca trava: as vezes o servico e feito no custo
+          de proposito (cliente antigo, carro que ja esta na oficina, fechar um
+          pacote). Travar viraria uma janela que todo mundo aprende a ignorar. */}
+      {piso && (
+        <p className={`text-xs px-3 py-2 rounded-lg border ${
+          piso.abaixoDoPiso
+            ? 'bg-red-50 border-red-200 text-red-700'
+            : 'bg-green-50 border-green-200 text-green-700'
+        }`}>
+          <strong className="font-semibold tabular-nums">{fmt(piso.porHora)}/hora</strong>
+          {piso.abaixoDoPiso
+            ? <> — abaixo do custo de {fmt(pNum(custoHora))}/h. Este serviço consome {fmt(piso.custoDoTempo)} de bancada e deixa {fmt(piso.sobra)}.</>
+            : <> — sua hora custa {fmt(pNum(custoHora))}. Sobram {fmt(piso.sobra)} depois de pagar o tempo de bancada.</>}
+        </p>
+      )}
 
       {/* Peça comprada na hora: sem custo a apuração de margem fica cega */}
       {pedeCusto && (

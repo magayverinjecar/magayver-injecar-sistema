@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Banknote, Smartphone, CreditCard, ArrowRightLeft, Wrench, Eye, Save, ImagePlus, PenTool, ClipboardList, Loader2, ThumbsUp, ThumbsDown, Copy, Check, ShieldCheck } from 'lucide-react'
+import { custoHoraDaOficina } from '../utils/capacidade'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import gerarId from '../utils/id'
@@ -75,7 +76,7 @@ export default function OrdemDetalhe() {
     excluirOrdem, subtotalOrdem, totalOrdem, caixaTurno, caixaCarregado, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
     concluirOrdem, entregarOrdem, salvarDiagnostico, salvarVistoria,
     aprovarOrcamento, recusarOrcamento, fecharRecusa, concluirReparo, entregarSemCobrar,
-    config,
+    config, gastos,
   } = useApp()
   const { currentUser, temPermissao } = useAuth()
 
@@ -138,6 +139,10 @@ export default function OrdemDetalhe() {
 
   const cliente = getCliente(os.clienteId)
   const veiculo = getVeiculo(os.veiculoId)
+  // Piso para conferir o preço do serviço. Fica `null` enquanto os gastos fixos
+  // e a capacidade não estiverem preenchidos — e aí o painel simplesmente não
+  // mostra régua nenhuma, em vez de mostrar uma errada.
+  const custoHoraOficina = custoHoraDaOficina({ gastos, config })
   const mecanico = os.mecanicoId ? getFuncionario(os.mecanicoId) : null
   const subtotal = subtotalOrdem(os)
   const descGeral = pNum(os.descontoGeral)
@@ -1067,11 +1072,19 @@ export default function OrdemDetalhe() {
               outro — um orçamento real tem vários. */}
           {painelItem && !osFinalizada && (
             <div className="mb-4">
+              {/* `ordens` liga a referencia de preco: o painel mostra quanto
+                  esta oficina ja cobrou por aquele servico, separando este
+                  modelo dos outros carros. `custoHora` liga a regua. */}
               <PainelAdicionarItem
                 servicos={servicos}
                 estoque={estoque}
                 reservadoDe={reservadoDe}
                 funcionarios={funcionarios}
+                ordens={ordens}
+                modeloAtual={nomeVeiculo(veiculo, os)}
+                ignorarOS={os.id}
+                custoHora={custoHoraOficina}
+                getModeloDaOS={o => nomeVeiculo(getVeiculo(o.veiculoId), o)}
                 onFechar={() => setPainelItem(false)}
                 onAdd={item => adicionarItemOrdem(os.id, item)}
               />

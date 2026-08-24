@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { Plus, FileText, Eye, Copy, MessageCircle, Printer, ArrowRight, Trash2, X, List, Search, ChevronDown, Pencil } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { custoHoraDaOficina } from '../utils/capacidade'
+import { nomeVeiculo } from '../utils/datas'
 import gerarId from '../utils/id'
 import { imprimirOrcamento } from '../utils/print'
 import { parseValorBR } from '../utils/numero'
@@ -33,7 +35,10 @@ const fmt = (v) => 'R$ ' + fmtValor(v)
 export default function Orcamentos() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, movimentarEstoque, reservadoDe, getCliente, getVeiculo, novaOrdem } = useApp()
+  const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, movimentarEstoque, reservadoDe, getCliente, getVeiculo, novaOrdem, ordens, gastos, config } = useApp()
+  // Piso para conferir o preço do serviço no orçamento — o mesmo da OS. Fica
+  // `null` até os gastos fixos e a capacidade estarem preenchidos.
+  const custoHoraOficina = custoHoraDaOficina({ gastos, config })
 
   const [aba, setAba] = useState('salvos')
   const [orcamentoEditandoId, setOrcamentoEditandoId] = useState(null)
@@ -615,6 +620,10 @@ export default function Orcamentos() {
                   estoque={estoque}
                   reservadoDe={reservadoDe}
                   mostrarReparador={false}
+                  ordens={ordens}
+                  modeloAtual={dados.veiculo}
+                  custoHora={custoHoraOficina}
+                  getModeloDaOS={o => nomeVeiculo(getVeiculo(o.veiculoId), o)}
                   esconderLista={criarNovo}
                   selecaoExterna={selecaoPainel}
                   onTrocarTipo={t => { setTipoPainel(t); setCriarNovo(false); setSelecaoPainel(null) }}
