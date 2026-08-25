@@ -222,10 +222,20 @@ export default function OrdemDetalhe() {
   const diagItens = diagnosticoLocal ?? (os.diagnosticoItens?.length > 0 ? os.diagnosticoItens : DIAGNOSTICO_ITENS.map(i => ({ ...i, value: '', status: 'normal' })))
   const obsTecnicas = obsTecnicasLocal ?? os.observacoesTecnicas ?? ''
 
+  // A que conjunto pertence a foto ampliada — entrada ou reparo.
+  //
+  // A lupa navegava SEMPRE dentro das fotos de entrada. Ampliar uma foto de
+  // reparo dava `findIndex` = -1: o contador mostrava "0 / N" e a seta seguinte
+  // pulava para dentro das fotos de entrada, misturando os dois momentos na
+  // cara de quem estava conferindo o serviço.
+  const conjuntoDaFoto = (f) =>
+    fotosReparoOS.some(x => x.id === f?.id) ? fotosReparoOS : fotosOS
+
   function navegarFoto(direcao) {
-    const idx = fotosOS.findIndex(f => f.id === fotoAmpliada.id)
+    const lista = conjuntoDaFoto(fotoAmpliada)
+    const idx = lista.findIndex(f => f.id === fotoAmpliada.id)
     const novo = idx + direcao
-    if (novo >= 0 && novo < fotosOS.length) setFotoAmpliada(fotosOS[novo])
+    if (novo >= 0 && novo < lista.length) setFotoAmpliada(lista[novo])
   }
 
   function setValorDiag(itemId, field, value) {
@@ -1261,17 +1271,23 @@ export default function OrdemDetalhe() {
           {fotoAmpliada && (
             <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center" onClick={() => setFotoAmpliada(null)}>
               <button onClick={() => setFotoAmpliada(null)} className="absolute top-4 right-4 z-10 p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"><X size={24} /></button>
-              {fotosOS.findIndex(f => f.id === fotoAmpliada.id) > 0 && (
+              {conjuntoDaFoto(fotoAmpliada).findIndex(f => f.id === fotoAmpliada.id) > 0 && (
                 <button onClick={e => { e.stopPropagation(); navegarFoto(-1) }} className="absolute left-4 p-3 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"><ChevronLeft size={28} /></button>
               )}
               <img src={fotoAmpliada.url || fotoAmpliada.dataUrl} alt="Foto ampliada" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
-              {fotosOS.findIndex(f => f.id === fotoAmpliada.id) < fotosOS.length - 1 && (
+              {conjuntoDaFoto(fotoAmpliada).findIndex(f => f.id === fotoAmpliada.id) < conjuntoDaFoto(fotoAmpliada).length - 1 && (
                 <button onClick={e => { e.stopPropagation(); navegarFoto(1) }} className="absolute right-4 p-3 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors"><ChevronRight size={28} /></button>
               )}
               <div className="absolute bottom-4 text-white/70 text-sm bg-black/50 px-4 py-1.5 rounded-full flex items-center gap-2">
+                {/* Diz de QUAL bloco a foto veio: com os dois abertos na mesma
+                    aba, "3 / 8" sozinho não diz se é entrada ou reparo. */}
+                <span className="font-medium">
+                  {conjuntoDaFoto(fotoAmpliada) === fotosReparoOS ? 'Reparo' : 'Entrada'}
+                </span>
+                <span>·</span>
                 <span className="font-medium">{fotoAmpliada.categoria}</span>
                 <span>·</span>
-                <span>{fotosOS.findIndex(f => f.id === fotoAmpliada.id) + 1} / {fotosOS.length}</span>
+                <span>{conjuntoDaFoto(fotoAmpliada).findIndex(f => f.id === fotoAmpliada.id) + 1} / {conjuntoDaFoto(fotoAmpliada).length}</span>
               </div>
             </div>
           )}
@@ -1337,32 +1353,51 @@ export default function OrdemDetalhe() {
               )}
             </div>
 
-            {fotosReparoOS.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border-2 border-orange-200 p-5 order-1">
-                <div className="flex items-center gap-2 mb-3 flex-wrap">
-                  <Wrench size={15} className="text-orange-500" />
-                  <h3 className="font-semibold text-slate-800">Fotos do reparo</h3>
-                  <span className="text-xs text-slate-400">peça velha, peça nova, antes e depois</span>
-                  <span className="text-xs font-semibold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full">{fotosReparoOS.length} foto(s)</span>
-                  <button onClick={() => navigate(`/oficina/reparo/${encodeURIComponent(os.id)}`)}
-                    className="ml-auto text-xs text-orange-700 font-medium hover:underline">
-                    Adicionar ou remover
-                  </button>
-                </div>
-                <p className="text-xs text-slate-500 mb-3">
-                  O cliente vê estas fotos no link de "Enviar fotos", em um bloco separado das fotos de entrada.
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {fotosReparoOS.map(f => (
-                    <div key={f.id} className="relative aspect-video bg-slate-100 rounded-xl overflow-hidden border border-slate-200 cursor-zoom-in"
-                      onClick={() => setFotoAmpliada(f)}>
-                      <img src={f.url || f.dataUrl} alt={f.categoria} className="w-full h-full object-cover" />
-                      <div className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">{f.categoria}</div>
-                    </div>
-                  ))}
-                </div>
+            {/* O bloco do reparo aparece SEMPRE, mesmo vazio.
+                Antes ele sumia quando não havia foto, e quem estava conferindo
+                não conseguia distinguir "o reparador não fotografou" de "esta
+                tela não mostra foto de reparo". Conferir é justamente precisar
+                enxergar a AUSÊNCIA — um bloco que some não prova nada. */}
+            <div className={`bg-white rounded-xl shadow-sm p-5 ${fotosReparoOS.length > 0
+              ? 'border-2 border-orange-200 order-1'
+              : 'border border-dashed border-slate-300 order-2'}`}>
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <Wrench size={15} className={fotosReparoOS.length > 0 ? 'text-orange-500' : 'text-slate-400'} />
+                <h3 className="font-semibold text-slate-800">Fotos do reparo</h3>
+                <span className="text-xs text-slate-400">peça velha, peça nova, antes e depois</span>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${fotosReparoOS.length > 0
+                  ? 'text-orange-700 bg-orange-50'
+                  : 'text-slate-500 bg-slate-100'}`}>{fotosReparoOS.length} foto(s)</span>
+                <button onClick={() => navigate(`/oficina/reparo/${encodeURIComponent(os.id)}`)}
+                  className={`ml-auto text-xs font-medium hover:underline ${fotosReparoOS.length > 0 ? 'text-orange-700' : 'text-primary-600'}`}>
+                  {fotosReparoOS.length > 0 ? 'Adicionar ou remover' : 'Anexar fotos do reparo'}
+                </button>
               </div>
-            )}
+
+              {fotosReparoOS.length > 0 ? (
+                <>
+                  <p className="text-xs text-slate-500 mb-3">
+                    O cliente vê estas fotos no link de "Enviar fotos", em um bloco separado das fotos de entrada.
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {fotosReparoOS.map(f => (
+                      <div key={f.id} className="relative aspect-video bg-slate-100 rounded-xl overflow-hidden border border-slate-200 cursor-zoom-in"
+                        onClick={() => setFotoAmpliada(f)}>
+                        <img src={f.url || f.dataUrl} alt={f.categoria} className="w-full h-full object-cover" />
+                        <div className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">{f.categoria}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  Nenhuma foto do reparo foi anexada ainda.
+                  <span className="block text-xs text-slate-400 mt-1">
+                    São a prova do serviço executado — peça removida, peça nova, antes e depois.
+                  </span>
+                </p>
+              )}
+            </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 order-3">
               <div className="flex items-center gap-2 mb-4">
