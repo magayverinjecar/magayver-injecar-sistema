@@ -57,6 +57,16 @@ export function motivoDoErroDeFoto(err) {
   // Erro de fetch e erro do Storage tem formatos diferentes, e um objeto
   // solto viraria "[object Object]" — que nao diz nada a quem le nem a quem
   // for consertar. Serializa antes de desistir.
+  // Evento de erro (o `onerror` de um <img> ou de um FileReader) NÃO é um Erro:
+  // não tem `message`, e serializado vira `{"isTrusted":false}`. Foi exatamente
+  // isso que o reparador leu na tela ao tentar mandar uma foto .HEIC do iPhone.
+  // Evento aqui sempre significa a mesma coisa: o arquivo não pôde ser LIDO.
+  if (err && typeof err === 'object' && ('isTrusted' in err || typeof Event !== 'undefined' && err instanceof Event)) {
+    return 'Não consegui abrir essa imagem no aparelho — ela nem chegou a ser enviada. '
+      + 'Se a foto veio do iPhone, ela pode estar em HEIC: em Ajustes → Câmera → Formatos, '
+      + 'escolha "Mais Compatível" e tire de novo.'
+  }
+
   let texto = typeof err === 'string' ? err
     : String(err?.message || err?.error || err?.statusCode || '')
   if (!texto) { try { texto = JSON.stringify(err) } catch { texto = '' } }
@@ -73,8 +83,11 @@ export function motivoDoErroDeFoto(err) {
   if (/failed to fetch|networkerror|load failed|offline/i.test(texto)) {
     return 'Não consegui falar com o servidor. Confira a internet e tente de novo.'
   }
-  if (/compress|canvas|decode|imagem/i.test(texto)) {
-    return 'Não consegui ler essa imagem. Tire a foto de novo ou escolha outra da galeria.'
+  // O HEIC já vem com o texto pronto de utils/imagem.js, que sabe o nome do
+  // arquivo e pode dar a instrução certa. Repassar é melhor que reescrever.
+  if (/hei[cf]/i.test(texto)) return texto
+  if (/compress|canvas|decode|imagem|arquivo/i.test(texto)) {
+    return texto || 'Não consegui ler essa imagem. Tire a foto de novo ou escolha outra da galeria.'
   }
   if (/exceeded|too large|payload|size/i.test(texto)) {
     return 'A foto ficou grande demais para o servidor aceitar.'

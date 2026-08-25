@@ -8,7 +8,7 @@ import {
 import { useApp } from '../context/AppContext'
 import { nomeVeiculo } from '../utils/datas'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
-import { comprimirImagem } from '../utils/imagem'
+import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import {
   CATEGORIAS_FOTO, normalizarInspecao, linkVistoria,
   MOMENTO_ENTRADA, fotosDaEntrada, fotosDoReparo,
@@ -270,8 +270,8 @@ export default function VistoriaEntrada() {
         </div>
       )}
 
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={handleFile} className="hidden" />
-      <input ref={inputGaleriaRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+      <input ref={inputRef} type="file" accept={ACEITA_IMAGEM} capture="environment" onChange={handleFile} className="hidden" />
+      <input ref={inputGaleriaRef} type="file" accept={ACEITA_IMAGEM} onChange={handleFile} className="hidden" />
 
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">

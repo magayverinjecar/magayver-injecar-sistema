@@ -7,7 +7,7 @@ import {
 import { useApp } from '../context/AppContext'
 import { nomeVeiculo } from '../utils/datas'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
-import { comprimirImagem } from '../utils/imagem'
+import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import {
   CATEGORIAS_REPARO, MOMENTO_REPARO, fotosDaEntrada, fotosDoReparo, linkVistoria,
 } from '../utils/vistoria'
@@ -197,9 +197,9 @@ export default function FotosReparo() {
             className="flex items-center justify-center gap-2 border border-orange-300 text-orange-700 hover:bg-orange-50 disabled:opacity-50 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors">
             <ImagePlus size={16} /> Galeria
           </button>
-          <input ref={inputRef} type="file" accept="image/*" multiple capture="environment"
+          <input ref={inputRef} type="file" accept={ACEITA_IMAGEM} multiple capture="environment"
             onChange={adicionar} className="hidden" />
-          <input ref={inputGaleriaRef} type="file" accept="image/*" multiple
+          <input ref={inputGaleriaRef} type="file" accept={ACEITA_IMAGEM} multiple
             onChange={adicionar} className="hidden" />
         </div>
 

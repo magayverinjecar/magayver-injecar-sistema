@@ -8,7 +8,7 @@ import gerarId from '../utils/id'
 import { STATUS_OS, statusColor } from './OrdensServico'
 import { imprimirOS, imprimirOrcamento } from '../utils/print'
 import { nomeVeiculo } from '../utils/datas'
-import { comprimirImagem } from '../utils/imagem'
+import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
 import MargemDaOS from '../components/MargemDaOS'
@@ -1305,9 +1305,9 @@ export default function OrdemDetalhe() {
                   className="flex items-center gap-2 border border-cyan-300 text-cyan-700 hover:bg-cyan-50 disabled:opacity-50 px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
                   <ImagePlus size={15} /> Galeria
                 </button>
-                <input ref={inputFotoRef} type="file" accept="image/*" multiple
+                <input ref={inputFotoRef} type="file" accept={ACEITA_IMAGEM} multiple
                   onChange={adicionarFotoOS} className="hidden" capture="environment" />
-                <input ref={inputGaleriaRef} type="file" accept="image/*" multiple
+                <input ref={inputGaleriaRef} type="file" accept={ACEITA_IMAGEM} multiple
                   onChange={adicionarFotoOS} className="hidden" />
               </div>
 

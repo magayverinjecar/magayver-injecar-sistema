@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
+import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 
 // ─── Constantes iguais ao original ───────────────────────────
 const CATEGORIAS = [
@@ -26,35 +27,6 @@ const INSPECAO_ITENS = [
   { id: 'vidros',     label: 'Vidros elétricos' },
   { id: 'buzina',     label: 'Buzina' },
 ]
-
-// ─── Compressão de imagem (igual ao original — 70% JPEG, max 1280) ───────────
-function comprimirImagem(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.readAsDataURL(file)
-    reader.onload = ev => {
-      const img = new Image()
-      img.src = ev.target.result
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        const MAX = 1280
-        let w = img.width, h = img.height
-        if (w > h) {
-          if (w > MAX) { h = h * MAX / w; w = MAX }
-        } else {
-          if (h > MAX) { w = w * MAX / h; h = MAX }
-        }
-        canvas.width = w; canvas.height = h
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
-        canvas.toBlob(blob => {
-          if (blob) resolve(blob)
-          else reject(new Error('Erro na compressão'))
-        }, 'image/jpeg', 0.7) // 70% — igual ao original
-      }
-    }
-    reader.onerror = err => reject(err)
-  })
-}
 
 // ─── Item de vistoria (igual ao InspectionItemRow do original) ───────────────
 function InspecaoItem({ item, onUpdate }) {
@@ -347,7 +319,7 @@ export default function ChecklistFotosDetalhe() {
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={ACEITA_IMAGEM}
         onChange={handleFile}
         className="hidden"
       />

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
+import { ACEITA_IMAGEM } from '../utils/imagem'
 
 // ─── Constantes ───────────────────────────────────────────────
 const DIAGNOSTICO_ITENS = [
@@ -363,7 +364,7 @@ export default function ChecklistDetalhe() {
               </button>
               {/* Sem o capture o celular mostra o menu com câmera E galeria —
                   com ele, pulava direto para a câmera. */}
-              <input ref={inputFotoRef} type="file" accept="image/*" multiple
+              <input ref={inputFotoRef} type="file" accept={ACEITA_IMAGEM} multiple
                 onChange={adicionarFoto} className="hidden" />
             </div>
           )}
