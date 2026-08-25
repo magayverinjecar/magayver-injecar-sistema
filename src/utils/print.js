@@ -1,4 +1,5 @@
 import { parseValorBR } from './numero'
+import { separarItens } from './itensOS'
 
 function getConfig() {
   try {
@@ -72,7 +73,7 @@ function abrirJanela(html, titulo) {
 
 function itensTableRows(itens) {
   if (!itens || itens.length === 0) return '<tr><td colspan="4" style="text-align:center;color:#aaa;padding:8px">Nenhum item</td></tr>'
-  return itens.map(it => {
+  const linha = (it) => {
     const sub = pNum(it.valorUnitario) * qtd(it.quantidade) - pNum(it.desconto)
     return `<tr>
       <td>${esc(it.descricao)}</td>
@@ -80,7 +81,17 @@ function itensTableRows(itens) {
       <td style="text-align:right">${fmt(pNum(it.valorUnitario))}</td>
       <td style="text-align:right">${fmt(sub)}</td>
     </tr>`
-  }).join('')
+  }
+  // Mao de obra e peca separadas tambem no impresso: e a primeira pergunta de
+  // quem recebe um orcamento, e separar mostra que o preco tem logica.
+  // So agrupa quando ha os dois tipos — cabecalho sozinho e ruido no papel.
+  const g = separarItens(itens)
+  if (g.servicos.length === 0 || g.pecas.length === 0) return itens.map(linha).join('')
+  const cabecalho = (rotulo, valor) =>
+    `<tr><td colspan="3" style="background:#f1f5f9;font-weight:700;font-size:10px;letter-spacing:.04em;padding:4px 6px">${rotulo}</td>` +
+    `<td style="background:#f1f5f9;text-align:right;font-weight:700;font-size:10px;padding:4px 6px">${fmt(valor)}</td></tr>`
+  return cabecalho('MÃO DE OBRA', g.totalServicos) + g.servicos.map(linha).join('')
+    + cabecalho('PEÇAS', g.totalPecas) + g.pecas.map(linha).join('')
 }
 
 // ─── CUPOM TÉRMICO ────────────────────────────────────────────────────────────
@@ -223,10 +234,12 @@ function tabelaVeiculoOrcamento(veiculo) {
 
 function gerarA4Det(os, cliente, veiculo, mecanico, total, cfg) {
   const itens = os.itens || []
-  const servicos = itens.filter(i => i.tipo === 'servico')
-  const pecas    = itens.filter(i => i.tipo !== 'servico')
-  const totalSrv = servicos.reduce((s, i) => s + pNum(i.valorUnitario) * qtd(i.quantidade) - pNum(i.desconto), 0)
-  const totalPec = pecas.reduce((s, i) => s + pNum(i.valorUnitario) * qtd(i.quantidade) - pNum(i.desconto), 0)
+  // Divisao pela regra unica de utils/itensOS.js. Antes havia DUAS versoes
+  // feitas a mao dentro deste arquivo — esta comparava `tipo === 'servico'` e a
+  // do orcamento comparava tambem 'Servico' com maiuscula. Nenhuma das duas
+  // tratava item antigo SEM tipo, que caia como peca: uma mao de obra de OS
+  // velha era impressa para o cliente do lado errado da conta.
+  const { servicos, pecas, totalServicos: totalSrv, totalPecas: totalPec } = separarItens(itens)
 
   const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
@@ -620,10 +633,8 @@ function gerarRecibo(venda, cfg) {
 
 function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
   const itens = orc.itens || []
-  const servicos = itens.filter(i => i.tipo === 'Serviço' || i.tipo === 'servico')
-  const pecas    = itens.filter(i => i.tipo !== 'Serviço' && i.tipo !== 'servico')
-  const totalSrv = servicos.reduce((s, i) => s + pNum(i.valorUnitario) * qtd(i.quantidade) - pNum(i.desconto || 0), 0)
-  const totalPec = pecas.reduce((s, i) => s + pNum(i.valorUnitario) * qtd(i.quantidade) - pNum(i.desconto || 0), 0)
+  // Mesma regra unica da OS — ver o comentario em gerarA4Det.
+  const { servicos, pecas, totalServicos: totalSrv, totalPecas: totalPec } = separarItens(itens)
   // Desconto geral: existe nas OS e não era considerado aqui. Como o orçamento
   // da OS passou a ser impresso por esta função, sem isto o cliente receberia
   // uma proposta com o total MAIOR do que o combinado.

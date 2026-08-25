@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import { Plus, FileText, Eye, Copy, MessageCircle, Printer, ArrowRight, Trash2, X, List, Search, ChevronDown, Pencil } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
@@ -11,6 +11,7 @@ import PainelAdicionarItem from '../components/PainelAdicionarItem'
 import SeletorKit from '../components/SeletorKit'
 import { avisoDeFalta, pecaSemEstoque } from '../utils/kits'
 import { pecaComCodigo } from '../utils/pecas'
+import { separarItens } from '../utils/itensOS'
 
 const statusColor = {
   Pendente: 'bg-yellow-100 text-yellow-700',
@@ -109,7 +110,46 @@ export default function Orcamentos() {
     setAba('novo')
   }
 
+  // Uma linha de item do orçamento. Extraída do map para os dois grupos
+  // usarem a mesma linha, em vez de duas cópias que acabam divergindo.
+  function linhaDoItemOrc(it) {
+                  const subtotal = parseNum(it.valorUnitario) * parseNum(it.quantidade) - parseNum(it.desconto)
+                  // Peça com a prateleira zerada em vermelho: o orçamento pode
+                  // ser mandado com peça que ainda vai ser comprada, mas nunca
+                  // sem o dono saber. Vale para item de kit e item lançado à mão.
+                  const zerada = it.tipo !== 'Serviço' && pecaSemEstoque(estoque, it.refId)
+                  return (
+                    <div key={it.id} className={`flex items-center justify-between border rounded-lg px-4 py-3 ${zerada ? 'border-red-200 bg-red-50' : 'border-slate-100'}`}>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${it.tipo === 'Serviço' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{it.tipo}</span>
+                        <div>
+                          <p className={`text-sm font-medium ${zerada ? 'text-red-700' : 'text-slate-800'}`}>
+                            {it.descricao}
+                            {zerada && (
+                              <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 font-medium whitespace-nowrap">sem estoque</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-slate-400">{it.quantidade}x {fmt(parseNum(it.valorUnitario))}{parseNum(it.desconto) > 0 && ` · desc. ${fmt(parseNum(it.desconto))}`}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-700">{fmt(subtotal)}</span>
+                        <button onClick={() => aplicarTaxaItemOrc(it.id)} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-500 hover:text-amber-600 text-xs font-bold transition-colors">%</button>
+                        <button onClick={() => abrirEdicaoItem(it)} className="p-1 rounded hover:bg-blue-50 text-slate-500 hover:text-blue-600 transition-colors"><Pencil size={14} /></button>
+                        <button onClick={() => removerItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
+                      </div>
+                    </div>
+                  )
+  }
+
   const totalGeral = itens.reduce((s, it) => s + (parseNum(it.valorUnitario) * parseNum(it.quantidade) - parseNum(it.desconto)), 0)
+
+  // Mão de obra e peça separadas, igual à OS. Aqui o tipo é gravado como
+  // 'Serviço' e 'Peça / Produto' — com maiúscula e acento — e `separarItens`
+  // trata as duas grafias de propósito; uma comparação ingênua jogaria o
+  // orçamento inteiro para o lado das peças e zeraria a mão de obra em silêncio.
+  const { servicos: orcServicos, pecas: orcPecas, totalServicos: orcTotalServicos, totalPecas: orcTotalPecas } = separarItens(itens)
+  const orcAgrupar = orcServicos.length > 0 && orcPecas.length > 0
 
   // Números do rodapé da lista. Separa o que está PENDENTE porque é o único
   // bolo em que ainda dá para mexer: é dinheiro parado esperando o cliente
@@ -685,35 +725,22 @@ export default function Orcamentos() {
               </div>
             ) : (
               <div className="space-y-2">
-                {itens.map(it => {
-                  const subtotal = parseNum(it.valorUnitario) * parseNum(it.quantidade) - parseNum(it.desconto)
-                  // Peça com a prateleira zerada em vermelho: o orçamento pode
-                  // ser mandado com peça que ainda vai ser comprada, mas nunca
-                  // sem o dono saber. Vale para item de kit e item lançado à mão.
-                  const zerada = it.tipo !== 'Serviço' && pecaSemEstoque(estoque, it.refId)
-                  return (
-                    <div key={it.id} className={`flex items-center justify-between border rounded-lg px-4 py-3 ${zerada ? 'border-red-200 bg-red-50' : 'border-slate-100'}`}>
-                      <div className="flex items-center gap-3">
-                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${it.tipo === 'Serviço' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{it.tipo}</span>
-                        <div>
-                          <p className={`text-sm font-medium ${zerada ? 'text-red-700' : 'text-slate-800'}`}>
-                            {it.descricao}
-                            {zerada && (
-                              <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 font-medium whitespace-nowrap">sem estoque</span>
-                            )}
-                          </p>
-                          <p className="text-xs text-slate-400">{it.quantidade}x {fmt(parseNum(it.valorUnitario))}{parseNum(it.desconto) > 0 && ` · desc. ${fmt(parseNum(it.desconto))}`}</p>
-                        </div>
+                {orcAgrupar ? (
+                  [
+                    { chave: 'servico', rotulo: 'Mão de obra', lista: orcServicos, total: orcTotalServicos,
+                      fundo: 'bg-blue-50', texto: 'text-blue-800' },
+                    { chave: 'peca', rotulo: 'Peças', lista: orcPecas, total: orcTotalPecas,
+                      fundo: 'bg-orange-50', texto: 'text-orange-800' },
+                  ].map(g => (
+                    <Fragment key={g.chave}>
+                      <div className={`flex items-center justify-between rounded-lg px-3 py-1.5 ${g.fundo}`}>
+                        <span className={`text-xs font-semibold uppercase tracking-wide ${g.texto}`}>{g.rotulo}</span>
+                        <span className={`text-sm font-semibold ${g.texto}`}>{fmt(g.total)}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-slate-700">{fmt(subtotal)}</span>
-                        <button onClick={() => aplicarTaxaItemOrc(it.id)} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-500 hover:text-amber-600 text-xs font-bold transition-colors">%</button>
-                        <button onClick={() => abrirEdicaoItem(it)} className="p-1 rounded hover:bg-blue-50 text-slate-500 hover:text-blue-600 transition-colors"><Pencil size={14} /></button>
-                        <button onClick={() => removerItem(it.id)} className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
-                      </div>
-                    </div>
-                  )
-                })}
+                      {g.lista.map(linhaDoItemOrc)}
+                    </Fragment>
+                  ))
+                ) : itens.map(linhaDoItemOrc)}
                 <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
                   <span className="text-sm text-slate-500">Total:</span>
                   <span className="text-lg font-bold text-primary-600">{fmt(totalGeral)}</span>
@@ -786,6 +813,7 @@ export default function Orcamentos() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Descrição *</label>
                 <input value={item.descricao} onChange={e => setItem(it => ({ ...it, descricao: e.target.value }))}
+                  spellCheck lang="pt-BR" style={{ textTransform: 'uppercase' }}
                   spellCheck lang="pt-BR"
                   placeholder="DESCRIÇÃO"
                   className="w-full uppercase border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />

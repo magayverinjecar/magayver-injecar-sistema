@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Pencil, Printer, Receipt, MessageCircle, FileText, Trash2, Plus, ChevronDown, X, Camera, ZoomIn, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Banknote, Smartphone, CreditCard, ArrowRightLeft, Wrench, Eye, Save, ImagePlus, PenTool, ClipboardList, Loader2, ThumbsUp, ThumbsDown, Copy, Check, ShieldCheck } from 'lucide-react'
 import { custoHoraDaOficina } from '../utils/capacidade'
@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import gerarId from '../utils/id'
 import { STATUS_OS, statusColor } from './OrdensServico'
 import { imprimirOS, imprimirOrcamento } from '../utils/print'
+import { separarItens } from '../utils/itensOS'
 import { nomeVeiculo } from '../utils/datas'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
@@ -146,6 +147,12 @@ export default function OrdemDetalhe() {
   const mecanico = os.mecanicoId ? getFuncionario(os.mecanicoId) : null
   const subtotal = subtotalOrdem(os)
   const descGeral = pNum(os.descontoGeral)
+
+  // Mão de obra e peça separadas. `separarItens` usa a MESMA conta do
+  // subtotalOrdem, então a soma dos dois grupos fecha com o subtotal da OS.
+  const { servicos: itensServico, pecas: itensPeca, totalServicos, totalPecas } = separarItens(os.itens)
+  // Com só um tipo na OS, o cabeçalho de grupo vira ruído: não há o que separar.
+  const agrupar = itensServico.length > 0 && itensPeca.length > 0
   const total = totalOrdem(os)
 
   // Imprime o orçamento DESTA OS — não cria um orçamento novo.
@@ -351,6 +358,57 @@ export default function OrdemDetalhe() {
     return null
   })()
 
+  // Uma linha de item. Extraída do map para os dois grupos usarem exatamente
+  // a mesma linha — duas cópias divergiriam, e neste projeto já aconteceu
+  // três vezes de um defeito viver só numa das cópias.
+  function linhaDoItem(it) {
+                  // Peça com a prateleira zerada fica em vermelho — vale para
+                  // qualquer item, tenha vindo de kit ou lançado na mão. É o que
+                  // evita mandar o orçamento sem perceber que falta peça.
+                  // Valor derivado: entrou a peça em Compras, o vermelho some.
+                  const zerada = it.tipo === 'peca' && pecaSemEstoque(estoque, it.produtoId)
+                  // Estado da peça no estoque (bloco 02): antes da aprovação ela
+                  // está só reservada; depois, baixada. Derivado da marca no item.
+                  const estadoPeca = !ehPecaDeEstoque(it) ? null
+                    : itemBaixado(it, os) ? 'baixada'
+                    : STATUS_RESERVA.includes(os.status) ? 'reservada'
+                    : null  // OS encerrada sem usar a peça: nem reservada nem baixada
+                  return (
+                  <tr key={it.id} className={zerada ? 'bg-red-50' : ''}>
+                    <td className="py-2.5">
+                      <span className={`text-sm ${zerada ? 'text-red-700 font-medium' : 'text-slate-700'}`}>{it.descricao} </span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${it.tipo === 'servico' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>{it.tipo === 'servico' ? 'serviço' : 'peça'}</span>
+                      {zerada && (
+                        <span className="ml-1 inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 font-medium">
+                          <AlertTriangle size={11} />sem estoque
+                        </span>
+                      )}
+                      {estadoPeca && (
+                        <span
+                          title={estadoPeca === 'baixada' ? 'Já saiu do saldo do estoque' : 'Separada para esta OS; sai do saldo na aprovação'}
+                          className={`ml-1 text-[10px] px-1.5 py-0.5 rounded border ${estadoPeca === 'baixada' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                          {estadoPeca}
+                        </span>
+                      )}
+                      {it.tipo === 'servico' && it.mecanicoId && (
+                        <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">{getFuncionario(it.mecanicoId)?.nome || ''}</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 text-center text-sm text-slate-600">{it.quantidade}</td>
+                    <td className="py-2.5 text-right text-sm text-slate-600">{fmt(pNum(it.valorUnitario))}</td>
+                    <td className="py-2.5 text-right text-sm text-slate-500">{pNum(it.desconto) > 0 ? fmt(pNum(it.desconto)) : '—'}</td>
+                    <td className="py-2.5 text-right text-sm font-semibold text-slate-700">{fmt(pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto))}</td>
+                    <td className="py-2.5 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => aplicarTaxaItem(it)} disabled={osFinalizada} aria-label={`Aplicar acréscimo de ${taxaPct}%`} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-500 hover:text-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-colors">%</button>
+                        <button onClick={() => setEditandoItem({ ...it, quantidade: String(it.quantidade), valorUnitario: String(it.valorUnitario), desconto: String(it.desconto || '0'), mecanicoId: it.mecanicoId || '' })} disabled={osFinalizada} aria-label="Editar item" className="p-1 rounded hover:bg-blue-50 text-slate-500 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"><Pencil size={14} /></button>
+                        <button onClick={() => { if (confirm(`Remover "${it.descricao}" da OS?`)) removerItemOrdem(os.id, it.id) }} disabled={osFinalizada} aria-label="Remover item" className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"><Trash2 size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                  )
+  }
+
   // Mesma regra de quem adiciona: serviço não fica sem dono. Sem isto daria
   // para adicionar com reparador e tirar na edição logo depois.
   const edicaoSemReparador = editandoItem?.tipo === 'servico' && !editandoItem?.mecanicoId
@@ -361,7 +419,11 @@ export default function OrdemDetalhe() {
       return
     }
     editarItemOrdem(os.id, editandoItem.id, {
-      descricao: editandoItem.descricao,
+      // MAIUSCULO tambem na edicao. O painel de adicionar ja gravava assim, e a
+      // edicao nao — bastava alguem corrigir uma letra de um item para ele
+      // passar a destoar de todos os outros na lista, na impressao e no
+      // historico de preco, que compara descricao com descricao.
+      descricao: editandoItem.descricao.toUpperCase().trim(),
       quantidade: parseQtd(editandoItem.quantidade),
       valorUnitario: editandoItem.valorUnitario,
       desconto: editandoItem.desconto,
@@ -471,6 +533,34 @@ export default function OrdemDetalhe() {
       }
       return novo
     }))
+  }
+
+  // Grava o desconto do fechamento e reacerta o pagamento.
+  //
+  // TRES COISAS ACONTECEM AQUI, e a ordem importa:
+  //
+  // 1. GRAVA NA OS. `entregarOrdem` lê a ordem gravada, não esta tela — sem
+  //    gravar antes, o caixa registraria o valor CHEIO e o desconto viraria
+  //    ficção: a OS diria um número e o dinheiro seria outro.
+  // 2. O total recalcula sozinho, porque sai de `totalOrdem(os)`.
+  // 3. O pagamento já digitado deixa de fechar com o novo total. Com UMA forma
+  //    de pagamento, o valor é reacertado — é o que a pessoa faria na mão. Com
+  //    várias, NÃO se mexe: quem dividiu decide onde o desconto entra, e o
+  //    aviso de "faltam R$ X" já mostra a diferença.
+  function aplicarDescontoFechamento() {
+    if (descontoLocal === null) return
+    const valor = pNum(descontoLocal)
+    if (valor > subtotal) {
+      alert(`O desconto (${fmt(valor)}) é maior que o subtotal da OS (${fmt(subtotal)}).`)
+      setDescontoLocal(null)
+      return
+    }
+    atualizarOrdem(os.id, { descontoGeral: descontoLocal })
+    setDescontoLocal(null)
+    const novoTotal = Math.max(0, subtotal - valor)
+    if (pgtos.length === 1) {
+      setPgtos(ps => ps.map(p => ({ ...p, valor: novoTotal.toFixed(2).replace('.', ',') })))
+    }
   }
 
   async function confirmarPagarEntregar(comImprimir) {
@@ -1113,6 +1203,26 @@ export default function OrdemDetalhe() {
           {(!os.itens || os.itens.length === 0) ? (
             <p className="text-center text-sm text-slate-400 py-10">Nenhum item adicionado</p>
           ) : (
+            <>
+            {/* A pergunta "quanto é de mão de obra?" respondida sem ler a lista.
+                Só aparece quando há os dois tipos: numa OS só de serviço, três
+                cartões dizendo a mesma coisa é ruído. */}
+            {agrupar && (
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="bg-blue-50 rounded-xl px-3 py-2.5">
+                  <p className="text-[11px] text-blue-700">Mão de obra</p>
+                  <p className="text-base font-bold text-blue-900 tabular-nums">{fmt(totalServicos)}</p>
+                </div>
+                <div className="bg-orange-50 rounded-xl px-3 py-2.5">
+                  <p className="text-[11px] text-orange-700">Peças</p>
+                  <p className="text-base font-bold text-orange-900 tabular-nums">{fmt(totalPecas)}</p>
+                </div>
+                <div className="bg-slate-100 rounded-xl px-3 py-2.5">
+                  <p className="text-[11px] text-slate-500">Total</p>
+                  <p className="text-base font-bold text-slate-800 tabular-nums">{fmt(total)}</p>
+                </div>
+              </div>
+            )}
             <div className="overflow-x-auto -mx-5 px-5">
             <table className="w-full min-w-[480px]">
               <thead>
@@ -1126,53 +1236,27 @@ export default function OrdemDetalhe() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {os.itens.map(it => {
-                  // Peça com a prateleira zerada fica em vermelho — vale para
-                  // qualquer item, tenha vindo de kit ou lançado na mão. É o que
-                  // evita mandar o orçamento sem perceber que falta peça.
-                  // Valor derivado: entrou a peça em Compras, o vermelho some.
-                  const zerada = it.tipo === 'peca' && pecaSemEstoque(estoque, it.produtoId)
-                  // Estado da peça no estoque (bloco 02): antes da aprovação ela
-                  // está só reservada; depois, baixada. Derivado da marca no item.
-                  const estadoPeca = !ehPecaDeEstoque(it) ? null
-                    : itemBaixado(it, os) ? 'baixada'
-                    : STATUS_RESERVA.includes(os.status) ? 'reservada'
-                    : null  // OS encerrada sem usar a peça: nem reservada nem baixada
-                  return (
-                  <tr key={it.id} className={zerada ? 'bg-red-50' : ''}>
-                    <td className="py-2.5">
-                      <span className={`text-sm ${zerada ? 'text-red-700 font-medium' : 'text-slate-700'}`}>{it.descricao} </span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${it.tipo === 'servico' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>{it.tipo === 'servico' ? 'serviço' : 'peça'}</span>
-                      {zerada && (
-                        <span className="ml-1 inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 font-medium">
-                          <AlertTriangle size={11} />sem estoque
-                        </span>
-                      )}
-                      {estadoPeca && (
-                        <span
-                          title={estadoPeca === 'baixada' ? 'Já saiu do saldo do estoque' : 'Separada para esta OS; sai do saldo na aprovação'}
-                          className={`ml-1 text-[10px] px-1.5 py-0.5 rounded border ${estadoPeca === 'baixada' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                          {estadoPeca}
-                        </span>
-                      )}
-                      {it.tipo === 'servico' && it.mecanicoId && (
-                        <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">{getFuncionario(it.mecanicoId)?.nome || ''}</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 text-center text-sm text-slate-600">{it.quantidade}</td>
-                    <td className="py-2.5 text-right text-sm text-slate-600">{fmt(pNum(it.valorUnitario))}</td>
-                    <td className="py-2.5 text-right text-sm text-slate-500">{pNum(it.desconto) > 0 ? fmt(pNum(it.desconto)) : '—'}</td>
-                    <td className="py-2.5 text-right text-sm font-semibold text-slate-700">{fmt(pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto))}</td>
-                    <td className="py-2.5 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => aplicarTaxaItem(it)} disabled={osFinalizada} aria-label={`Aplicar acréscimo de ${taxaPct}%`} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-500 hover:text-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-colors">%</button>
-                        <button onClick={() => setEditandoItem({ ...it, quantidade: String(it.quantidade), valorUnitario: String(it.valorUnitario), desconto: String(it.desconto || '0'), mecanicoId: it.mecanicoId || '' })} disabled={osFinalizada} aria-label="Editar item" className="p-1 rounded hover:bg-blue-50 text-slate-500 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"><Pencil size={14} /></button>
-                        <button onClick={() => { if (confirm(`Remover "${it.descricao}" da OS?`)) removerItemOrdem(os.id, it.id) }} disabled={osFinalizada} aria-label="Remover item" className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"><Trash2 size={14} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                  )
-                })}
+                {agrupar ? (
+                  [
+                    { chave: 'servico', rotulo: 'Mão de obra', itens: itensServico, total: totalServicos,
+                      fundo: 'bg-blue-50', texto: 'text-blue-800' },
+                    { chave: 'peca', rotulo: 'Peças', itens: itensPeca, total: totalPecas,
+                      fundo: 'bg-orange-50', texto: 'text-orange-800' },
+                  ].map(g => (
+                    <Fragment key={g.chave}>
+                      {/* O subtotal do grupo cai na MESMA coluna dos subtotais de
+                          item: lê-se descendo o olho por uma linha só. */}
+                      <tr className={g.fundo}>
+                        <td colSpan={4} className={`py-1.5 px-2 text-xs font-semibold uppercase tracking-wide ${g.texto}`}>
+                          {g.rotulo}
+                        </td>
+                        <td className={`py-1.5 px-2 text-right text-xs font-semibold ${g.texto}`}>{fmt(g.total)}</td>
+                        <td className={g.fundo}></td>
+                      </tr>
+                      {g.itens.map(linhaDoItem)}
+                    </Fragment>
+                  ))
+                ) : os.itens.map(linhaDoItem)}
               </tbody>
               <tfoot>
                 {descGeral > 0 && (
@@ -1182,36 +1266,21 @@ export default function OrdemDetalhe() {
                     <td></td>
                   </tr>
                 )}
-                <tr className={descGeral > 0 ? '' : 'border-t border-slate-100'}>
-                  <td colSpan={4} className="py-2 text-right text-sm text-slate-600">
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="text-slate-500">Desconto (R$)</span>
-                      <input
-                        type="text"
-                        aria-label="Desconto geral em reais"
-                        value={descontoLocal ?? os.descontoGeral ?? ''}
-                        onChange={e => setDescontoLocal(e.target.value)}
-                        onBlur={() => {
-                          if (descontoLocal === null) return
-                          // Desconto não pode passar do subtotal — evita total "zerado" enganoso
-                          const valor = pNum(descontoLocal)
-                          if (valor > subtotal) {
-                            alert(`O desconto (${fmt(valor)}) é maior que o subtotal (${fmt(subtotal)}).`)
-                            setDescontoLocal(null)
-                            return
-                          }
-                          atualizarOrdem(os.id, { descontoGeral: descontoLocal })
-                          setDescontoLocal(null)
-                        }}
-                        disabled={osFinalizada}
-                        placeholder="0,00"
-                        className="w-24 text-right text-sm border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-400"
-                      />
-                    </div>
-                  </td>
-                  <td className="py-2 text-right text-sm text-red-500 font-medium">{descGeral > 0 ? `- ${fmt(descGeral)}` : ''}</td>
-                  <td></td>
-                </tr>
+                {/* O desconto NÃO se digita aqui.
+                    Ele passou para o momento de fechar a nota, dentro de "Pagar e
+                    entregar": desconto é decisão do fechamento, e dado ali ele
+                    nasce junto do pagamento que o caixa vai registrar. Aqui a
+                    linha só mostra o que já foi concedido, para o total continuar
+                    se explicando sozinho. */}
+                {descGeral > 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-2 text-right text-sm text-slate-500">
+                      Desconto concedido no fechamento
+                    </td>
+                    <td className="py-2 text-right text-sm text-red-500 font-medium">- {fmt(descGeral)}</td>
+                    <td></td>
+                  </tr>
+                )}
                 <tr className="border-t border-slate-200">
                   <td colSpan={4} className="py-3 text-right text-sm font-semibold text-slate-600">Total</td>
                   <td className="py-3 text-right font-bold text-slate-800">{fmt(total)}</td>
@@ -1220,6 +1289,7 @@ export default function OrdemDetalhe() {
               </tfoot>
             </table>
             </div>
+            </>
           )}
         </div>
 
@@ -1489,19 +1559,36 @@ export default function OrdemDetalhe() {
               </div>
               <div className="px-5 py-4 space-y-4">
                 <div className="bg-slate-50 rounded-lg px-4 py-3 space-y-1">
-                  {descGeral > 0 && (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-slate-400">Subtotal</span>
-                        <span className="text-sm text-slate-500">{fmt(subtotal)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-red-400">Desconto</span>
-                        <span className="text-sm text-red-500">- {fmt(descGeral)}</span>
-                      </div>
-                    </>
-                  )}
                   <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">Mão de obra</span>
+                    <span className="text-sm text-slate-500">{fmt(totalServicos)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">Peças</span>
+                    <span className="text-sm text-slate-500">{fmt(totalPecas)}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-1 mt-1">
+                    <span className="text-sm text-slate-400">Subtotal</span>
+                    <span className="text-sm text-slate-500">{fmt(subtotal)}</span>
+                  </div>
+                  {/* O desconto se dá AQUI, na hora de fechar. Gravar na OS na
+                      hora (e não só no fim) é o que faz o caixa, o financeiro e
+                      o DRE receberem o valor com desconto: quem cobra é
+                      `entregarOrdem`, que lê a OS gravada, não esta tela. */}
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <label htmlFor="desconto-fechamento" className="text-sm text-red-500">Desconto (R$)</label>
+                    <input
+                      id="desconto-fechamento"
+                      type="text"
+                      inputMode="decimal"
+                      value={descontoLocal ?? os.descontoGeral ?? ''}
+                      onChange={e => setDescontoLocal(e.target.value)}
+                      onBlur={() => aplicarDescontoFechamento()}
+                      placeholder="0,00"
+                      className="w-28 text-right text-sm border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-2 mt-1">
                     <span className="text-sm text-slate-500">Total da OS</span>
                     <span className="text-xl font-bold text-primary-600">{fmt(total)}</span>
                   </div>
@@ -1644,8 +1731,11 @@ export default function OrdemDetalhe() {
             <div className="px-5 py-4 space-y-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
+                {/* `uppercase` aqui e so aparencia; quem grava maiusculo e o
+                    salvarItemEditado. Os dois juntos: ve maiusculo e fica maiusculo. */}
                 <input value={editandoItem.descricao} onChange={e => setEditandoItem(i => ({ ...i, descricao: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  spellCheck lang="pt-BR"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
