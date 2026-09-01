@@ -41,8 +41,10 @@ export default function Gestao() {
   const intervalo = useMemo(() => intervaloDe(periodo, datas), [periodo, datas])
 
   const lacunas = useMemo(
-    () => lacunasDaLeitura({ gastos, config, clientes, estoque }),
-    [gastos, config, clientes, estoque],
+    // `ordens` e `intervalo` entram por causa da origem: ela conta só os
+    // clientes que chegaram no período escolhido, e não a base inteira.
+    () => lacunasDaLeitura({ gastos, config, clientes, estoque, ordens, intervalo }),
+    [gastos, config, clientes, estoque, ordens, intervalo],
   )
   const resumo = useMemo(
     () => resumoDaGestao({ financeiro, ordens, intervalo, totalOrdem, gastos }),

@@ -9,6 +9,7 @@ import AbaDuplicadas from '../components/AbaDuplicadas'
 import { kitsDoConfig } from '../utils/kits'
 import { rotuloDoTipo, rotuloDaOrigem, mensagemErroExtrato } from '../utils/movimentos'
 import { pecaAtiva, gruposDuplicados, casaBusca } from '../utils/pecas'
+import { proximaOrdem, ordenarPor, setaDaColuna } from '../utils/ordenar'
 import { parseValorBR } from '../utils/numero'
 
 const fmtBRL = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -116,11 +117,27 @@ export default function Estoque() {
   const [ajustando, setAjustando] = useState(null) // { item, valor, motivo }
   const [extratoDe, setExtratoDe] = useState(null) // item com extrato aberto
   const [mostrarInativas, setMostrarInativas] = useState(false)
+  // `null` = ordem de cadastro, que e a que o terceiro clique devolve.
+  const [ordem, setOrdem] = useState(null)
+
+  // Qual coluna ordena por que valor, e se e numero ou texto. O tipo importa:
+  // dinheiro comparado como TEXTO poe "R$ 1.000,00" antes de "R$ 90,00", porque
+  // o "1" e menor que o "9" — a tabela fica ordenada e errada ao mesmo tempo.
+  const COLUNAS = {
+    codigo:  { tipo: 'texto',  valor: p => p.codigo },
+    produto: { tipo: 'texto',  valor: p => p.nome },
+    marca:   { tipo: 'texto',  valor: p => p.marca },
+    estoque: { tipo: 'numero', valor: p => p.estoque },
+    custo:   { tipo: 'numero', valor: p => p.precoCusto },
+    venda:   { tipo: 'numero', valor: p => p.preco },
+  }
+  const clicarColuna = (campo) => setOrdem(o => proximaOrdem(o, campo))
 
   // Peça desativada (juntada em outra, fora de linha) sai da lista, mas
   // continua no banco e no extrato — o interruptor traz de volta para conferir.
   const visiveis = mostrarInativas ? estoque : estoque.filter(pecaAtiva)
-  const filtrados = visiveis.filter(i => casaBusca(i, busca))
+  const encontrados = visiveis.filter(i => casaBusca(i, busca))
+  const filtrados = ordenarPor(encontrados, ordem, COLUNAS)
   const qtdInativas = estoque.length - estoque.filter(pecaAtiva).length
   const totalUnidades = filtrados.reduce((s, i) => s + (Number(i.estoque) || 0), 0)
   const valorEstoque = filtrados.reduce((s, i) => s + (Number(i.estoque) || 0) * parseValorBR(i.precoCusto), 0)
@@ -234,16 +251,36 @@ export default function Estoque() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
         <table className="w-full">
           <thead>
+            {/* Cabecalho que ordena: 1o clique crescente, 2o decrescente, 3o
+                volta a ordem de cadastro. O botao dentro do th e de proposito —
+                th nao recebe foco de teclado, e sem isso a coluna so existiria
+                para quem usa mouse. */}
             <tr className="border-b border-slate-100 bg-slate-50">
-              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Código</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Produto</th>
-              {/* Marca no lugar de categoria: 82 das 543 peças tinham categoria
-                  preenchida, e existem 16 peças de nome igual que só a marca e a
-                  aplicação distinguem. */}
-              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Marca</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</th>
-              <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Custo</th>
-              <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Venda</th>
+              {[
+                { campo: 'codigo',  titulo: 'Código',  alinha: 'text-left' },
+                { campo: 'produto', titulo: 'Produto', alinha: 'text-left' },
+                // Marca no lugar de categoria: 82 das 543 peças tinham categoria
+                // preenchida, e existem 16 peças de nome igual que só a marca e
+                // a aplicação distinguem.
+                { campo: 'marca',   titulo: 'Marca',   alinha: 'text-left' },
+                { campo: 'estoque', titulo: 'Estoque', alinha: 'text-left' },
+                { campo: 'custo',   titulo: 'Custo',   alinha: 'text-right' },
+                { campo: 'venda',   titulo: 'Venda',   alinha: 'text-right' },
+              ].map(({ campo, titulo, alinha }) => {
+                const ativa = ordem?.campo === campo
+                return (
+                  <th key={campo} className={`${alinha} px-5 py-3 text-xs font-semibold uppercase tracking-wide ${ativa ? 'text-primary-600' : 'text-slate-500'}`}>
+                    <button type="button" onClick={() => clicarColuna(campo)}
+                      title={ativa
+                        ? (ordem.direcao === 'asc' ? 'Clique para inverter' : 'Clique para voltar à ordem de cadastro')
+                        : `Ordenar por ${titulo.toLowerCase()}`}
+                      className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-primary-600 transition-colors ${alinha === 'text-right' ? 'flex-row-reverse' : ''}`}>
+                      {titulo}
+                      <span className="text-[11px] w-2 inline-block">{setaDaColuna(ordem, campo)}</span>
+                    </button>
+                  </th>
+                )
+              })}
               <th className="px-5 py-3"></th>
             </tr>
           </thead>

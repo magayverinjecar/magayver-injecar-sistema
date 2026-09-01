@@ -22,6 +22,8 @@ import { parseValorBR, cent } from './numero.js'
 import { dentroDoPeriodo, resumirFinanceiro } from './periodo.js'
 import { momentoEntrada } from './datas.js'
 import { custoFixoMensal, compromissoFinanceiro, ehFinanceiro, ehRetirada } from './margem.js'
+import { primeiraVisitaPorCliente, origemDoCliente } from './origemCliente.js'
+import { SEM_ORIGEM } from './origemCliente.js'
 
 // As OS que já viraram resultado. Mesmo corte do DRE e do ponto de equilíbrio —
 // se esta tela usasse outro, ela contradiria as outras e ninguém acreditaria em
@@ -197,7 +199,7 @@ export function dinheiroParado({ orcamentos = [], estoque = [], ordens = [], tot
 // Vem ANTES dos números na tela, de propósito. Enquanto o custo fixo não estiver
 // cadastrado, "lucro" é receita menos despesa de caixa — e retirar dinheiro
 // olhando esse número descapitaliza a empresa sem ninguém perceber.
-export function lacunasDaLeitura({ gastos = [], config = null, clientes = [], estoque = [] } = {}) {
+export function lacunasDaLeitura({ gastos = [], config = null, clientes = [], estoque = [], ordens = [], intervalo = null } = {}) {
   const lacunas = []
 
   const fixoMes = custoFixoMensal(gastos)
@@ -253,14 +255,35 @@ export function lacunasDaLeitura({ gastos = [], config = null, clientes = [], es
     })
   }
 
-  const semOrigem = (clientes || []).filter(c => !String(c?.origem || '').trim()).length
-  if (clientes.length > 0 && semOrigem / clientes.length > 0.5) {
+  // Origem: conta só quem CHEGOU no período, não a base inteira.
+  //
+  // A base tem anos de oficina e a pergunta da origem só existe desde 23/08.
+  // Medindo todo mundo, o aviso dizia "217 de 229 sem origem" e ia dizer isso
+  // para sempre: ninguém vai ligar para 217 clientes antigos perguntando como
+  // conheceram a oficina em 2024. Aviso que não dá para atender vira ruído, e
+  // ruído ensina a ignorar TODOS os avisos — inclusive os que importam.
+  //
+  // Contando só os novos, ele passa a medir o que a recepção está fazendo AGORA
+  // e some sozinho quando ela começa a perguntar. Quem chegou é definido pela
+  // PRIMEIRA visita, a mesma regra do painel de Origem — se as duas telas
+  // usassem cortes diferentes, uma desmentiria a outra.
+  const primeiraVisita = primeiraVisitaPorCliente(ordens)
+  const chegouNoPeriodo = (c) => {
+    const t = primeiraVisita.get(String(c?.id ?? ''))
+    if (!t) return false
+    if (!intervalo) return true
+    return t >= intervalo.de && t <= intervalo.ate
+  }
+  const novos = (clientes || []).filter(chegouNoPeriodo)
+  const novosSemOrigem = novos.filter(c => origemDoCliente(c) === SEM_ORIGEM).length
+  if (novos.length >= 3 && novosSemOrigem / novos.length > 0.5) {
     lacunas.push({
       id: 'origem',
       peso: 'baixo',
-      titulo: `${semOrigem} de ${clientes.length} clientes sem origem`,
-      texto: 'O bloco de canais fala só da parte respondida. A pergunta fica na Nova Entrada e o preenchimento dos antigos, na tela de Clientes.',
-      onde: 'Nova Entrada / Clientes',
+      titulo: `${novosSemOrigem} de ${novos.length} clientes novos sem origem`,
+      texto: 'Conta só quem chegou neste período — os antigos não entram, porque a pergunta não existia quando eles vieram. '
+        + 'Enquanto a maioria dos novos ficar em branco, o bloco de canais fala de meia oficina.',
+      onde: 'Nova Entrada',
     })
   }
 
