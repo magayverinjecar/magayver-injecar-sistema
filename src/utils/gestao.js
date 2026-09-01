@@ -275,11 +275,26 @@ export function lacunasDaLeitura({ gastos = [], config = null, clientes = [], es
     return t >= intervalo.de && t <= intervalo.ate
   }
   const novos = (clientes || []).filter(chegouNoPeriodo)
-  const novosSemOrigem = novos.filter(c => origemDoCliente(c) === SEM_ORIGEM).length
-  if (novos.length >= 3 && novosSemOrigem / novos.length > 0.5) {
+  // A lista vai junto, e nao so a contagem: um aviso que diz QUANTOS mas nao
+  // QUAIS obriga a pessoa a sair da tela e cacar. Com os clientes aqui, a tela
+  // consegue oferecer a correcao no proprio aviso.
+  const semOrigemAgora = novos.filter(c => origemDoCliente(c) === SEM_ORIGEM)
+  const novosSemOrigem = semOrigemAgora.length
+  // Basta UM em branco para listar, e nao "mais da metade".
+  //
+  // Com o corte na metade acontecia isto: 3 de 4 em branco mostrava o aviso;
+  // a pessoa respondia UM e caia para 2 de 4 — 50%, que nao e "mais da metade"
+  // — e o aviso inteiro sumia com dois clientes ainda por responder. Some antes
+  // de o trabalho acabar e nao volta, entao aqueles dois ficavam em branco para
+  // sempre. Agora ele so vai embora quando nao houver mais nenhum.
+  //
+  // O piso de 3 clientes novos continua: com 1 ou 2 no periodo, "1 de 2 sem
+  // origem" nao e sinal de nada.
+  if (novos.length >= 3 && novosSemOrigem > 0) {
     lacunas.push({
       id: 'origem',
       peso: 'baixo',
+      alvos: semOrigemAgora.map(c => ({ id: c.id, nome: c.nome || c.razaoSocial || 'Cliente sem nome' })),
       titulo: `${novosSemOrigem} de ${novos.length} clientes novos sem origem`,
       texto: 'Conta só quem chegou neste período — os antigos não entram, porque a pergunta não existia quando eles vieram. '
         + 'Enquanto a maioria dos novos ficar em branco, o bloco de canais fala de meia oficina.',
@@ -287,11 +302,15 @@ export function lacunasDaLeitura({ gastos = [], config = null, clientes = [], es
     })
   }
 
-  const semCusto = (estoque || []).filter(p => (Number(p?.estoque) || 0) > 0 && !(parseValorBR(p?.precoCusto) > 0)).length
+  const pecasSemCusto = (estoque || []).filter(p => (Number(p?.estoque) || 0) > 0 && !(parseValorBR(p?.precoCusto) > 0))
+  const semCusto = pecasSemCusto.length
   if (semCusto > 0) {
     lacunas.push({
       id: 'custo_peca',
       peso: 'medio',
+      // Mesma razão da origem: dizer QUAIS, não só quantas. Um aviso que dá o
+      // número e esconde os nomes obriga a pessoa a sair da tela e caçar.
+      alvos: pecasSemCusto.slice(0, 12).map(p => ({ id: p.id, nome: p.nome || 'Peça sem nome', codigo: p.codigo || '' })),
       titulo: `${semCusto} peça(s) com saldo e sem custo`,
       texto: 'A margem das OS que usaram essas peças sai por cima — o sistema conta a venda e não conta o que a peça custou.',
       onde: 'Estoque',

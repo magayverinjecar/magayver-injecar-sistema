@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { TrendingUp, AlertTriangle, Wrench, Package, Users, PieChart, Lock } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import SeletorPeriodo from '../components/ui/SeletorPeriodo'
 import { intervaloDe } from '../utils/periodo'
+import { ORIGENS_CLIENTE } from '../utils/origemCliente'
 import {
   resumoDaGestao, rankingServicos, rankingPecas, rankingClientes,
   serieMensal, dinheiroParado, lacunasDaLeitura,
@@ -33,9 +35,20 @@ const curto = (v) => {
 export default function Gestao() {
   const {
     financeiro, ordens, orcamentos, estoque, clientes, gastos, config,
-    totalOrdem, getCliente, getFuncionario,
+    totalOrdem, getCliente, getFuncionario, setClientes,
   } = useApp()
 
+  // Marcar a origem sem sair da tela.
+  //
+  // O aviso dizia QUANTOS e escondia QUAIS, e mandava a pessoa procurar noutra
+  // tela — que e onde ela desiste. Com o cliente e a lista de canais aqui, o
+  // conserto e um clique, e o proprio aviso encolhe a cada resposta ate sumir.
+  function marcarOrigem(clienteId, origem) {
+    if (!origem) return
+    setClientes(prev => prev.map(c => String(c.id) === String(clienteId) ? { ...c, origem } : c))
+  }
+
+  const navigate = useNavigate()
   const [periodo, setPeriodo] = useState('mes')
   const [datas, setDatas] = useState({ de: '', ate: '' })
   const intervalo = useMemo(() => intervaloDe(periodo, datas), [periodo, datas])
@@ -125,6 +138,44 @@ export default function Gestao() {
                   <span className="ml-2 font-normal text-amber-700">· {l.onde}</span>
                 </p>
                 <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">{l.texto}</p>
+
+                {/* A ORIGEM se resolve AQUI. Um seletor por cliente: escolheu,
+                    gravou, e a linha some do aviso na hora. Sem trocar de tela,
+                    que e onde a correcao costuma morrer. */}
+                {l.id === 'origem' && l.alvos?.length > 0 && (
+                  <div className="mt-2 flex flex-col gap-1.5">
+                    {l.alvos.map(alvo => (
+                      <div key={alvo.id} className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-amber-900 font-medium min-w-0 flex-1 truncate" title={alvo.nome}>
+                          {alvo.nome}
+                        </span>
+                        <select defaultValue="" aria-label={`Como ${alvo.nome} conheceu a oficina`}
+                          onChange={e => marcarOrigem(alvo.id, e.target.value)}
+                          className="text-xs border border-amber-300 bg-white rounded px-2 py-1 text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400">
+                          <option value="">como conheceu?</option>
+                          {ORIGENS_CLIENTE.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* A peca nao da para consertar aqui — o custo pede a ficha
+                    inteira. Mas dizer o NOME ja evita a cacada, e o link cai
+                    direto na peca certa. */}
+                {l.id === 'custo_peca' && l.alvos?.length > 0 && (
+                  <div className="mt-2 flex flex-col gap-1">
+                    {l.alvos.map(alvo => (
+                      <button key={alvo.id} type="button"
+                        onClick={() => navigate(`/estoque/peca/${encodeURIComponent(alvo.id)}`)}
+                        className="text-left text-xs text-amber-900 hover:text-amber-700 hover:underline">
+                        {alvo.codigo && <span className="font-mono text-amber-700">{alvo.codigo} · </span>}
+                        {alvo.nome}
+                        <span className="ml-1 text-amber-600">→ preencher o custo</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
