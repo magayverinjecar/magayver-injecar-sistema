@@ -1,8 +1,37 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Wrench, Trash2 } from 'lucide-react'
+import { Plus, Search, Wrench, Trash2, BellRing } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { parseValorBR } from '../utils/numero'
+import { servicoEhRevisao } from '../utils/revisao'
+
+// "Item de revisão" é o que põe o carro em "Clientes para chamar" 6 meses
+// depois. A marca fica aqui, direto na lista: o catálogo não tem tela de
+// edição, e abrir uma só para um sim/não seria trabalho à toa.
+//
+// Enquanto ninguém mexeu, vale o que o nome diz ("TROCA DE ÓLEO" já conta). O
+// botão mostra o que vale HOJE, e o clique inverte — inclusive para tirar um
+// serviço que o nome reconheceu errado.
+function BotaoRevisao({ servico, onAlternar, compacto = false }) {
+  const conta = servicoEhRevisao(servico)
+  const pelaMarca = typeof servico.revisao === 'boolean'
+  const titulo = (conta
+    ? 'Conta como revisão: o cliente entra em "Clientes para chamar" 6 meses depois.'
+    : 'Não conta como revisão.')
+    + (pelaMarca ? '' : ' (Reconhecido pelo nome do serviço.)')
+    + ' Clique para mudar.'
+  return (
+    <button type="button" onClick={onAlternar} title={titulo}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap transition-colors ${
+        conta
+          ? 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100'
+          : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300'
+      }`}>
+      <BellRing size={11} />
+      {conta ? (compacto ? 'Revisão' : 'Revisão · 6 meses') : 'Não é revisão'}
+    </button>
+  )
+}
 
 const fmtBRL = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -31,6 +60,12 @@ export default function Servicos() {
     if (confirm('Excluir serviço?')) setServicos(prev => prev.filter(s => s.id !== id))
   }
 
+  function alternarRevisao(id) {
+    setServicos(prev => prev.map(s => s.id === id ? { ...s, revisao: !servicoEhRevisao(s) } : s))
+  }
+
+  const marcadosRevisao = filtrados.filter(servicoEhRevisao).length
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -54,6 +89,7 @@ export default function Servicos() {
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Serviço</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoria</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Tempo</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Chamar de volta</th>
               <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Preço</th>
               <th className="px-5 py-3"></th>
             </tr>
@@ -78,6 +114,9 @@ export default function Servicos() {
                   </td>
                   <td className="px-5 py-3.5 text-sm text-slate-600 whitespace-nowrap">{s.categoria || <span className="text-slate-300">—</span>}</td>
                   <td className="px-5 py-3.5 text-sm text-slate-600 whitespace-nowrap">{s.tempo || <span className="text-slate-300">—</span>}</td>
+                  <td className="px-5 py-3.5">
+                    <BotaoRevisao servico={s} onAlternar={() => alternarRevisao(s.id)} />
+                  </td>
                   {/* Sem quebra: o nome do serviço é longo e empurrava o preço,
                       que quebrava em "R$" numa linha e o valor na outra. */}
                   <td className="px-5 py-3.5 text-sm text-slate-700 text-right tabular-nums whitespace-nowrap">
@@ -102,6 +141,7 @@ export default function Servicos() {
               {filtrados.length} {filtrados.length === 1 ? 'serviço' : 'serviços'}
               {busca && ` (de ${servicos.length})`}
               {semPreco > 0 && <span className="ml-2 text-yellow-700">· {semPreco} sem preço</span>}
+              <span className="ml-2 text-green-700">· {marcadosRevisao} contam como revisão</span>
             </span>
             <span className="flex items-center gap-4 tabular-nums">
               {/* Sem nenhum serviço com preço, "R$ 0,00" seria lido como "a
@@ -129,6 +169,9 @@ export default function Servicos() {
               </div>
             </div>
             <p className="font-semibold text-slate-800 mb-1">{s.nome}</p>
+            <div className="mt-2">
+              <BotaoRevisao servico={s} onAlternar={() => alternarRevisao(s.id)} compacto />
+            </div>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
               <span className="text-lg font-bold text-primary-600">R$ {s.preco}</span>
               {s.tempo && <span className="text-xs text-slate-400">⏱ {s.tempo}</span>}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import gerarId from '../utils/id'
 import TelaCadastro from '../components/TelaCadastro'
+import { ehTextoDeRevisao } from '../utils/revisao'
 
 const VAZIO = { nome: '', categoria: '', preco: '', tempo: '' }
 const INP = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500'
@@ -14,6 +15,9 @@ export default function ServicoCadastro() {
 
   const campo = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
   const sujo = JSON.stringify(form) !== JSON.stringify(VAZIO)
+  // Até a pessoa mexer na caixa, ela acompanha o nome: "TROCA DE ÓLEO" já
+  // vem marcada. Depois do clique, vale o que a pessoa escolheu.
+  const revisao = typeof form.revisao === 'boolean' ? form.revisao : ehTextoDeRevisao(form.nome)
 
   function salvar() {
     if (!form.nome.trim()) { setErro('O nome do serviço é obrigatório.'); return false }
@@ -23,6 +27,7 @@ export default function ServicoCadastro() {
       ...form,
       nome: form.nome.toUpperCase().trim(),
       categoria: (form.categoria || '').toUpperCase(),
+      revisao,
       id: gerarId(),
     }])
   }
@@ -56,6 +61,17 @@ export default function ServicoCadastro() {
         <div>
           <label className={ROTULO}>Tempo estimado</label>
           <input value={form.tempo} onChange={campo('tempo')} placeholder="1h30" className={INP} />
+        </div>
+        <div className="lg:col-span-2 flex items-end">
+          <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer pb-2">
+            <input type="checkbox" checked={revisao}
+              onChange={e => setForm(f => ({ ...f, revisao: e.target.checked }))}
+              className="mt-0.5 accent-primary-500" />
+            <span>
+              Item de revisão
+              <span className="block text-xs text-slate-500">O cliente entra em "Clientes para chamar" 6 meses depois.</span>
+            </span>
+          </label>
         </div>
       </div>
     </TelaCadastro>
