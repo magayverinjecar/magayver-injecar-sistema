@@ -5,6 +5,30 @@ import { useApp } from '../context/AppContext'
 import { imprimirReciboCaixa } from '../utils/print'
 import { resumoDoTurno, divergenciaGaveta, FORMA_DINHEIRO } from '../utils/caixa'
 import { parseValorBR } from '../utils/numero'
+import { PF, PJ, pareceSaidaPessoal, pessoaDaSaida } from '../utils/pessoal'
+
+// Oficina ou Pessoal — a mesma escolha no lançamento e na edição da saída.
+// Gasto pessoal pago pelo caixa é retirada do dono, e é isso que o relatório
+// "Pessoal × Oficina" do Financeiro soma (utils/pessoal.js).
+function EscolhaPessoa({ valor, onEscolher }) {
+  return (
+    <div className="mb-3">
+      <label className="block text-sm font-medium text-slate-700 mb-1">De quem é esse gasto?</label>
+      <div className="grid grid-cols-2 gap-2">
+        {[
+          { id: PJ, rotulo: 'Oficina', cor: 'border-primary-500 bg-primary-50 text-primary-700' },
+          { id: PF, rotulo: 'Pessoal', cor: 'border-purple-500 bg-purple-50 text-purple-700' },
+        ].map(o => (
+          <button key={o.id} type="button" onClick={() => onEscolher(o.id)}
+            className={`py-2 px-2 rounded-lg border text-sm font-semibold transition-colors ${valor === o.id ? o.cor : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+            {o.rotulo}
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] text-slate-400 mt-1">Pessoal = conta da família paga pelo caixa (escola, casa, retirada…).</p>
+    </div>
+  )
+}
 
 const fmt = (v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 // Dentro de coluna de dinheiro o "R$" sai: o cabeçalho já diz a moeda, e o
@@ -31,6 +55,10 @@ export default function Caixa() {
   const [movValor, setMovValor] = useState('')
   const [movMotivo, setMovMotivo] = useState('')
   const [movForma, setMovForma] = useState('Dinheiro')
+  // Oficina ou Pessoal. Até a pessoa clicar, acompanha o motivo: escreveu
+  // "PF", "retirada", "escola"… vira Pessoal sozinho (utils/pessoal.js).
+  const [movPessoa, setMovPessoa] = useState(PJ)
+  const [movPessoaManual, setMovPessoaManual] = useState(false)
   const [editMov, setEditMov] = useState(null) // movimento sendo editado
   const [modalFechar, setModalFechar] = useState(false)
   const [contagem, setContagem] = useState({})
@@ -139,6 +167,7 @@ export default function Caixa() {
       taxa: 0,
       motivo: m.motivo || '—',
       hora: m.hora,
+      ...(m.tipo === 'sangria' ? pessoaDaSaida(m) : {}),
     })),
   ].sort((a, b) => b.hora.localeCompare(a.hora))
 
@@ -155,6 +184,7 @@ export default function Caixa() {
 
   const movEntradas = movimentosCompletos.filter(m => m.tipo !== 'sangria').reduce((s, m) => s + (Number(m.valor) || 0), 0)
   const movSaidas = movimentosCompletos.filter(m => m.tipo === 'sangria').reduce((s, m) => s + (Number(m.valor) || 0), 0)
+  const movSaidasPessoais = movimentosCompletos.filter(m => m.tipo === 'sangria' && m.pessoa === PF).reduce((s, m) => s + (Number(m.valor) || 0), 0)
   // Taxa da maquininha: aparece solta em cada linha, mas o que interessa é o
   // tanto que o dia inteiro deixou na adquirente.
   const movTaxas = movimentosCompletos.reduce((s, m) => s + (Number(m.taxa) || 0), 0)
@@ -171,10 +201,14 @@ export default function Caixa() {
       sub: `+ ${fmt(resumo.banco.total)} em banco` },
   ]
 
-  function abrirMov(tipo) { setModalMov(tipo); setMovValor(''); setMovMotivo(''); setMovForma('Dinheiro') }
+  function abrirMov(tipo) { setModalMov(tipo); setMovValor(''); setMovMotivo(''); setMovForma('Dinheiro'); setMovPessoa(PJ); setMovPessoaManual(false) }
+  function mudarMotivo(texto) {
+    setMovMotivo(texto)
+    if (!movPessoaManual) setMovPessoa(pareceSaidaPessoal(texto) ? PF : PJ)
+  }
   function confirmarMov() {
     if (!movValor) return
-    if (modalMov === 'sangria') registrarSangria(movValor, movMotivo, movForma)
+    if (modalMov === 'sangria') registrarSangria(movValor, movMotivo, movForma, movPessoa)
     else registrarReforco(movValor, movMotivo, movForma)
     setModalMov(null)
   }
@@ -226,7 +260,10 @@ export default function Caixa() {
           // A forma passou a ser editável: sem isso não havia como corrigir uma
           // sangria que saiu marcada como dinheiro mas foi paga por PIX — e ela
           // ficava para sempre descontando de uma gaveta que não perdeu nada.
-          ? { ...m, valor: pNum(editMov.valor), motivo: editMov.motivo, forma: editMov.forma || m.forma }
+          ? {
+              ...m, valor: pNum(editMov.valor), motivo: editMov.motivo, forma: editMov.forma || m.forma,
+              ...(m.tipo === 'sangria' && editMov.pessoa ? { pessoa: editMov.pessoa } : {}),
+            }
           : m
       ),
     }))
@@ -378,6 +415,12 @@ export default function Caixa() {
                         <span className={`text-xs px-2.5 py-1 rounded-md font-medium ${cor}`}>
                           {m.tipo === 'reforco' ? 'reforço' : m.tipo}
                         </span>
+                        {m.pessoa === PF && (
+                          <span title={m.estimado ? 'Pessoal pelo texto do motivo (lançada antes da marcação)' : 'Gasto pessoal'}
+                            className="ml-1.5 text-[11px] px-2 py-0.5 rounded-md font-semibold bg-purple-100 text-purple-700">
+                            Pessoal
+                          </span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-sm text-slate-700">{m.forma}</td>
                       <td className="px-5 py-3.5 text-right text-sm font-medium text-slate-700 tabular-nums">
@@ -389,7 +432,7 @@ export default function Caixa() {
                       <td className="px-5 py-3.5">
                         {editavel && (
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => abrirEditMov({ id: m.idOriginal, valor: String(m.valor), motivo: m.motivo, tipo: m.tipo, forma: m.forma })}
+                            <button onClick={() => abrirEditMov({ id: m.idOriginal, valor: String(m.valor), motivo: m.motivo, tipo: m.tipo, forma: m.forma, pessoa: m.pessoa })}
                               className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
                               <Pencil size={13} />
                             </button>
@@ -415,6 +458,11 @@ export default function Caixa() {
               <span className="flex items-center gap-4 tabular-nums">
                 <span className="text-green-700">Entradas: <strong className="font-medium">{fmt(movEntradas)}</strong></span>
                 <span className="text-red-600">Saídas: <strong className="font-medium">{fmt(movSaidas)}</strong></span>
+                {movSaidasPessoais >= 0.01 && (
+                  <span className="text-purple-700" title="Das saídas, quanto foi gasto pessoal">
+                    oficina <strong className="font-medium">{fmt(movSaidas - movSaidasPessoais)}</strong> · pessoal <strong className="font-medium">{fmt(movSaidasPessoais)}</strong>
+                  </span>
+                )}
                 {movTaxas >= 0.01 && (
                   <span title="Taxa da maquininha — já vem descontada do que cai na conta">
                     Taxas: <strong className="font-medium">{fmt(movTaxas)}</strong>
@@ -442,8 +490,11 @@ export default function Caixa() {
           <input type="text" inputMode="decimal" value={movValor} onChange={e => setMovValor(e.target.value)} placeholder="0,00"
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-3" autoFocus />
           <label className="block text-sm font-medium text-slate-700 mb-1">Motivo</label>
-          <textarea value={movMotivo} onChange={e => setMovMotivo(e.target.value)} rows={2} placeholder="Informe o motivo..."
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none" />
+          <textarea value={movMotivo} onChange={e => (modalMov === 'sangria' ? mudarMotivo(e.target.value) : setMovMotivo(e.target.value))} rows={2} placeholder="Informe o motivo..."
+            className={`w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none ${modalMov === 'sangria' ? 'mb-3' : ''}`} />
+          {modalMov === 'sangria' && (
+            <EscolhaPessoa valor={movPessoa} onEscolher={p => { setMovPessoa(p); setMovPessoaManual(true) }} />
+          )}
           <div className="flex gap-3 justify-end mt-5">
             <button onClick={() => setModalMov(null)} className="border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
             <button onClick={confirmarMov} className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">Confirmar</button>
@@ -473,7 +524,10 @@ export default function Caixa() {
           <label className="block text-sm font-medium text-slate-700 mb-1">Motivo</label>
           <textarea value={editMov.motivo} onChange={e => setEditMov(v => ({ ...v, motivo: e.target.value }))} rows={2}
             placeholder="Informe o motivo..."
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none" />
+            className={`w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none ${editMov.tipo === 'sangria' ? 'mb-3' : ''}`} />
+          {editMov.tipo === 'sangria' && (
+            <EscolhaPessoa valor={editMov.pessoa || PJ} onEscolher={p => setEditMov(v => ({ ...v, pessoa: p }))} />
+          )}
           <div className="flex gap-3 justify-end mt-5">
             <button onClick={() => setEditMov(null)} className="border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
             <button onClick={salvarEditMov} className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">Salvar</button>

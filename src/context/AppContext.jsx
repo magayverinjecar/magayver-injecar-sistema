@@ -10,6 +10,7 @@ import gerarId from '../utils/id'
 import { novoIdMovimento, idMovimentoDeterministico } from '../utils/movimentos'
 import { aplicarRegraNasOrdens, derivarMovimentosDaOS, reservasPorPeca } from '../utils/reserva'
 import { bloqueioDeConclusao } from '../utils/reparador'
+import { PF, PJ, pareceSaidaPessoal } from '../utils/pessoal'
 import {
   enfileirar as enfileirarPendencia,
   listar as listarPendencias,
@@ -2686,8 +2687,12 @@ export function AppProvider({ children }) {
     setFinanceiro(fp => fp.filter(f => f.vendaId !== vendaId))
   }
 
-  function registrarSangria(valor, motivo, forma = 'Dinheiro') {
-    setCaixaTurno(t => t ? { ...t, movimentos: [{ id: gerarId(), tipo: 'sangria', valor: pNum(valor), motivo, forma, hora: horaAgora() }, ...t.movimentos] } : t)
+  // `pessoa`: 'PJ' (oficina) ou 'PF' (gasto pessoal do dono — utils/pessoal.js).
+  // Quem não informa (pagamento de boleto pelo Financeiro) cai na leitura do
+  // texto: um boleto de escola, por exemplo, é pessoal.
+  function registrarSangria(valor, motivo, forma = 'Dinheiro', pessoa) {
+    const p = pessoa === PF || pessoa === PJ ? pessoa : (pareceSaidaPessoal(motivo) ? PF : PJ)
+    setCaixaTurno(t => t ? { ...t, movimentos: [{ id: gerarId(), tipo: 'sangria', valor: pNum(valor), motivo, forma, pessoa: p, hora: horaAgora() }, ...t.movimentos] } : t)
   }
 
   function registrarReforco(valor, motivo, forma = 'Dinheiro') {
