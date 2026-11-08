@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Wrench, Eye, EyeOff, LogIn, Sun, Moon, ChevronDown } from 'lucide-react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
@@ -13,10 +13,22 @@ const PERFIL_COR = {
 }
 const PERFIL_LABEL = { admin: 'Administrador', reparador: 'Reparador', recepcao: 'Recepção', personalizado: 'Personalizado' }
 
+// Para onde ir depois de entrar. Quem chegou por um link — o QR do papel do
+// reparador abre as fotos de uma OS — volta para ele; sem isso caía no Pátio e
+// tinha de procurar a OS. Só caminho interno ("/algo"): "//site" e endereço
+// completo levariam para fora do sistema.
+function destinoDepoisDoLogin(state) {
+  const v = state?.voltarPara
+  if (typeof v !== 'string' || !v.startsWith('/') || v.startsWith('//') || v.startsWith('/\\')) return '/'
+  if (v === '/login' || v.startsWith('/login?')) return '/'
+  return v
+}
+
 export default function PinLogin() {
   const { login } = useAuth()
   const { dark, toggle } = useTheme()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [selecionado, setSelecionado] = useState(null)
   const [senha, setSenha] = useState('')
@@ -128,7 +140,7 @@ export default function PinLogin() {
       }
 
       login({ id: linha.id, ...linha.data })
-      navigate('/', { replace: true })
+      navigate(destinoDepoisDoLogin(location.state), { replace: true })
     } catch (e) {
       console.error('[login] erro inesperado:', e)
       setErro('Não consegui falar com o servidor. Verifique a internet e tente de novo.')

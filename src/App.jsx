@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { AppProvider } from './context/AppContext'
 import { ThemeProvider } from './context/ThemeContext'
@@ -91,7 +91,10 @@ function Rota({ perm, children }) {
 
 function ProtectedLayout() {
   const { currentUser } = useAuth()
-  if (!currentUser) return <Navigate to="/login" replace />
+  const location = useLocation()
+  // Leva junto o endereço pedido: quem abriu um link (o QR do papel do
+  // reparador) sem estar logado volta para ele depois de entrar.
+  if (!currentUser) return <Navigate to="/login" replace state={{ voltarPara: location.pathname + location.search }} />
   return <Layout />
 }
 
