@@ -1584,6 +1584,9 @@ export function AppProvider({ children }) {
       clienteId: dados.clienteId ?? null,
       veiculoId: dados.veiculoId ?? null,
       kmEntrada: dados.kmEntrada || '',
+      // A recepção marcou que o hodômetro não deu para ler. Sem isto, km vazio
+      // não diria se foi esquecido ou se não havia como ler.
+      ...(dados.kmIlegivel ? { kmIlegivel: true } : {}),
       mecanicoId: dados.mecanicoId ?? null,
       descricaoProblema: dados.descricaoProblema || dados.servico || '',
       diagnostico: dados.diagnostico || '',

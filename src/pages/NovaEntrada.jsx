@@ -375,6 +375,12 @@ export default function NovaEntrada() {
     }
   }
 
+  // O km de entrada é o que permite a etiqueta de troca de óleo e o aviso de
+  // revisão — e estava vazio em 541 das 544 OS. Agora é obrigatório, com uma
+  // saída honesta para o painel apagado ou o hodômetro quebrado: travar a
+  // entrada por um número que ninguém consegue ler faria a recepção inventar.
+  const faltaKm = !String(veiculo.kmEntrada || '').trim() && !veiculo.kmIlegivel
+
   // No computador tudo está na tela ao mesmo tempo, então a conferência é de
   // tudo; no celular, só do passo em que a pessoa está.
   function validar(tudo = false) {
@@ -386,6 +392,7 @@ export default function NovaEntrada() {
     if (tudo || passo === 2) {
       if (!veiculo.modelo.trim()) e.modelo = 'Modelo obrigatório'
       if (!veiculo.placa.trim()) e.placa = 'Placa obrigatória'
+      if (faltaKm) e.km = 'Obrigatório'
     }
     setErros(e)
     return Object.keys(e).length === 0
@@ -399,6 +406,7 @@ export default function NovaEntrada() {
     !cliente.telefone.trim() && 'telefone',
     !veiculo.modelo.trim() && 'modelo',
     !veiculo.placa.trim() && 'placa',
+    faltaKm && 'km',
   ].filter(Boolean)
 
   function proximo() {
@@ -476,7 +484,8 @@ export default function NovaEntrada() {
     const osId = novaOrdem({
       clienteId: cId,
       veiculoId: vId,
-      kmEntrada: veiculo.kmEntrada,
+      kmEntrada: veiculo.kmIlegivel ? '' : veiculo.kmEntrada,
+      kmIlegivel: !!veiculo.kmIlegivel,
       descricaoProblema: relatoCliente,
       status: 'Recepção',
       luzesPainel,
@@ -738,8 +747,16 @@ export default function NovaEntrada() {
                   onChange={e => setVeiculo(p => ({ ...p, ano: e.target.value }))} placeholder="2010/2011" />
               </div>
               <div className="col-span-6 sm:col-span-3 lg:col-span-1">
-                <CampoInput label="Km Atual" value={veiculo.kmEntrada}
-                  onChange={e => setVeiculo(p => ({ ...p, kmEntrada: e.target.value }))} placeholder="120.000" inputMode="numeric" />
+                <CampoInput label="Km Atual" obrigatorio erro={erros.km}
+                  value={veiculo.kmIlegivel ? '' : veiculo.kmEntrada} disabled={!!veiculo.kmIlegivel}
+                  onChange={e => setVeiculo(p => ({ ...p, kmEntrada: e.target.value.replace(/[^\d.]/g, '') }))}
+                  placeholder={veiculo.kmIlegivel ? '—' : '120.000'} inputMode="numeric" />
+                <label className="mt-1 flex items-center gap-1.5 text-[11px] leading-tight text-slate-500 cursor-pointer">
+                  <input type="checkbox" checked={!!veiculo.kmIlegivel}
+                    onChange={e => { const v = e.target.checked; setVeiculo(p => ({ ...p, kmIlegivel: v })); if (v) setErros(x => ({ ...x, km: undefined })) }}
+                    className="accent-primary-500 flex-shrink-0" />
+                  não deu para ler
+                </label>
               </div>
               <div className="col-span-6 sm:col-span-3 lg:col-span-1">
                 <CampoInput label="Condutores" value={veiculo.numCondutores}
