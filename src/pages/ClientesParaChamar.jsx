@@ -176,7 +176,9 @@ export default function ClientesParaChamar() {
 
 function LinhaCliente({ e, aba, aberto, onWhatsApp, onResultado, onDesfazer, onVerOS }) {
   const ult = e.ultimaChamada
+  // Duas OS abertas no mesmo dia não são uma volta do cliente.
   const voltouDepois = e.dataUltima > e.dataRevisao
+    && new Date(e.dataUltima).toDateString() !== new Date(e.dataRevisao).toDateString()
   const podeAnotar = !!e.veiculo
   const vencido = e.diasParaVencer < 0
 
