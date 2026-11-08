@@ -9,6 +9,7 @@ const titles = {
   '/agenda': 'Agendamento',
   '/assistente-financeiro': 'Assistente Financeiro',
   '/clientes': 'Clientes',
+  '/clientes-para-chamar': 'Clientes para chamar',
   '/veiculos': 'Veículos',
   '/ordens-servico': 'Ordens de Serviço',
   '/orcamentos': 'Orçamentos',

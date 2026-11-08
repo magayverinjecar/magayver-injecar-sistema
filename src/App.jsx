@@ -6,6 +6,7 @@ import PinLogin from './pages/PinLogin'
 import Layout from './components/layout/Layout'
 import Dashboard from './pages/Dashboard'
 import Clientes from './pages/Clientes'
+import ClientesParaChamar from './pages/ClientesParaChamar'
 import Veiculos from './pages/Veiculos'
 import Agenda from './pages/Agenda'
 import OrdensServico from './pages/OrdensServico'
@@ -120,6 +121,9 @@ export default function App() {
           <Route path="minha-senha" element={<MinhaSenha />} />
           <Route path="clientes"            element={<Rota perm="clientes"><Clientes /></Rota>} />
           <Route path="clientes/novo"       element={<Rota perm="clientes"><ClienteCadastro /></Rota>} />
+          {/* Mesma permissão de Clientes: a tela mostra nome e telefone de
+              quem já passou aqui, o mesmo que a lista de clientes mostra. */}
+          <Route path="clientes-para-chamar" element={<Rota perm="clientes"><ClientesParaChamar /></Rota>} />
           <Route path="veiculos"            element={<Rota perm="veiculos"><Veiculos /></Rota>} />
           <Route path="veiculos/novo"       element={<Rota perm="veiculos"><VeiculoCadastro /></Rota>} />
           <Route path="agenda"              element={<Rota perm="agenda"><Agenda /></Rota>} />

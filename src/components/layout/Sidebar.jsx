@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Car, CalendarDays, ClipboardList,
   Wrench, Package, DollarSign, ShoppingCart, UserCog, Settings,
   BarChart3, FileText, Truck, Factory, Droplets, Receipt, Brain,
-  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid, History, Tag, PieChart } from 'lucide-react'
+  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid, History, Tag, PieChart, PhoneCall } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 const grupos = [
@@ -43,6 +43,9 @@ const grupos = [
       // 'caixa/nova-venda', que não existe em menu nenhum.
       { to: '/caixa/nova-venda', icon: Tag, label: 'Venda Balcão', permissao: 'venda' },
       { to: '/clientes', icon: Users, label: 'Clientes' },
+      // `permissao` explícita: a chave derivada do path seria
+      // 'clientes-para-chamar', que não existe em menu nenhum.
+      { to: '/clientes-para-chamar', icon: PhoneCall, label: 'Clientes para chamar', permissao: 'clientes' },
       { to: '/veiculos', icon: Car, label: 'Veículos' },
       { to: '/servicos', icon: Wrench, label: 'Serviços' },
       { to: '/funcionarios', icon: UserCog, label: 'Funcionários' },
