@@ -6,7 +6,7 @@ import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import gerarId from '../utils/id'
 import { STATUS_OS, statusColor } from './OrdensServico'
-import { imprimirOS, imprimirOrcamento } from '../utils/print'
+import { imprimirOS, imprimirOrcamento, imprimirOrdemExecucao, podeImprimirOrdemExecucao } from '../utils/print'
 import { separarItens } from '../utils/itensOS'
 import { nomeVeiculo } from '../utils/datas'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
@@ -111,6 +111,10 @@ export default function OrdemDetalhe() {
   const [valorDiagnostico, setValorDiagnostico] = useState('')
   const [formaDiag, setFormaDiag] = useState('PIX')
   const [maquinaDiag, setMaquinaDiag] = useState(null)
+  // Acabou de aprovar nesta tela: oferece o papel do reparador na hora. É uma
+  // faixa com botão, e não um confirm() seguido da impressão — o navegador
+  // bloqueia a janela de impressão que não nasce de um clique.
+  const [ofertaOrdem, setOfertaOrdem] = useState(false)
   const inputFotoRef = useRef(null)
   const inputGaleriaRef = useRef(null)
 
@@ -338,6 +342,16 @@ export default function OrdemDetalhe() {
       if (!ok) return
     }
     mudarStatusOrdem(os.id, novoStatus)
+    // A equipe aprova por aqui, pelo seletor, bem mais do que pelo botão
+    // "Cliente aprovou".
+    if (novoStatus === 'Aprovado') setOfertaOrdem(true)
+  }
+
+  // Papel do reparador: o que o cliente autorizou, sem valores, com o QR das
+  // fotos do reparo (utils/print.js).
+  function imprimirOrdemReparador() {
+    imprimirOrdemExecucao(os, veiculo, funcionarios)
+    setOfertaOrdem(false)
   }
 
   // Aumentar a quantidade de uma peça consome mais estoque. Só o ACRÉSCIMO
@@ -451,6 +465,7 @@ export default function OrdemDetalhe() {
   function confirmarAprovacao() {
     if (!confirm(`Confirmar que o cliente aprovou o orçamento de ${fmt(total)}?\n\nO veículo fica liberado para o reparador iniciar o reparo.`)) return
     comProtecao(() => aprovarOrcamento(os.id))
+    setOfertaOrdem(true)
   }
 
   function abrirRecusa() {
@@ -680,6 +695,11 @@ export default function OrdemDetalhe() {
             title={osFinalizada ? 'OS finalizada — reabra a OS para editar' : ''}
             className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap flex-shrink-0"><Pencil size={14} />Editar</button>
           <button onClick={() => imprimir('a4det')} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><Printer size={14} />Nota de Serviço</button>
+          {podeImprimirOrdemExecucao(os) && (
+            <button onClick={imprimirOrdemReparador}
+              title="O que o cliente autorizou, sem valores, com o QR das fotos do reparo"
+              className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><ClipboardList size={14} />Ordem p/ reparador</button>
+          )}
           <div className="relative flex-shrink-0">
             <button onClick={() => setMenuImpressao(v => !v)} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap"><Receipt size={14} />Recibo<ChevronDown size={14} /></button>
             {menuImpressao && (
@@ -775,6 +795,24 @@ export default function OrdemDetalhe() {
           <button onClick={excluir} disabled={processandoAcao} className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"><Trash2 size={14} />Excluir</button>
         </div>
       </div>
+
+      {ofertaOrdem && podeImprimirOrdemExecucao(os) && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-green-50 border border-green-300 rounded-xl px-4 py-3">
+          <p className="flex-1 text-sm text-green-800">
+            <strong className="font-semibold">OS aprovada.</strong> Imprima a ordem para o reparador: só o que o cliente autorizou, sem valores, com o QR das fotos do reparo.
+          </p>
+          <div className="flex gap-2 flex-shrink-0">
+            <button onClick={imprimirOrdemReparador}
+              className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap">
+              <Printer size={14} />Imprimir agora
+            </button>
+            <button onClick={() => setOfertaOrdem(false)}
+              className="px-3 py-2 rounded-lg text-sm font-medium text-green-800 hover:bg-green-100 transition-colors whitespace-nowrap">
+              Agora não
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Alterar status */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 flex flex-wrap items-center gap-3">

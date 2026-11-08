@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Car, User, Clock, Wrench, Stethoscope, Play, CheckCircle2,
-  Package, ClipboardCheck, ShieldCheck, Camera, PackageCheck, Search, X,
+  Package, ClipboardCheck, ShieldCheck, Camera, PackageCheck, Search, X, Printer,
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import { momentoEntrada, nomeVeiculo } from '../utils/datas'
+import { imprimirOrdemExecucao, podeImprimirOrdemExecucao } from '../utils/print'
 
 function rotuloTempo(ts) {
   if (!ts) return ''
@@ -18,7 +19,7 @@ function rotuloTempo(ts) {
 
 export default function MeusServicos() {
   const {
-    ordens, getCliente, getVeiculo, carregando,
+    ordens, getCliente, getVeiculo, carregando, funcionarios,
     iniciarDiagnostico, iniciarReparo, concluirReparo, marcarAguardandoPeca, pecaChegou, assumirServico,
   } = useApp()
   const { currentUser, temPermissao } = useAuth()
@@ -33,6 +34,9 @@ export default function MeusServicos() {
   const podeFotografar = temPermissao('checklist-fotos')
   const irParaFotos = os => navigate(`/oficina/reparo/${encodeURIComponent(os.id)}`)
   const quemFez = os => os.reparadorNome || os.responsavelNome || os.tecnicoNome || ''
+  // O papel do que o cliente autorizou: sem valores, então o reparador pode
+  // imprimir o dele. Na prática quem imprime é o escritório, na tela da OS.
+  const imprimirOrdem = os => imprimirOrdemExecucao(os, getVeiculo(os.veiculoId), funcionarios)
 
   const meuId = currentUser?.id
   const meuNome = currentUser?.nome || 'você'
@@ -309,6 +313,12 @@ export default function MeusServicos() {
                     className="mt-3 w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
                     {paraDiagnostico ? <><Stethoscope size={15} /> Vou diagnosticar</> : <><Play size={15} /> Iniciar reparo</>}
                   </button>
+                  {podeImprimirOrdemExecucao(os) && (
+                    <button onClick={e => { e.stopPropagation(); imprimirOrdem(os) }}
+                      className="mt-2 w-full flex items-center justify-center gap-2 border border-slate-200 text-slate-600 text-sm font-medium py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+                      <Printer size={15} /> Imprimir ordem de execução
+                    </button>
+                  )}
                 </div>
               )
             })}
@@ -365,6 +375,12 @@ export default function MeusServicos() {
                       </button>
                     </div>
                   )}
+                  {podeImprimirOrdemExecucao(os) && (
+                    <button onClick={e => { e.stopPropagation(); imprimirOrdem(os) }}
+                      className="mt-2 w-full flex items-center justify-center gap-2 border border-slate-200 text-slate-600 text-sm font-medium py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+                      <Printer size={15} /> Imprimir ordem de execução
+                    </button>
+                  )}
                   {['Em Execução', 'Em Conferência'].includes(os.status) && (
                     <button onClick={e => { e.stopPropagation(); navigate(`/oficina/reparo/${encodeURIComponent(os.id)}`) }}
                       className="mt-2 w-full flex items-center justify-center gap-2 border border-orange-200 text-orange-700 text-sm font-medium py-2.5 rounded-xl hover:bg-orange-50 transition-colors">
@@ -401,6 +417,10 @@ export default function MeusServicos() {
                   disabled={ocupado === os.id}
                   className="mt-3 w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
                   <PackageCheck size={15} /> A peça chegou
+                </button>
+                <button onClick={e => { e.stopPropagation(); imprimirOrdem(os) }}
+                  className="mt-2 w-full flex items-center justify-center gap-2 border border-slate-200 text-slate-600 text-sm font-medium py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+                  <Printer size={15} /> Imprimir ordem de execução
                 </button>
               </div>
             ))}
@@ -563,6 +583,14 @@ export default function MeusServicos() {
                             disabled={ocupado === os.id}
                             className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors">
                             <PackageCheck size={13} /> A peça chegou
+                          </button>
+                        )}
+
+                        {podeImprimirOrdemExecucao(os) && (
+                          <button onClick={e => { e.stopPropagation(); imprimirOrdem(os) }}
+                            title="Imprimir a ordem de execução (sem valores)"
+                            className="inline-flex items-center gap-1 border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-medium px-2.5 py-1.5 rounded transition-colors">
+                            <Printer size={13} />
                           </button>
                         )}
 
