@@ -3,6 +3,7 @@ import { Plus, X, Search, Check, AlertTriangle } from 'lucide-react'
 import { parseValorBR } from '../utils/numero'
 import { pecaAtiva, casaBusca } from '../utils/pecas'
 import { historicoDePreco, conferirPiso, DIFICULDADES } from '../utils/precoHistorico'
+import { categoriasDoTexto, servicoEhRevisao } from '../utils/revisao'
 
 // Painel de lançar item — embutido no quadro de itens, não em popup.
 //
@@ -153,6 +154,22 @@ export default function PainelAdicionarItem({
     setSelId(item.id)
     setDescricao(tipo === 'servico' ? item.nome : `${item.nome}${item.codigo ? ` (${item.codigo})` : ''}`)
     setValorUnitario(item.preco)
+  }
+
+  // Serviço de revisão digitado à mão ("TROCA DE OLEO") quando o catálogo já
+  // tem o mesmo serviço. Só sugere — quem decide é a pessoa. O preço digitado
+  // fica: muita linha do catálogo está com R$ 0,00.
+  const catsDigitadas = tipo === 'servico' && !selId ? categoriasDoTexto(descricao) : []
+  const sugestoesCatalogo = catsDigitadas.length
+    ? servicos
+      .filter(s => servicoEhRevisao(s) && categoriasDoTexto(s.nome).some(c => catsDigitadas.includes(c)))
+      .slice(0, 3)
+    : []
+
+  function usarDoCatalogo(s) {
+    setSelId(s.id)
+    setDescricao(s.nome)
+    if (pNum(valorUnitario) <= 0 && pNum(s.preco) > 0) setValorUnitario(s.preco)
   }
 
   // Peça do estoque: saldo físico, o que outras OS já reservaram, e o que
@@ -424,6 +441,21 @@ export default function PainelAdicionarItem({
           </div>
         )}
       </div>
+
+      {sugestoesCatalogo.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-800 space-y-1.5">
+          <p>Este serviço já existe no catálogo. Usar o do catálogo mantém o mesmo nome em todas as OS:</p>
+          <div className="flex flex-col gap-1">
+            {sugestoesCatalogo.map(s => (
+              <button key={s.id} type="button" onClick={() => usarDoCatalogo(s)} title={s.nome}
+                className="flex items-center gap-2 text-left bg-white border border-blue-200 hover:border-blue-400 rounded-md px-2 py-1 transition-colors">
+                <span className="flex-1 min-w-0 truncate font-medium text-slate-700">{s.nome}</span>
+                <span className="flex-shrink-0 font-semibold text-blue-700">Usar</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* A referencia de preco: o que esta oficina ja cobrou por este servico.
           Nao sugere valor nem trava nada — mostra a faixa praticada no segundo
