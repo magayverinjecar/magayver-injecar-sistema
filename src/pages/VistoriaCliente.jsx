@@ -2,10 +2,104 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { fotosDaEntrada, fotosDoReparo } from '../utils/vistoria'
+import { separarItens } from '../utils/itensOS'
+import { parseValorBR } from '../utils/numero'
 import {
   Car, User, Clock, Camera, CheckCircle2, AlertTriangle,
-  X, ChevronLeft, ChevronRight, ZoomIn, Phone, Wrench
+  X, ChevronLeft, ChevronRight, ZoomIn, Phone, Wrench, Receipt, Droplets
 } from 'lucide-react'
+
+const fmtBRL = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const qtdDe = (v) => { const n = parseValorBR(v); return n > 0 ? n : 1 }
+const valorDaLinha = (it) => parseValorBR(it.valorUnitario) * qtdDe(it.quantidade) - parseValorBR(it.desconto)
+
+function LinhasDaNota({ titulo, lista }) {
+  if (lista.length === 0) return null
+  return (
+    <div>
+      <p className="px-5 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{titulo}</p>
+      <div className="divide-y divide-slate-50">
+        {lista.map((it, idx) => {
+          const q = qtdDe(it.quantidade)
+          return (
+            <div key={idx} className="px-5 py-2.5 flex items-start justify-between gap-3">
+              <span className="text-sm text-slate-700 min-w-0 break-words">
+                {q !== 1 && <span className="font-semibold text-slate-500">{q.toLocaleString('pt-BR')}× </span>}
+                {it.descricao}
+              </span>
+              <span className="text-sm font-medium text-slate-700 tabular-nums whitespace-nowrap">{fmtBRL(valorDaLinha(it))}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// A "notinha" do cliente — é o que o QR da etiqueta do vidro abre. O banco só
+// manda os itens depois da aprovação, e só descrição, quantidade, valor e
+// desconto (SQL-etapa5): nunca o custo da peça nem anotação interna.
+// A mesma trava do banco, repetida aqui: com a função antiga (antes de rodar o
+// SQL-etapa5) os itens vinham sempre, e o rascunho do orçamento apareceria
+// para o cliente durante o diagnóstico.
+const STATUS_COM_NOTA = ['Aprovado', 'Aprovada', 'Aguardando Peça', 'Em Execução', 'Em Andamento', 'Em Conferência', 'Concluída', 'Entregue']
+
+function NotaDoServico({ os }) {
+  const itens = Array.isArray(os.itens) ? os.itens : []
+  if (itens.length === 0 || !STATUS_COM_NOTA.includes(os.status)) return null
+  const { servicos, pecas } = separarItens(itens)
+  const soma = itens.reduce((t, it) => t + valorDaLinha(it), 0)
+  const desconto = parseValorBR(os.descontoGeral)
+  const total = Math.max(0, soma - desconto)
+  const finalizado = ['Entregue', 'Concluída'].includes(os.status)
+  const quando = os.dataEntrega || os.dataConclusao || os.dataEntrada
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="px-5 py-3 bg-green-50 border-b border-green-100 flex items-center gap-2">
+        <Receipt size={14} className="text-green-600" />
+        <h2 className="text-sm font-semibold text-slate-700">{finalizado ? 'Serviço realizado' : 'Serviço autorizado'}</h2>
+        {quando && <span className="ml-auto text-xs text-slate-400">{finalizado ? 'em ' : 'desde '}{quando}</span>}
+      </div>
+      {os.kmEntrada && <p className="px-5 pt-3 text-xs text-slate-500">Quilometragem na entrada: <strong className="font-semibold text-slate-700">{os.kmEntrada} km</strong></p>}
+      <LinhasDaNota titulo="Serviços" lista={servicos} />
+      <LinhasDaNota titulo="Peças" lista={pecas} />
+      <div className="px-5 py-3 mt-1 bg-slate-50 border-t border-slate-200 space-y-1 text-sm">
+        {desconto > 0 && (
+          <>
+            <div className="flex justify-between text-slate-500"><span>Subtotal</span><span className="tabular-nums">{fmtBRL(soma)}</span></div>
+            <div className="flex justify-between text-slate-500"><span>Desconto</span><span className="tabular-nums">− {fmtBRL(desconto)}</span></div>
+          </>
+        )}
+        <div className="flex justify-between font-bold text-slate-800 text-base"><span>Total</span><span className="tabular-nums">{fmtBRL(total)}</span></div>
+      </div>
+    </div>
+  )
+}
+
+// A próxima troca impressa na etiqueta do vidro. Só existe depois que a
+// etiqueta foi impressa pelo sistema.
+function ProximaTroca({ etiqueta }) {
+  if (!etiqueta || (!etiqueta.kmProxima && !etiqueta.dataProxima)) return null
+  const km = parseValorBR(String(etiqueta.kmProxima || '').replace(/\./g, ''))
+  const data = etiqueta.dataProxima ? new Date(etiqueta.dataProxima).toLocaleDateString('pt-BR') : ''
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-amber-200 p-5 flex items-start gap-3">
+      <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+        <Droplets size={20} className="text-amber-600" />
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Próxima troca de óleo</p>
+        <p className="text-lg font-bold text-slate-800 mt-0.5">
+          {km > 0 && <>aos {km.toLocaleString('pt-BR')} km</>}
+          {km > 0 && data && <span className="font-normal text-slate-500"> ou </span>}
+          {data && <>em {data}</>}
+        </p>
+        {km > 0 && data && <p className="text-xs text-slate-500 mt-0.5">o que vier primeiro</p>}
+      </div>
+    </div>
+  )
+}
 
 
 // Aceita as chaves gravadas pela OS (ok/atencao/problema) e as do checklist
@@ -105,7 +199,7 @@ export default function VistoriaCliente() {
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md bg-slate-800 rounded-2xl overflow-hidden border border-slate-700">
         <div className="bg-orange-600 p-6 text-center">
-          <h1 className="text-xl font-bold text-white mb-1">Fotos e Vistoria</h1>
+          <h1 className="text-xl font-bold text-white mb-1">Serviço e Fotos do Veículo</h1>
           <p className="text-orange-100 text-sm">Magayver Injecar</p>
         </div>
         <div className="p-8">
@@ -157,7 +251,7 @@ export default function VistoriaCliente() {
               disabled={verificando}
               className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors active:scale-95"
             >
-              {verificando ? 'Conferindo…' : 'Acessar Fotos e Vistoria'}
+              {verificando ? 'Conferindo…' : 'Acessar'}
             </button>
           </form>
         </div>
@@ -232,6 +326,9 @@ export default function VistoriaCliente() {
             <span>{fotos.length} foto(s) · {inspecao.filter(i => i.status).length} item(ns) vistoriado(s)</span>
           </div>
         </div>
+
+        <ProximaTroca etiqueta={ck.etiquetaOleo} />
+        <NotaDoServico os={ck} />
 
         {/* Fotos */}
         {fotos.length > 0 && (
