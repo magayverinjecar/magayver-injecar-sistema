@@ -1,3 +1,4 @@
+import qrcode from 'qrcode-generator'
 import { parseValorBR } from './numero'
 import { separarItens } from './itensOS'
 
@@ -670,6 +671,174 @@ function gerarRecibo(venda, cfg) {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Recibo ${esc(venda.numero || '')}</title><style>${css}</style></head><body>${body}</body></html>`
 }
 
+// ─── ORDEM DE EXECUÇÃO (papel do reparador) ───────────────────────────────────
+
+// O papel que vai para a bancada depois que o cliente aprova: o que foi
+// AUTORIZADO, sem valor nenhum — o reparador não tem acesso a preço. O cliente
+// às vezes aprova só parte do orçamento, e quem fez o diagnóstico não ficava
+// sabendo o que tinha ficado de fora.
+//
+// Ficam de fora de propósito: preço, total, desconto, pagamento, telefone e
+// documento do cliente, e as OBSERVAÇÕES da OS — o balcão anota pagamento ali
+// ("já foi pago total no crédito de 6x").
+
+// Depois da aprovação: antes disso o papel mostraria o que o cliente ainda
+// não autorizou. "Aprovada"/"Em Andamento" são nomes antigos do mesmo momento.
+export const STATUS_ORDEM_EXECUCAO = ['Aprovado', 'Aprovada', 'Aguardando Peça', 'Em Execução', 'Em Andamento', 'Em Conferência']
+
+export function podeImprimirOrdemExecucao(os) {
+  return STATUS_ORDEM_EXECUCAO.includes(os?.status)
+}
+
+// A diária de pátio é cobrança, não trabalho de bancada.
+const DIARIA_DE_PATIO = /di[aá]rias?\s+(de\s+)?p[aá]tio/i
+
+// A equipe aprova trocando o status no seletor da OS, e isso não grava
+// `aprovadoEm` (vazio em todas as OS desde outubro). A data fica no histórico.
+function quandoFoiAprovada(os) {
+  if (os?.aprovadoEm) return Number(os.aprovadoEm) || 0
+  let ts = 0
+  for (const h of os?.historico || []) {
+    if (/Status alterado para "Aprovado"|Cliente aprovou/.test(String(h?.texto || ''))) {
+      ts = Math.max(ts, Number(h.quandoMs) || 0)
+    }
+  }
+  return ts
+}
+
+const dataHora = (ts) => new Date(ts).toLocaleString('pt-BR', {
+  day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+})
+
+function qrSvg(texto) {
+  const qr = qrcode(0, 'M')
+  qr.addData(texto)
+  qr.make()
+  return qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true })
+}
+
+export function linkFotosDoReparo(os, origem = window.location.origin) {
+  return `${origem}/oficina/reparo/${encodeURIComponent(os.id)}`
+}
+
+export function gerarOrdemExecucao(os, veiculo, funcionarios, cfg, { agora = Date.now(), origem } = {}) {
+  const { servicos: todosServicos, pecas } = separarItens(os.itens)
+  const servicos = todosServicos.filter(it => !DIARIA_DE_PATIO.test(String(it.descricao || '')))
+  const nomeDoReparador = (id) => (funcionarios || []).find(f => String(f.id) === String(id))?.nome || ''
+  const aprovada = quandoFoiAprovada(os)
+
+  const km = String(os.kmEntrada || '').trim() || (os.kmIlegivel ? 'não deu para ler' : '—')
+  const campoCarro = (rotulo, valor, forte) =>
+    `<div><span>${rotulo}</span>${forte ? `<b>${esc(valor || '—')}</b>` : esc(valor || '—')}</div>`
+
+  const anotacao = String(os.observacoesTecnicas || '').trim()
+  const scanner = String(os.falhasScanner || '').trim()
+  const quemDiagnosticou = [String(os.tecnicoNome || '').trim(), os.diagnosticadoEm ? `diagnóstico de ${os.diagnosticadoEm}` : '']
+    .filter(Boolean).join(' · ')
+  const blocoAnotacoes = (anotacao || scanner) ? `
+    <div class="anot">
+      <h2>Anotações do reparador — o que foi encontrado no diagnóstico</h2>
+      ${quemDiagnosticou ? `<div class="quem">${esc(quemDiagnosticou)}</div>` : ''}
+      ${anotacao ? `<div class="texto">${esc(anotacao)}</div>` : ''}
+      ${scanner ? `<div class="scanner"><b>Códigos do scanner:</b> ${esc(scanner)}</div>` : ''}
+    </div>` : ''
+
+  const linhasServicos = servicos.map(it => {
+    const q = qtd(it.quantidade)
+    return `<tr><td class="caixa"><i></i></td><td>${esc(it.descricao)}${q !== 1 ? ` (${q.toLocaleString('pt-BR')}x)` : ''}</td><td class="rep">${esc(nomeDoReparador(it.mecanicoId))}</td></tr>`
+  }).join('') || '<tr><td></td><td colspan="2" class="vazio">Nenhum serviço nesta OS</td></tr>'
+
+  const linhasPecas = pecas.map(it =>
+    `<tr><td class="caixa"><i></i></td><td>${esc(it.descricao)}</td><td class="qtd">${qtd(it.quantidade).toLocaleString('pt-BR')}</td></tr>`
+  ).join('') || '<tr><td></td><td colspan="2" class="vazio">Nenhuma peça a substituir</td></tr>'
+
+  const css = `
+    @page { size: A4; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; }
+    .topo { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 6px; }
+    .topo h1 { font-size: 18px; margin: 0; letter-spacing: .5px; }
+    .topo .sub { font-size: 11px; margin-top: 2px; }
+    .topo .os { text-align: right; font-size: 11px; }
+    .topo .os b { font-size: 20px; display: block; }
+    .faixa { margin-top: 6px; font-size: 10px; font-weight: bold; text-align: center; border: 1px dashed #000; padding: 3px; }
+    .carro { display: grid; grid-template-columns: repeat(6, auto); gap: 2px 14px; font-size: 12px; margin: 10px 0; padding: 6px 8px; border: 1px solid #000; }
+    .carro span { font-size: 9px; text-transform: uppercase; color: #333; display: block; }
+    .anot { border: 1px solid #000; padding: 6px 8px; font-size: 11.5px; line-height: 1.45; }
+    .anot h2 { border: none; margin: 0 0 2px; padding: 0; }
+    .anot .quem { font-size: 10px; color: #333; margin-bottom: 4px; }
+    .anot .texto { white-space: pre-line; }
+    .anot .scanner { margin-top: 5px; font-size: 11px; }
+    .autorizado { margin-top: 14px; background: #000; color: #fff; font-weight: bold; font-size: 12.5px; padding: 5px 8px; letter-spacing: .3px;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    h2 { font-size: 12px; margin: 12px 0 4px; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 2px; }
+    table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+    td, th { border-bottom: 1px solid #bbb; padding: 5px 4px; vertical-align: top; text-align: left; }
+    tr { page-break-inside: avoid; }
+    th { font-size: 9.5px; text-transform: uppercase; }
+    .caixa { width: 16px; } .caixa i { display: inline-block; width: 11px; height: 11px; border: 1.5px solid #000; }
+    .qtd { width: 40px; text-align: center; } .rep { width: 150px; font-size: 10.5px; }
+    .vazio { color: #555; font-style: italic; }
+    .rodape { display: flex; gap: 14px; margin-top: 18px; align-items: center; border: 2px solid #000; padding: 8px; page-break-inside: avoid; }
+    .rodape .qr { width: 26mm; height: 26mm; flex-shrink: 0; }
+    .rodape .qr svg { width: 100%; height: 100%; display: block; }
+    .rodape .txt { font-size: 11.5px; line-height: 1.4; } .rodape .txt b { font-size: 13px; }
+    .assin { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 26px; font-size: 10.5px; page-break-inside: avoid; }
+    .assin div { border-top: 1px solid #000; padding-top: 3px; }
+  `
+
+  const body = `
+    <div class="topo">
+      <div>
+        <h1>ORDEM DE EXECUÇÃO</h1>
+        <div class="sub">${esc(cfg?.nome || 'Oficina')} · documento do reparador</div>
+      </div>
+      <div class="os"><b>OS ${esc(os.id)}</b>${aprovada ? `Aprovada em ${dataHora(aprovada)}<br>` : ''}Impressa em ${dataHora(agora)}</div>
+    </div>
+    <div class="faixa">DOCUMENTO INTERNO · SEM VALORES · SE A OS MUDAR, IMPRIMA DE NOVO</div>
+
+    <div class="carro">
+      ${campoCarro('Veículo', nomeModelo(veiculo, os))}
+      ${campoCarro('Placa', veiculo?.placa || os.veiculoPlaca, true)}
+      ${campoCarro('Cor', String(veiculo?.cor || '').trim())}
+      ${campoCarro('Ano', veiculo?.ano)}
+      ${campoCarro('Motor', veiculo?.motor)}
+      ${campoCarro('Km de entrada', km)}
+    </div>
+
+    ${blocoAnotacoes}
+
+    <div class="autorizado">O QUE O CLIENTE AUTORIZOU — EXECUTAR SOMENTE OS ITENS ABAIXO</div>
+
+    <h2>Serviços a executar (${servicos.length})</h2>
+    <table>
+      <tr><th class="caixa"></th><th>Serviço</th><th class="rep">Reparador</th></tr>
+      ${linhasServicos}
+    </table>
+
+    <h2>Peças a substituir (${pecas.length})</h2>
+    <table>
+      <tr><th class="caixa"></th><th>Peça</th><th class="qtd">Qtd.</th></tr>
+      ${linhasPecas}
+    </table>
+
+    <div class="rodape">
+      <div class="qr">${qrSvg(linkFotosDoReparo(os, origem))}</div>
+      <div class="txt">
+        <b>FOTOS DO REPARO</b><br>
+        Aponte a câmera do celular para o código. Abre direto nas fotos desta OS,<br>
+        com o seu login: <b>peça removida · peça nova · antes · depois</b>.
+      </div>
+    </div>
+
+    <div class="assin">
+      <div>Executado por</div>
+      <div>Conferido por</div>
+    </div>
+  `
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Ordem de execução ${esc(os.id)}</title><style>${css}</style></head><body>${body}</body></html>`
+}
+
 // ─── ORÇAMENTO ────────────────────────────────────────────────────────────────
 
 function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
@@ -824,6 +993,10 @@ export function imprimirOS(os, cliente, veiculo, mecanico, total, modelo) {
   else if (modelo === 'a5') html = gerarA5(os, cliente, veiculo, mecanico, total, cfg)
   else html = gerarA4Det(os, cliente, veiculo, mecanico, total, cfg)
   abrirJanela(html, `OS ${os.id}`)
+}
+
+export function imprimirOrdemExecucao(os, veiculo, funcionarios, opcoes) {
+  abrirJanela(gerarOrdemExecucao(os, veiculo, funcionarios, getConfig(), opcoes), `Ordem de execução ${os.id}`)
 }
 
 export function imprimirReciboCaixa(venda) {
