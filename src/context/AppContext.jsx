@@ -2509,6 +2509,8 @@ export function AppProvider({ children }) {
       taxaTotal: totais.taxa,
       recebidoLiquido: totais.liquido,
       hora: horaAgora(),
+      // Sem a data, o recibo reimpresso saía com a data do dia da impressão.
+      data: new Date().toLocaleDateString('pt-BR'),
     }
 
     setCaixaTurno(t => t ? { ...t, vendas: [novaVenda, ...t.vendas] } : t)

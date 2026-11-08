@@ -583,6 +583,26 @@ function gerarA5(os, cliente, veiculo, mecanico, total, cfg) {
 
 // ─── RECIBO DE VENDA ──────────────────────────────────────────────────────────
 
+// A venda chega ao recibo por dois caminhos, cada um com o seu formato de item:
+// a Venda Balcão grava nome/qtd/preco/desc, e a OS entregue manda os itens da
+// própria OS — descricao/quantidade/valorUnitario/desconto. O recibo só lia o
+// primeiro, e a venda vinda de OS (quase todas) saía "undefinedx undefined
+// R$ 0,00" em cada linha.
+//
+// O serviço da OS costuma trazer o procedimento inteiro no nome ("…; REMOÇÃO
+// DOS COMPONENTES; INSPEÇÃO…"). Na bobina de 80 mm isso vira meio metro de
+// papel: aqui vai só o começo, e o procedimento completo fica na nota da OS.
+function itemDoRecibo(it) {
+  const nome = String(it.nome ?? it.descricao ?? '').trim()
+  const curto = nome.split(/\s*[;:]\s*/)[0]
+  return {
+    nome: curto.length > 90 ? curto.slice(0, 88).trimEnd() + '…' : curto,
+    qtd: qtd(it.qtd ?? it.quantidade),
+    preco: pNum(it.preco ?? it.valorUnitario),
+    desc: pNum(it.desc ?? it.desconto ?? 0),
+  }
+}
+
 function gerarRecibo(venda, cfg) {
   const css = `
     @page { size: 80mm auto; margin: 3mm 4mm; }
@@ -591,13 +611,30 @@ function gerarRecibo(venda, cfg) {
     .c { text-align: center; }
     .b { font-weight: bold; }
     .hr { border: none; border-top: 1px dashed #000; margin: 5px 0; }
-    .row { display: flex; justify-content: space-between; }
+    .row { display: flex; justify-content: space-between; gap: 6px; }
+    .row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+    .row > span:last-child { white-space: nowrap; }
+    .item { margin-bottom: 2px; }
     .total { font-weight: bold; font-size: 15px; display: flex; justify-content: space-between; margin-top: 4px; }
   `
-  const itensHtml = (venda.itens || []).map(it => {
-    const sub = pNum(it.preco) * pNum(it.qtd) - pNum(it.desc || 0)
-    return `<div class="row"><span>${it.qtd}x ${it.nome}</span><span>${fmt(sub)}</span></div>`
+  const itens = (venda.itens || []).map(itemDoRecibo)
+  const itensHtml = itens.map(it => {
+    const sub = it.preco * it.qtd - it.desc
+    return `<div class="row item"><span>${it.qtd.toLocaleString('pt-BR')}x ${esc(it.nome)}</span><span>${fmt(sub)}</span></div>`
   }).join('')
+
+  // O desconto dado no fechamento da OS não fica em item nenhum: é a diferença
+  // entre a soma dos itens e o total cobrado. Sem esta linha os itens somavam
+  // mais do que o TOTAL e o recibo não fechava a conta.
+  const total = pNum(venda.total)
+  const somaItens = itens.reduce((t, it) => t + it.preco * it.qtd - it.desc, 0)
+  const desconto = itens.length && somaItens - total > 0.005 ? somaItens - total : 0
+
+  // A venda só passou a guardar a data em 08/11/2026. Para as anteriores, quem
+  // chama manda a data de abertura do turno; sem nenhuma das duas (recibo
+  // impresso na hora da venda), hoje é a data certa.
+  const data = venda.data || new Date().toLocaleDateString('pt-BR')
+  const hora = venda.hora || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
   const pagHtml = (venda.pagamentos || []).map(p =>
     `<div class="row"><span>${p.forma}</span><span>${p.forma === 'Pagar Depois' ? fmt(p.depois || 0) + ' (a rec.)' : fmt(pNum(p.valor))}</span></div>`
@@ -610,14 +647,18 @@ function gerarRecibo(venda, cfg) {
     ${cfg.endereco ? `<div class="c" style="font-size:10px">${esc(cfg.endereco)}</div>` : ''}
     <hr class="hr">
     <div class="c b">RECIBO DE VENDA</div>
-    <div class="row"><span>Nº:</span><span class="b">${venda.numero || ''}</span></div>
-    <div class="row"><span>Data:</span><span>${new Date().toLocaleDateString('pt-BR')} ${venda.hora || ''}</span></div>
-    <div class="row"><span>Cliente:</span><span>${venda.clienteNome || 'Consumidor'}</span></div>
+    <div class="row"><span>Nº:</span><span class="b">${esc(venda.numero || '')}</span></div>
+    ${venda.osId ? `<div class="row"><span>OS:</span><span class="b">${esc(venda.osId)}</span></div>` : ''}
+    <div class="row"><span>Data:</span><span>${esc(data)} ${esc(hora)}</span></div>
+    <div class="row"><span>Cliente:</span><span>${esc(String(venda.clienteNome || '').trim() || 'Consumidor')}</span></div>
     <hr class="hr">
     <div class="b">ITENS</div>
     <div style="margin:3px 0">${itensHtml || '<div style="color:#aaa">Sem itens</div>'}</div>
     <hr class="hr">
-    <div class="total"><span>TOTAL:</span><span>${fmt(venda.total || 0)}</span></div>
+    ${desconto > 0 ? `
+    <div class="row"><span>Subtotal:</span><span>${fmt(somaItens)}</span></div>
+    <div class="row"><span>Desconto:</span><span>- ${fmt(desconto)}</span></div>` : ''}
+    <div class="total"><span>TOTAL:</span><span>${fmt(total)}</span></div>
     <hr class="hr">
     <div class="b">PAGAMENTOS</div>
     <div style="margin:3px 0">${pagHtml || '<div style="color:#aaa">Nenhum</div>'}</div>
@@ -626,7 +667,7 @@ function gerarRecibo(venda, cfg) {
     <div class="c" style="font-size:9px;margin-top:2px">${esc(cfg.nome || '')}</div>
     <br><br>
   `
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Recibo ${venda.numero}</title><style>${css}</style></head><body>${body}</body></html>`
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Recibo ${esc(venda.numero || '')}</title><style>${css}</style></head><body>${body}</body></html>`
 }
 
 // ─── ORÇAMENTO ────────────────────────────────────────────────────────────────

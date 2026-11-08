@@ -320,7 +320,7 @@ export default function Caixa() {
                     <td className="px-5 py-3.5 text-sm text-slate-500">{v.hora}</td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => imprimirReciboCaixa(v)} className="flex items-center gap-1 text-xs border border-slate-200 hover:bg-slate-50 text-slate-600 px-2 py-1 rounded transition-colors"><Printer size={12} />Recibo</button>
+                        <button onClick={() => imprimirReciboCaixa({ data: t.dataAbertura, ...v })} className="flex items-center gap-1 text-xs border border-slate-200 hover:bg-slate-50 text-slate-600 px-2 py-1 rounded transition-colors"><Printer size={12} />Recibo</button>
                         <button onClick={() => excluirVenda(v.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
                       </div>
                     </td>
