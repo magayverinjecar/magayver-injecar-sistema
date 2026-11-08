@@ -20,8 +20,8 @@ export function normalizar(texto) {
   return String(texto || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 }
 
-// Palavras combinadas com o dono em 08/11/2026 (a lista inclui nomes da
-// família que aparecem nos motivos). "Casa" só conta fora de nome de loja:
+// Palavras combinadas com o dono em 08/11/2026 (a lista inclui nomes de
+// pessoas da casa que aparecem nos motivos). "Casa" só conta fora de nome de loja:
 // "Casa da …" costuma ser fornecedor.
 const PALAVRAS_PESSOAL = [
   /\bp\.?\s?f\b/,
@@ -31,6 +31,7 @@ const PALAVRAS_PESSOAL = [
   /\bretirada/,
   /\bsofia\b/,
   /\bkaio\b/,
+  /\bluziane\b/,
   /\bescola\b/,
   /\bcasa\b(?!\s+d[aoe]s?\b)/,
 ]
