@@ -57,6 +57,9 @@ export const GRUPOS_MENU = [
       { id: 'gestao', label: 'Gestão (leitura geral)' },
       { id: 'financeiro', label: 'Financeiro' },
       { id: 'gastos', label: 'Gastos' },
+      // Gastos da família pagos pelo caixa. Ninguém recebe sozinho: o dono
+      // marca no próprio cadastro (Funcionários) quem pode ver.
+      { id: 'gastos-pessoais', label: 'Gastos pessoais (Pessoal × Oficina)' },
     ],
   },
   {

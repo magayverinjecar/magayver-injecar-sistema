@@ -10,6 +10,8 @@ import DRE from '../components/DRE'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
 import SeletorPeriodo from '../components/ui/SeletorPeriodo'
 import PainelOrigem from '../components/PainelOrigem'
+import PainelPessoal from '../components/PainelPessoal'
+import { useAuth } from '../context/AuthContext'
 import { ehCartao, maquinaPadrao } from '../utils/cartao'
 import { intervaloDe, periodoAnteriorDe, resumirFinanceiro, dentroDoPeriodo, variacao } from '../utils/periodo'
 import { parseValorBR } from '../utils/numero'
@@ -85,6 +87,9 @@ export default function Financeiro() {
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(vazio)
   const [aba, setAba] = useState('lancamentos')
+  // Gastos da família: aba só para quem o dono liberou no cadastro.
+  const { temPermissao } = useAuth()
+  const veGastosPessoais = temPermissao('gastos-pessoais')
 
   const [modalBoleto, setModalBoleto] = useState(null)
   const [formaPagamento, setFormaPagamento] = useState('PIX')
@@ -415,6 +420,7 @@ const pNum = parseValorBR
           { key: 'devedores',   label: `A Receber${aReceber.itens.length ? ` (${aReceber.itens.length})` : ''}` },
           { key: 'cartoes',     label: 'Cartões' },
           { key: 'origem',      label: 'Origem' },
+          ...(veGastosPessoais ? [{ key: 'pessoal', label: 'Pessoal × Oficina' }] : []),
         ].map(({ key, label }) => (
           <button key={key} onClick={() => setAba(key)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -648,6 +654,8 @@ const pNum = parseValorBR
           de onde colocar verba de anúncio. Recebe o mesmo `intervalo` do topo,
           que é o que dá o recorte mês a mês e ano a ano. */}
       {aba === 'origem' && <PainelOrigem intervalo={intervalo} />}
+
+      {aba === 'pessoal' && veGastosPessoais && <PainelPessoal />}
 
       {/* A Receber — OS concluída não paga + venda de balcão com saldo aberto */}
       {aba === 'devedores' && (
