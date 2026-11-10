@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Car, User, Clock, Gauge, Fuel, AlertTriangle,
   MessageSquare, Save, CheckCircle2, FileText, Camera, Plus, Trash2, ChevronDown, ChevronRight, RotateCcw,
-  ImagePlus, X, Loader2,
+  ImagePlus, X, Loader2, Pencil,
 } from 'lucide-react'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
@@ -16,6 +16,7 @@ import { normalizarDiagnostico } from '../utils/diagnostico'
 import {
   AREAS, NORMAL, ATENCAO, PROBLEMA, URGENCIAS, MAX_FOTOS_POR_ITEM,
   itensDaAvaliacao, resumoDaAvaliacao, recomendacoesDaAvaliacao,
+  VERBOS_SERVICO, servicoSugerido, verboDoServico,
 } from '../utils/avaliacao'
 
 // Tela de diagnóstico do reparador. Traz tudo que ele precisa para trabalhar —
@@ -27,7 +28,7 @@ import {
 // O que for marcado Atenção ou Trocar vira recomendação sozinho. O reparador
 // só SALVA — quem imprime a avaliação para o cliente é o escritório, na OS.
 
-const AVALIACAO_VAZIA = { modo: 'queixa', itens: {}, ajustes: {}, extras: [] }
+const AVALIACAO_VAZIA = { modo: 'queixa', itens: {}, ajustes: {}, extras: [], itensExtras: [] }
 
 const BOTOES_STATUS = [
   { id: NORMAL, rotulo: 'OK', ativo: 'bg-green-50 border-green-500 text-green-700' },
@@ -110,6 +111,34 @@ function FotosDoItem({ item, enviando, ocupado, onCamera, onGaleria, onRemover }
   )
 }
 
+// "Serviço a fazer" de um item marcado Atenção ou Trocar: o reparador diz o
+// que fazer, não só o que viu. Os botões escrevem "Trocar <nome do item>" num
+// toque; o texto continua livre. É o mesmo texto que aparece em "O que
+// recomendamos fazer" (avaliacao.ajustes[id].servico).
+function ServicoAFazer({ item, valor, onMudar }) {
+  const ativo = verboDoServico(valor)
+  return (
+    <div className="mt-2">
+      <p className="text-[10px] font-bold uppercase text-primary-600 mb-1">
+        Serviço a fazer{!String(valor || '').trim() && <span className="font-normal normal-case text-slate-400"> (opcional)</span>}
+      </p>
+      <div className="flex gap-1 flex-wrap mb-1.5">
+        {VERBOS_SERVICO.map(v => (
+          <button key={v} type="button" onClick={() => onMudar(servicoSugerido(v, item.label, valor))}
+            className={`px-2 py-1 rounded-full text-[11px] font-semibold border transition-colors ${
+              ativo === v ? 'bg-primary-500 border-primary-500 text-white' : 'bg-primary-50 border-orange-200 text-primary-700 hover:bg-primary-100'
+            }`}>
+            {v}
+          </button>
+        ))}
+      </div>
+      <input value={valor || ''} onChange={e => onMudar(e.target.value)}
+        placeholder={`Ex.: ${servicoSugerido('Trocar', item.label)}`}
+        className="w-full rounded-lg text-xs px-2.5 py-2 border border-slate-200 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-300" />
+    </div>
+  )
+}
+
 function resumoDaArea(itens) {
   const r = resumoDaAvaliacao(itens)
   if (r.verificados === 0) return { texto: `0 de ${r.total}`, cor: 'text-slate-400' }
@@ -141,6 +170,8 @@ export default function OficinaDiagnosticoDetalhe() {
   const [pecas, setPecas] = useState(null)
   const [avaliacaoLocal, setAvaliacaoLocal] = useState(null)
   const [abertas, setAbertas] = useState(() => new Set(['A']))
+  // O item fora da lista sendo digitado: { area, label } ou null.
+  const [novoItem, setNovoItem] = useState(null)
   const [salvando, setSalvando] = useState(false)
   const [salvo, setSalvo] = useState(false)
   // Fotos da avaliação: qual item está enviando, e para qual item vai a foto
@@ -239,6 +270,34 @@ export default function OficinaDiagnosticoDetalhe() {
   function removerExtra(eid) {
     mudarAval(a => ({ ...a, extras: (a.extras || []).filter(e => e.id !== eid) }))
   }
+
+  // ── Itens fora da lista: defeito que não está na checagem fixa ──
+  // Vale só para esta OS. Depois de criado, funciona igual aos das áreas B–G.
+  function adicionarItemFora() {
+    const label = String(novoItem?.label || '').trim()
+    if (!label) return
+    const area = novoItem.area
+    mudarAval(a => ({ ...a, itensExtras: [...(a.itensExtras || []), { id: `x${gerarId()}`, area, label }] }))
+    setNovoItem(null)
+  }
+  function renomearItemFora(item) {
+    const novo = prompt('Nome do item:', item.label)
+    const label = String(novo ?? '').trim()
+    if (!label || label === item.label) return
+    mudarAval(a => ({ ...a, itensExtras: (a.itensExtras || []).map(x => x.id === item.id ? { ...x, label } : x) }))
+  }
+  function removerItemFora(item) {
+    const n = item.fotos?.length || 0
+    const temAlgo = item.status || String(item.nota || '').trim() || n > 0
+    if (temAlgo && !confirm(`Tirar "${item.label}" da avaliação?`
+      + (n ? `\n\n${n === 1 ? 'A foto dele também sai' : `As ${n} fotos dele também saem`} da avaliação.` : ''))) return
+    const semEle = (obj) => { const novo = { ...(obj || {}) }; delete novo[item.id]; return novo }
+    mudarAval(a => ({
+      ...a,
+      itensExtras: (a.itensExtras || []).filter(x => x.id !== item.id),
+      itens: semEle(a.itens), ajustes: semEle(a.ajustes), fotos: semEle(a.fotos),
+    }))
+  }
   function alternarArea(areaId) {
     setAbertas(s => { const n = new Set(s); if (n.has(areaId)) n.delete(areaId); else n.add(areaId); return n })
   }
@@ -320,6 +379,87 @@ export default function OficinaDiagnosticoDetalhe() {
     <FotosDoItem item={i} enviando={enviandoFoto === i.id} ocupado={enviandoFoto !== null}
       onCamera={() => escolherFoto(i.id, 'camera')} onGaleria={() => escolherFoto(i.id, 'galeria')}
       onRemover={fotoId => removerFoto(i.id, fotoId)} />
+  )
+  const servicoDe = (i) => (
+    <ServicoAFazer item={i} valor={aval.ajustes?.[i.id]?.servico} onMudar={v => ajustar(i.id, { servico: v })} />
+  )
+
+  // Uma linha que o reparador preenche: OK / Atenção / Trocar, o que foi
+  // visto, o serviço e as fotos. Serve para os itens da lista e para os que
+  // ele digitou (que ganham o nome com lápis e lixeira).
+  const linhaItem = (i, area) => {
+    const marcado = i.status === ATENCAO || i.status === PROBLEMA
+    // As medições da injeção moram em `diagnosticoItens`; o item digitado na
+    // área A não é medição e mora em `avaliacao.itens`, como os outros.
+    const medicao = area.fonte === 'diagnostico' && !i.foraDaLista
+    return (
+      <div key={i.id} className={`px-4 py-3 ${i.foraDaLista ? 'bg-primary-50/40' : ''}`}>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-medium text-slate-700">
+            {i.label}{i.unidade ? <span className="text-slate-400 font-normal"> ({i.unidade})</span> : ''}
+            {i.foraDaLista && (
+              <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary-100 text-primary-700 whitespace-nowrap">fora da lista</span>
+            )}
+          </p>
+          {i.foraDaLista && (
+            <span className="flex gap-0.5 flex-shrink-0 -mt-1">
+              <button type="button" aria-label="Mudar o nome do item" title="Mudar o nome" onClick={() => renomearItemFora(i)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50"><Pencil size={13} /></button>
+              <button type="button" aria-label="Tirar este item" title="Tirar este item" onClick={() => removerItemFora(i)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={13} /></button>
+            </span>
+          )}
+        </div>
+        <div className="flex gap-2 mt-1.5 items-center">
+          {medicao && (
+            <input value={i.valor || ''} placeholder="valor"
+              onChange={e => mudarMedicao(i.id, { value: e.target.value.toUpperCase() })}
+              className="w-24 border-b border-slate-300 px-1 py-1 text-sm uppercase focus:outline-none focus:border-primary-400 bg-transparent" />
+          )}
+          <BotoesStatus valor={i.verificado ? i.status : null}
+            onEscolher={s => medicao ? statusMedicao(i.id, s) : statusItem(i.id, s)} />
+        </div>
+        {marcado && (
+          <>
+            <p className="text-[10px] font-bold uppercase text-slate-400 mt-2 mb-0.5">O que foi visto</p>
+            <input value={i.nota || ''} placeholder="Ex.: pastilhas com 2 mm"
+              onChange={e => medicao ? mudarMedicao(i.id, { nota: e.target.value }) : notaItem(i.id, e.target.value)}
+              className={`w-full rounded-lg text-xs px-2.5 py-2 border focus:outline-none ${
+                i.status === PROBLEMA ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'
+              }`} />
+            {servicoDe(i)}
+          </>
+        )}
+        {i.verificado && fotosDe(i)}
+      </div>
+    )
+  }
+
+  // No fim de cada área: o botão para lançar um defeito que não está na lista.
+  const novoItemDaArea = (area) => (
+    novoItem?.area === area.id ? (
+      <div className="px-4 py-3 bg-primary-50/40">
+        <p className="text-[10px] font-bold uppercase text-primary-600 mb-1">Item que não está na lista</p>
+        <div className="flex gap-2">
+          <input autoFocus value={novoItem.label} placeholder="Nome do item (ex.: roda fônica)"
+            onChange={e => setNovoItem({ ...novoItem, label: e.target.value })}
+            onKeyDown={e => { if (e.key === 'Enter') adicionarItemFora(); if (e.key === 'Escape') setNovoItem(null) }}
+            className="flex-1 min-w-0 rounded-lg text-sm px-2.5 py-2 border border-orange-300 bg-white focus:outline-none focus:ring-2 focus:ring-orange-300" />
+          <button type="button" onClick={adicionarItemFora} disabled={!novoItem.label.trim()}
+            className="px-3 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-xs font-semibold disabled:opacity-40">Adicionar</button>
+          <button type="button" aria-label="Cancelar" onClick={() => setNovoItem(null)}
+            className="p-2 rounded-lg text-slate-400 hover:bg-slate-100"><X size={15} /></button>
+        </div>
+        <p className="text-[10px] text-slate-500 mt-1">Vale só para este carro. Depois é só marcar OK, Atenção ou Trocar.</p>
+      </div>
+    ) : (
+      <div className="px-3 py-2">
+        <button type="button" onClick={() => setNovoItem({ area: area.id, label: '' })}
+          className="w-full py-2 border-2 border-dashed border-orange-200 rounded-lg text-xs font-semibold text-primary-600 hover:bg-primary-50 transition-colors">
+          + Item fora da lista
+        </button>
+      </div>
+    )
   )
 
   function limparRascunho() {
@@ -523,7 +663,7 @@ export default function OficinaDiagnosticoDetalhe() {
                           className="ml-1 font-semibold text-primary-600 hover:underline">Editar na vistoria</button>
                       )}
                     </p>
-                    {daArea.map(i => (
+                    {daArea.filter(i => !i.foraDaLista).map(i => (
                       <div key={i.id} className="px-4 py-2 text-sm">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-slate-700">{i.label}{i.nota && <span className="block text-xs text-slate-500 italic">{i.nota}</span>}</span>
@@ -536,43 +676,23 @@ export default function OficinaDiagnosticoDetalhe() {
                             {!i.verificado ? '—' : i.status === PROBLEMA ? 'Problema' : i.status === ATENCAO ? 'Atenção' : 'OK'}
                           </span>
                         </div>
-                        {/* A situação vem da vistoria, mas a foto é da avaliação. */}
+                        {/* A situação vem da vistoria, mas o serviço e a foto
+                            são da avaliação. */}
+                        {(i.status === ATENCAO || i.status === PROBLEMA) && servicoDe(i)}
                         {i.verificado && fotosDe(i)}
                       </div>
                     ))}
+                    {/* O que o reparador digitou na área H é dele, não da
+                        vistoria: esse ele marca aqui. */}
+                    {daArea.filter(i => i.foraDaLista).map(i => linhaItem(i, area))}
+                    {novoItemDaArea(area)}
                   </div>
                 )}
 
                 {aberta && area.fonte !== 'vistoria' && (
                   <div className="divide-y divide-slate-100">
-                    {daArea.map(i => {
-                      const marcado = i.status === ATENCAO || i.status === PROBLEMA
-                      const medicao = area.fonte === 'diagnostico'
-                      return (
-                        <div key={i.id} className="px-4 py-3">
-                          <p className="text-sm font-medium text-slate-700">
-                            {i.label}{i.unidade ? <span className="text-slate-400 font-normal"> ({i.unidade})</span> : ''}
-                          </p>
-                          <div className="flex gap-2 mt-1.5 items-center">
-                            {medicao && (
-                              <input value={i.valor || ''} placeholder="valor"
-                                onChange={e => mudarMedicao(i.id, { value: e.target.value.toUpperCase() })}
-                                className="w-24 border-b border-slate-300 px-1 py-1 text-sm uppercase focus:outline-none focus:border-primary-400 bg-transparent" />
-                            )}
-                            <BotoesStatus valor={i.verificado ? i.status : null}
-                              onEscolher={s => medicao ? statusMedicao(i.id, s) : statusItem(i.id, s)} />
-                          </div>
-                          {marcado && (
-                            <input value={i.nota || ''} placeholder="O que foi visto (ex.: pastilhas com 2 mm)"
-                              onChange={e => medicao ? mudarMedicao(i.id, { nota: e.target.value }) : notaItem(i.id, e.target.value)}
-                              className={`mt-2 w-full rounded-lg text-xs px-2.5 py-2 border focus:outline-none ${
-                                i.status === PROBLEMA ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'
-                              }`} />
-                          )}
-                          {i.verificado && fotosDe(i)}
-                        </div>
-                      )
-                    })}
+                    {daArea.map(i => linhaItem(i, area))}
+                    {novoItemDaArea(area)}
                   </div>
                 )}
               </div>
@@ -582,7 +702,7 @@ export default function OficinaDiagnosticoDetalhe() {
           <div className="bg-white border-2 border-primary-200 rounded-2xl p-4">
             <p className="text-sm font-bold text-slate-800">O que recomendamos fazer</p>
             <p className="text-[11px] text-slate-400 mb-3">
-              Montado sozinho com o que foi marcado Atenção ou Trocar. Ajuste a urgência e o texto.
+              Montado sozinho com o que foi marcado Atenção ou Trocar. Ajuste a urgência e o serviço.
             </p>
 
             {recomendacoes.length === 0 && (aval.extras || []).length === 0 && (
@@ -594,10 +714,18 @@ export default function OficinaDiagnosticoDetalhe() {
                 <div key={rec.chave} className="border border-slate-200 rounded-xl p-2.5">
                   <div className="flex items-start gap-2">
                     <span className="text-xs font-bold text-slate-700 mt-1.5 w-4">{rec.area}</span>
-                    {/* Duas linhas: no celular uma linha só cortava a frase no meio. */}
-                    <textarea rows={2} value={rec.texto}
-                      onChange={e => ajustar(rec.itemId, { texto: e.target.value })}
-                      className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs leading-snug resize-none focus:outline-none focus:ring-2 focus:ring-primary-300" />
+                    {/* O serviço é o MESMO texto do campo "Serviço a fazer" do
+                        item: mudar aqui muda lá. Duas linhas: no celular uma
+                        linha só cortava a frase no meio. */}
+                    <div className="flex-1 min-w-0">
+                      <textarea rows={2} value={aval.ajustes?.[rec.itemId]?.servico ?? ''}
+                        placeholder="Serviço a fazer (ex.: trocar…)"
+                        onChange={e => ajustar(rec.itemId, { servico: e.target.value })}
+                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium leading-snug resize-none focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                      {rec.servico
+                        ? rec.encontrado && <p className="text-[11px] text-slate-500 italic mt-0.5">Encontrado: {rec.encontrado}</p>
+                        : <p className="text-[10px] text-slate-400 mt-0.5">Sem serviço escrito, sai assim: {rec.texto}</p>}
+                    </div>
                     <button type="button" title="Não recomendar" onClick={() => ajustar(rec.itemId, { removida: true })}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50">
                       <Trash2 size={14} />
