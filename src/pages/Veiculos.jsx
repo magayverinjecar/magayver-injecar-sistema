@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Search, Plus, Car, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { momentoEntrada, dataEntradaLegivel, nomeVeiculo } from '../utils/datas'
+import { casaBusca } from '../utils/busca'
 
 export default function Veiculos() {
   const navigate = useNavigate()
@@ -32,10 +33,8 @@ export default function Veiculos() {
       // A coluna mostra marca + modelo ("VW GOL"), então a busca tem de achar
       // pelos dois — procurar "VW" e não achar o carro que está escrito "VW GOL"
       // na tela é o tipo de coisa que faz a pessoa desistir do campo de busca.
-      nomeVeiculo(v).toLowerCase().includes(busca.toLowerCase()) ||
-      (v.modelo || '').toLowerCase().includes(busca.toLowerCase()) ||
-      (v.placa || '').toLowerCase().includes(busca.toLowerCase()) ||
-      cliente?.nome.toLowerCase().includes(busca.toLowerCase())
+      // A placa acha com ou sem o traço (utils/busca.js).
+      casaBusca(busca, [nomeVeiculo(v), v.modelo, cliente?.nome], [v.placa])
     )
   })
 

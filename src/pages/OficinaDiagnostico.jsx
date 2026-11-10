@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import { momentoEntrada, nomeVeiculo } from '../utils/datas'
 import { statusColor } from './OrdensServico'
+import { casaBusca } from '../utils/busca'
 
 // Há quanto tempo o carro espera. Usa o momento de entrada porque `etapaEm`
 // ficou igual em todas as OS antigas depois da migração.
@@ -63,9 +64,10 @@ export default function OficinaDiagnostico() {
     const enriquecidos = lista.map(enriquecer)
     const q = busca.trim().toLowerCase()
     const filtrados = q
+      // A placa acha com ou sem o traço (utils/busca.js).
       ? enriquecidos.filter(o => modoBusca === 'placa'
-          ? o.placa.toLowerCase().includes(q)
-          : o.cliente.toLowerCase().includes(q))
+          ? casaBusca(q, [], [o.placa])
+          : casaBusca(q, [o.cliente]))
       : enriquecidos
     return filtrados.sort((a, b) => b.entrouEm - a.entrouEm)
   }

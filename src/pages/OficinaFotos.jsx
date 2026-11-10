@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Camera, Search, User, Clock, Image, CheckCircle2, AlertTriangle, Wrench } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { statusColor } from './OrdensServico'
+import { casaBusca } from '../utils/busca'
 import { momentoEntrada, dataEntradaLegivel, nomeVeiculo } from '../utils/datas'
 import { fotosDaEntrada, fotosDoReparo } from '../utils/vistoria'
 
@@ -43,10 +44,8 @@ export default function OficinaFotos() {
   const lista = noPatio
     .filter(o => {
       if (!busca.trim()) return true
-      const q = busca.toLowerCase()
-      return o.cliente.toLowerCase().includes(q)
-        || o.placa.toLowerCase().includes(q)
-        || o.modelo.toLowerCase().includes(q)
+      // A placa acha com ou sem o traço (utils/busca.js).
+      return casaBusca(busca, [o.cliente, o.modelo], [o.placa])
     })
     // Último a dar entrada aparece primeiro — é o que acabou de chegar e precisa de foto
     .sort((a, b) => b.entrouEm - a.entrouEm)
