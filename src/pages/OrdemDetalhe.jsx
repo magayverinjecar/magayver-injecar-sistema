@@ -6,7 +6,8 @@ import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import gerarId from '../utils/id'
 import { STATUS_OS, statusColor } from './OrdensServico'
-import { imprimirOS, imprimirOrcamento, imprimirOrdemExecucao, podeImprimirOrdemExecucao } from '../utils/print'
+import { imprimirOS, imprimirOrcamento, imprimirOrdemExecucao, podeImprimirOrdemExecucao, imprimirAvaliacaoTecnica } from '../utils/print'
+import { temAvaliacao, itensDaAvaliacao, resumoDaAvaliacao, recomendacoesDaAvaliacao, fotosNumeradas } from '../utils/avaliacao'
 import { separarItens } from '../utils/itensOS'
 import { nomeVeiculo } from '../utils/datas'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
@@ -87,6 +88,7 @@ export default function OrdemDetalhe() {
   // Painel de lançar item — embutido no quadro de itens, não é mais popup
   const [painelItem, setPainelItem] = useState(false)
   const [menuImpressao, setMenuImpressao] = useState(false)
+  const [escolhaAvaliacao, setEscolhaAvaliacao] = useState(false)
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
   const [modalFinalizar, setModalFinalizar] = useState(false)
   const [pgtos, setPgtos] = useState([])
@@ -352,6 +354,18 @@ export default function OrdemDetalhe() {
   function imprimirOrdemReparador() {
     imprimirOrdemExecucao(os, veiculo, funcionarios)
     setOfertaOrdem(false)
+  }
+
+  // A avaliação técnica por áreas, para o cliente (sem valores). Na janela de
+  // impressão dá para imprimir ou "Salvar como PDF".
+  // Com fotos na avaliação, pergunta antes: com ou sem fotos.
+  function imprimirAvaliacao() {
+    if (fotosNumeradas(itensDaAvaliacao(os)).total > 0) { setEscolhaAvaliacao(true); return }
+    imprimirAvaliacaoTecnica(os, veiculo, cliente)
+  }
+  function imprimirAvaliacaoCom(fotos) {
+    setEscolhaAvaliacao(false)
+    imprimirAvaliacaoTecnica(os, veiculo, cliente, { fotos })
   }
 
   // Aumentar a quantidade de uma peça consome mais estoque. Só o ACRÉSCIMO
@@ -695,6 +709,11 @@ export default function OrdemDetalhe() {
             title={osFinalizada ? 'OS finalizada — reabra a OS para editar' : ''}
             className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap flex-shrink-0"><Pencil size={14} />Editar</button>
           <button onClick={() => imprimir('a4det')} className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><Printer size={14} />Nota de Serviço</button>
+          {temAvaliacao(os) && (
+            <button onClick={imprimirAvaliacao}
+              title="O que o reparador verificou em cada área e o que recomendamos — sem valores. Imprime ou salva em PDF."
+              className="flex items-center gap-1.5 border border-slate-200 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors whitespace-nowrap flex-shrink-0"><ClipboardList size={14} />Avaliação técnica</button>
+          )}
           {podeImprimirOrdemExecucao(os) && (
             <button onClick={imprimirOrdemReparador}
               title="O que o cliente autorizou, sem valores, com o QR das fotos do reparo"
@@ -1077,6 +1096,30 @@ export default function OrdemDetalhe() {
       {/* ===== DIAGNÓSTICO ===== */}
       {aba === 'Diagnóstico' && (
         <div className="space-y-4">
+          {/* A avaliação por áreas é preenchida pelo reparador na tela dele;
+              aqui o escritório vê o resumo e imprime o papel do cliente. */}
+          {temAvaliacao(os) && (() => {
+            const itensAval = itensDaAvaliacao(os)
+            const r = resumoDaAvaliacao(itensAval)
+            const recs = recomendacoesDaAvaliacao(os, itensAval)
+            const nFotos = fotosNumeradas(itensAval).total
+            return (
+              <div className="bg-white rounded-xl shadow-sm border border-primary-200 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1 text-sm text-slate-600">
+                  <p className="font-semibold text-slate-800">Avaliação técnica por áreas</p>
+                  <p className="text-xs mt-0.5">
+                    {r.verificados} itens verificados · {r.ok} OK · <span className="text-amber-700">{r.atencao} atenção</span> · <span className="text-red-600">{r.problema} troca</span>
+                    {recs.length > 0 && <> · {recs.length} recomendação(ões)</>}
+                    {nFotos > 0 && <> · {nFotos} {nFotos === 1 ? 'foto' : 'fotos'}</>}
+                  </p>
+                </div>
+                <button onClick={imprimirAvaliacao}
+                  className="flex items-center justify-center gap-1.5 bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+                  <Printer size={14} />Imprimir / PDF
+                </button>
+              </div>
+            )
+          })()}
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2">
@@ -1115,7 +1158,7 @@ export default function OrdemDetalhe() {
               ))}
 
               <div className="pt-2">
-                <label className="block text-sm font-medium text-slate-700 mb-2">Observações Técnicas</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Observações gerais</label>
                 <textarea rows={3} value={obsTecnicas}
                   onChange={e => setObsTecnicasLocal(e.target.value)}
                   placeholder="Conclusão do diagnóstico, serviços recomendados, peças necessárias..."
@@ -1575,6 +1618,26 @@ export default function OrdemDetalhe() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Avaliação com fotos: com fotos para o PDF do WhatsApp; sem fotos para
+          o papel, numa página só e sem gastar tinta com foto. */}
+      {escolhaAvaliacao && (
+        <ModalBase title="Imprimir a avaliação técnica" onClose={() => setEscolhaAvaliacao(false)}>
+          <p className="text-sm text-slate-500 mb-3">Esta avaliação tem fotos. Como quer imprimir?</p>
+          <div className="space-y-2">
+            <button onClick={() => imprimirAvaliacaoCom(true)}
+              className="w-full text-left border border-primary-300 bg-primary-50 hover:bg-primary-100 rounded-lg px-4 py-3 transition-colors">
+              <p className="text-sm font-semibold text-primary-700 flex items-center gap-1.5"><Camera size={14} />Com fotos</p>
+              <p className="text-xs text-slate-500">As fotos saem embaixo de cada área. Bom para salvar em PDF e mandar no WhatsApp.</p>
+            </button>
+            <button onClick={() => imprimirAvaliacaoCom(false)}
+              className="w-full text-left border border-slate-200 hover:bg-slate-50 rounded-lg px-4 py-3 transition-colors">
+              <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Printer size={14} />Sem fotos</p>
+              <p className="text-xs text-slate-500">O papel compacto, numa página só. Economiza tinta.</p>
+            </button>
+          </div>
+        </ModalBase>
       )}
 
       {modalCliente && (
