@@ -2008,6 +2008,9 @@ export function AppProvider({ children }) {
       tecnicoNome: dados.tecnicoNome ?? x.tecnicoNome,
       diagnosticadoEm: dados.diagnosticadoEm ?? x.diagnosticadoEm,
       diagnostico: dados.diagnostico ?? x.diagnostico,
+      // Avaliação técnica por áreas (utils/avaliacao.js): itens B–G, ajustes
+      // das recomendações e o modo (queixa ou completa).
+      avaliacao: dados.avaliacao ?? x.avaliacao,
       historico,
     } : x))
   }

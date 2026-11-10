@@ -28,6 +28,10 @@ export function normalizarDiagnostico(salvos) {
   return DIAGNOSTICO_ITENS.map(padrao => {
     const s = porId.get(padrao.id)
     return {
+      // O que mais estiver gravado no item (`nota`, `verificado` — avaliação
+      // por áreas) passa adiante: quem salva esta lista não pode apagar o que
+      // outra tela escreveu.
+      ...(s || {}),
       ...padrao,
       value: valorDoItem(s),
       status: s?.status || 'normal',
