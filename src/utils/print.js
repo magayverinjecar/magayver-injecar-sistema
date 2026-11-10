@@ -1,6 +1,7 @@
 import qrcode from 'qrcode-generator'
 import { parseValorBR } from './numero'
 import { separarItens } from './itensOS'
+import { AREAS, ATENCAO, PROBLEMA, URGENCIAS, itensDaAvaliacao, resumoDaAvaliacao, recomendacoesDaAvaliacao, fotosNumeradas } from './avaliacao'
 
 function getConfig() {
   try {
@@ -63,13 +64,22 @@ function politicaPatio(os, cfg) {
   return `<div style="font-size:9px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:6px 10px;margin-bottom:10px;white-space:pre-line">${esc(texto)}</div>`
 }
 
-function abrirJanela(html, titulo) {
+function abrirJanela(html, titulo, { esperarImagens = false } = {}) {
   const w = window.open('', '_blank')
   if (!w) { alert('Permita popups para imprimir.'); return }
   w.document.write(html)
   w.document.close()
   w.focus()
-  setTimeout(() => { w.print() }, 450)
+  if (!esperarImagens) { setTimeout(() => { w.print() }, 450); return }
+  // Papel com fotos: abrir a impressão antes de elas carregarem sairia com os
+  // quadros em branco. Espera cada foto carregar (ou falhar), até 20 s.
+  const imagens = Array.from(w.document.images || [])
+  const carregada = img => img.complete ? Promise.resolve() : new Promise(ok => {
+    img.addEventListener('load', ok, { once: true })
+    img.addEventListener('error', ok, { once: true })
+  })
+  const limite = new Promise(ok => setTimeout(ok, 20000))
+  Promise.race([Promise.all(imagens.map(carregada)), limite]).then(() => setTimeout(() => { w.print() }, 300))
 }
 
 function itensTableRows(itens) {
@@ -839,6 +849,153 @@ export function gerarOrdemExecucao(os, veiculo, funcionarios, cfg, { agora = Dat
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Ordem de execução ${esc(os.id)}</title><style>${css}</style></head><body>${body}</body></html>`
 }
 
+// ─── AVALIAÇÃO TÉCNICA (para o cliente) ───────────────────────────────────────
+
+// O papel que o cliente recebe depois da checagem: o que foi verificado em
+// cada área e o que recomendamos fazer, SEM valores — o preço vai no
+// orçamento, entregue à parte. Modelo aprovado pelo dono em 10/11/2026.
+// Quem imprime é o escritório; o reparador só salva a avaliação.
+
+const SIMBOLO = { [ATENCAO]: '!', [PROBLEMA]: '✗' }
+
+// [1, 2, 3] → "1, 2 e 3"
+function juntarNumeros(ns) {
+  return ns.length <= 1 ? String(ns[0] ?? '') : ns.slice(0, -1).join(', ') + ' e ' + ns[ns.length - 1]
+}
+
+// `fotos: true` → as fotos saem embaixo de cada área, 3 por linha (bom para o
+// PDF do WhatsApp). Sem fotos, o papel de sempre, compacto, numa página só.
+export function gerarAvaliacaoTecnica(os, veiculo, cliente, cfg, { fotos = false } = {}) {
+  const itens = itensDaAvaliacao(os)
+  const resumo = resumoDaAvaliacao(itens)
+  const recs = recomendacoesDaAvaliacao(os, itens)
+  const numeradas = fotosNumeradas(itens)
+  const comFotos = fotos && numeradas.total > 0
+  // "📷 fotos 1 e 2" na recomendação; "📷 1, 2" curto ao lado do item.
+  const refFotos = (itemId, curto) => {
+    const ns = comFotos && itemId ? numeradas.porItem[itemId] : null
+    if (!ns?.length) return ''
+    const texto = curto ? ns.join(', ') : (ns.length > 1 ? 'fotos ' : 'foto ') + juntarNumeros(ns)
+    return ` <span class="fref">📷 ${esc(texto)}</span>`
+  }
+  const completa = os?.avaliacao?.modo === 'completa'
+  const rotuloUrg = Object.fromEntries(URGENCIAS.map(u => [u.id, u.rotulo.toUpperCase()]))
+  const km = String(os.kmEntrada || '').trim() || (os.kmIlegivel ? 'não deu para ler' : '—')
+  const quando = os.diagnosticadoEm || os.dataEntrada || ''
+
+  const linhasRec = recs.map(r =>
+    `<tr><td class="urg">${esc(rotuloUrg[r.urgencia] || '')}</td><td class="area-cod">${esc(r.area)}</td><td>${esc(r.texto)}${refFotos(r.itemId)}</td></tr>`
+  ).join('') || '<tr><td colspan="3" class="vazio">Nenhum item precisa de troca ou atenção.</td></tr>'
+
+  const blocos = AREAS.map(area => {
+    const daArea = itens.filter(i => i.area === area.id)
+    const mostrar = completa ? daArea : daArea.filter(i => i.verificado)
+    if (mostrar.length === 0) return ''
+    const linhas = mostrar.map(i => {
+      const simbolo = !i.verificado ? '—' : (SIMBOLO[i.status] || '✓')
+      const valor = String(i.valor || '').trim() ? ` <span class="valor">${esc(i.valor)}${i.unidade && !/[a-z%]/i.test(i.valor) ? ' ' + esc(i.unidade) : ''}</span>` : ''
+      const nota = String(i.nota || '').trim() ? `<span class="nota">${esc(i.nota)}</span>` : ''
+      const naoVerif = !i.verificado ? '<span class="nota">não verificado</span>' : ''
+      return `<div class="item"><span class="st">${simbolo}</span><span>${esc(i.label)}${valor}${refFotos(i.id, true)}${nota}${naoVerif}</span></div>`
+    }).join('')
+    const fotosArea = comFotos ? numeradas.lista.filter(f => f.item.area === area.id) : []
+    const quadros = fotosArea.map(f => {
+      const notaFoto = String(f.item.nota || '').trim()
+      return `<div class="foto"><img src="${esc(f.url)}" alt=""><div class="leg"><span class="n">${f.n}</span><b>${SIMBOLO[f.item.status] || '✓'}</b> ${esc(f.item.label)}${notaFoto ? `<i>${esc(notaFoto)}</i>` : ''}</div></div>`
+    }).join('')
+    const contagem = `${mostrar.length} ${mostrar.length === 1 ? 'item' : 'itens'}`
+      + (fotosArea.length ? ` · ${fotosArea.length} ${fotosArea.length === 1 ? 'foto' : 'fotos'}` : '')
+    // Com fotos, cada área ocupa a largura toda: itens em duas colunas e,
+    // logo abaixo, as fotos dela — o cliente vê o item e a foto juntos.
+    if (comFotos) {
+      return `<div class="area"><div class="cab">${esc(area.id)} · ${esc(area.nome)} <small>${contagem}</small></div><div class="itens2">${linhas}</div>${quadros ? `<div class="fotos-area">${quadros}</div>` : ''}</div>`
+    }
+    return `<div class="area"><div class="cab">${esc(area.id)} · ${esc(area.nome)} <small>${contagem}</small></div>${linhas}</div>`
+  }).join('')
+
+  const obs = String(os.observacoesTecnicas || '').trim()
+  const scanner = String(os.falhasScanner || '').trim()
+
+  const css = `
+    @page { size: A4; margin: 10mm; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; }
+    .topo { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 5px; }
+    .topo h1 { font-size: 17px; margin: 0; }
+    .topo .sub { font-size: 10.5px; margin-top: 2px; }
+    .topo .os { text-align: right; font-size: 10.5px; }
+    .topo .os b { font-size: 17px; display: block; }
+    .carro { display: grid; grid-template-columns: repeat(5, auto); gap: 2px 12px; font-size: 11.5px; margin: 7px 0; padding: 5px 8px; border: 1px solid #000; }
+    .carro span { font-size: 8.5px; text-transform: uppercase; color: #333; display: block; }
+    .resumo { display: flex; gap: 8px; margin: 8px 0; }
+    .resumo div { flex: 1; border: 1px solid #000; padding: 5px 8px; font-size: 10px; }
+    .resumo b { font-size: 18px; display: block; }
+    .resumo .t { background: #000; color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    h2 { font-size: 11.5px; text-transform: uppercase; margin: 10px 0 4px; border-bottom: 1px solid #000; padding-bottom: 2px; }
+    table.rec { width: 100%; border-collapse: collapse; font-size: 11px; }
+    table.rec td { border-bottom: 1px solid #ccc; padding: 4px; vertical-align: top; }
+    .urg { font-weight: bold; white-space: nowrap; width: 96px; }
+    .area-cod { font-weight: bold; width: 22px; }
+    .vazio { color: #555; font-style: italic; }
+    .caixa-texto { border: 1px solid #000; padding: 5px 8px; font-size: 10.5px; white-space: pre-line; }
+    .legenda { font-size: 9.5px; margin: 2px 0 4px; }
+    .areas { columns: 2; column-gap: 14px; }
+    .area { break-inside: avoid; border: 1px solid #000; margin-bottom: 8px; }
+    .area .cab { display: flex; justify-content: space-between; background: #eee; padding: 3px 6px; font-size: 10.5px; font-weight: bold; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .area .cab small { font-weight: normal; }
+    .item { display: flex; gap: 6px; padding: 3px 6px; font-size: 10px; border-top: 1px solid #ddd; align-items: flex-start; }
+    .item .st { width: 15px; text-align: center; font-weight: bold; flex-shrink: 0; }
+    .item .valor { font-weight: bold; }
+    .item .nota { display: block; font-size: 9.5px; font-style: italic; color: #333; }
+    .fref { font-size: 9px; font-weight: bold; white-space: nowrap; margin-left: 4px; }
+    .itens2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 10px; }
+    .fotos-area { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 6px; border-top: 1px solid #000; }
+    .foto { border: 1px solid #000; break-inside: avoid; }
+    .foto img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #f2f2f2; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .foto .leg { padding: 3px 5px; font-size: 9.5px; line-height: 1.25; border-top: 1px solid #000; }
+    .foto .leg .n { display: inline-block; background: #000; color: #fff; font-weight: bold; padding: 0 4px; margin-right: 4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .foto .leg i { display: block; color: #333; font-size: 9px; }
+    .rodape { font-size: 9.5px; color: #333; margin-top: 8px; border-top: 1px solid #000; padding-top: 4px; }
+    .assin { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 22px; font-size: 10px; break-inside: avoid; }
+    .assin div { border-top: 1px solid #000; padding-top: 3px; }
+  `
+
+  const body = `
+    <div class="topo">
+      <div><h1>AVALIAÇÃO TÉCNICA DO VEÍCULO</h1><div class="sub">${esc(cfg?.nome || 'Oficina')}</div></div>
+      <div class="os"><b>OS ${esc(os.id)}</b>${quando ? `Avaliado em ${esc(quando)}<br>` : ''}${os.tecnicoNome ? `Reparador: ${esc(String(os.tecnicoNome).trim())}` : ''}</div>
+    </div>
+    <div class="carro">
+      <div><span>Veículo</span>${esc(nomeModelo(veiculo, os) || '—')}</div>
+      <div><span>Placa</span><b>${esc(veiculo?.placa || os.veiculoPlaca || '—')}</b></div>
+      <div><span>Ano</span>${esc(veiculo?.ano || '—')}</div>
+      <div><span>Km</span>${esc(km)}</div>
+      <div><span>Cliente</span>${esc(String(cliente?.nome || os.clienteNome || '—').trim())}</div>
+    </div>
+
+    <div class="resumo">
+      <div><b>${resumo.verificados}</b>itens verificados</div>
+      <div><b>${resumo.ok}</b>OK</div>
+      <div><b>${resumo.atencao}</b>atenção — acompanhar</div>
+      <div class="t"><b>${resumo.problema}</b>troca necessária</div>
+    </div>
+
+    <h2>O que recomendamos fazer</h2>
+    <table class="rec">${linhasRec}</table>
+
+    ${obs ? `<h2>Observações do reparador</h2><div class="caixa-texto">${esc(obs)}</div>` : ''}
+    ${scanner ? `<h2>Códigos do scanner</h2><div class="caixa-texto">${esc(scanner)}</div>` : ''}
+
+    <h2>${completa ? 'Tudo o que foi verificado' : 'O que foi verificado'}</h2>
+    <div class="legenda"><b>✓</b> OK &nbsp;·&nbsp; <b>!</b> atenção, acompanhar &nbsp;·&nbsp; <b>✗</b> troca necessária</div>
+    <div class="${comFotos ? 'areas-largas' : 'areas'}">${blocos}</div>
+
+    <div class="rodape">Esta avaliação mostra o estado do veículo na data acima. Os valores vão no orçamento, entregue à parte. Nenhum serviço é feito sem a sua autorização.</div>
+    <div class="assin"><div>Reparador</div><div>Cliente — recebi a avaliação</div></div>
+  `
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Avaliação técnica ${esc(os.id)}</title><style>${css}</style></head><body>${body}</body></html>`
+}
+
 // ─── ORÇAMENTO ────────────────────────────────────────────────────────────────
 
 function gerarOrcamentoPDF(orc, cliente, veiculo, cfg) {
@@ -993,6 +1150,13 @@ export function imprimirOS(os, cliente, veiculo, mecanico, total, modelo) {
   else if (modelo === 'a5') html = gerarA5(os, cliente, veiculo, mecanico, total, cfg)
   else html = gerarA4Det(os, cliente, veiculo, mecanico, total, cfg)
   abrirJanela(html, `OS ${os.id}`)
+}
+
+// Abre a janela de impressão — nela dá para imprimir ou "Salvar como PDF".
+// `opcoes.fotos`: com as fotos da avaliação embaixo de cada área.
+export function imprimirAvaliacaoTecnica(os, veiculo, cliente, opcoes = {}) {
+  const fotos = !!opcoes.fotos
+  abrirJanela(gerarAvaliacaoTecnica(os, veiculo, cliente, getConfig(), { fotos }), `Avaliação técnica ${os.id}`, { esperarImagens: fotos })
 }
 
 export function imprimirOrdemExecucao(os, veiculo, funcionarios, opcoes) {
