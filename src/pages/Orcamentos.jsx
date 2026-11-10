@@ -12,6 +12,12 @@ import SeletorKit from '../components/SeletorKit'
 import { avisoDeFalta, pecaSemEstoque } from '../utils/kits'
 import { pecaComCodigo } from '../utils/pecas'
 import { separarItens } from '../utils/itensOS'
+import { casaBusca } from '../utils/busca'
+import { ordenarPor, proximaOrdem } from '../utils/ordenar'
+import { parseDataBR } from '../utils/datas'
+import { SITUACOES_ORC, situacaoPorId, naSituacao, posicaoDoStatusOrc, intervaloDoPeriodo, noPeriodo, nomeDoPeriodo } from '../utils/filtroLista'
+import { useFiltrosGuardados } from '../hooks/useFiltrosGuardados'
+import { FiltroSituacao, FiltroPeriodo, ThOrdenavel, FaixaOrdem } from '../components/FiltrosDaLista'
 
 const statusColor = {
   Pendente: 'bg-yellow-100 text-yellow-700',
@@ -19,6 +25,24 @@ const statusColor = {
   Recusado: 'bg-red-100 text-red-700',
   Convertido: 'bg-blue-100 text-blue-700',
 }
+
+// Filtros da lista de salvos. Ficam guardados enquanto a aba estiver aberta:
+// abrir um orçamento para editar e voltar não pode apagar a busca.
+const FILTROS_INICIAIS = { busca: '', situacao: 'todas', periodo: 'tudo', de: '', ate: '', ordem: null }
+const ORDEM_PADRAO = 'mais novo primeiro'
+// Colunas que ordenam. O número do orçamento NÃO ordena: ele é sorteado
+// (#4467, #1158…), então ordenar por ele não diz nada — quem quer o mais novo
+// clica na Data.
+const COLS_ORC = [
+  { campo: 'cliente', titulo: 'Cliente', tipo: 'texto', nomes: ['A → Z', 'Z → A'], valor: o => o.nome },
+  { campo: 'veiculo', titulo: 'Veículo', tipo: 'texto', nomes: ['A → Z', 'Z → A'], valor: o => o.veiculo },
+  { campo: 'itens', titulo: 'Itens', tipo: 'numero', primeira: 'desc', alinha: 'right', nomes: ['mais itens primeiro', 'menos itens primeiro'], valor: o => o.itens?.length || 0 },
+  { campo: 'total', titulo: 'Total', tipo: 'numero', primeira: 'desc', alinha: 'right', nomes: ['maior primeiro', 'menor primeiro'], valor: o => parseValorBR(o.total) },
+  { campo: 'status', titulo: 'Status', tipo: 'numero', vazioNoFim: true, nomes: ['esperando resposta primeiro', 'recusados primeiro'], valor: o => posicaoDoStatusOrc(o.status) },
+  { campo: 'data', titulo: 'Data', tipo: 'numero', vazioNoFim: true, primeira: 'desc', nomes: ['mais nova primeiro', 'mais antiga primeiro'], valor: o => parseDataBR(o.data) || null },
+]
+const COLUNAS_ORC = Object.fromEntries(COLS_ORC.map(c => [c.campo, c]))
+const colOrc = (campo) => COLUNAS_ORC[campo]
 
 const VAZIO_CLIENTE = { clienteId: '', nome: '', telefone: '', veiculo: '', placa: '', km: '' }
 const VAZIO_ITEM = { tipo: 'Serviço', refId: '', descricao: '', quantidade: '1', valorUnitario: '', desconto: '0' }
@@ -60,6 +84,7 @@ export default function Orcamentos() {
   const [criarNovo, setCriarNovo] = useState(false)
   const [novoForm, setNovoForm] = useState({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
   const [taxaPct, setTaxaPct] = useState('10')
+  const [filtros, mudarFiltros] = useFiltrosGuardados('filtros:orcamentos', FILTROS_INICIAIS)
 
   // Pré-preenche o formulário quando vem de uma OS via location.state.fromOS
   useEffect(() => {
@@ -151,13 +176,31 @@ export default function Orcamentos() {
   const { servicos: orcServicos, pecas: orcPecas, totalServicos: orcTotalServicos, totalPecas: orcTotalPecas } = separarItens(itens)
   const orcAgrupar = orcServicos.length > 0 && orcPecas.length > 0
 
-  // Números do rodapé da lista. Separa o que está PENDENTE porque é o único
-  // bolo em que ainda dá para mexer: é dinheiro parado esperando o cliente
-  // responder. Aprovado, recusado e convertido já saíram da mesa. `Number(...)`
-  // porque orçamento antigo pode ter gravado o total como texto.
-  const totalSalvos = orcamentos.reduce((s, o) => s + (Number(o.total) || 0), 0)
-  const pendentes = orcamentos.filter(o => o.status === 'Pendente')
-  const totalPendente = pendentes.reduce((s, o) => s + (Number(o.total) || 0), 0)
+  // ── Lista de salvos: busca, situação, período e ordem ──
+  // A ordem gravada já é a do mais novo primeiro (o novo entra no início).
+  const situacaoOrc = situacaoPorId(SITUACOES_ORC, filtros.situacao)
+  const intervaloOrc = intervaloDoPeriodo(filtros)
+  // Tudo menos a situação: é sobre esta lista que os botões contam.
+  // A placa acha com ou sem o traço (utils/busca.js).
+  const baseOrc = orcamentos.filter(o =>
+    casaBusca(filtros.busca, [o.numero, o.nome, o.veiculo, o.telefone], [o.placa])
+    && noPeriodo(parseDataBR(o.data), intervaloOrc))
+  const contagemOrc = (s) => (s.status ? baseOrc.filter(o => s.status.includes(o.status)).length : baseOrc.length)
+  const orcFiltrados = ordenarPor(baseOrc.filter(o => naSituacao(situacaoOrc, o.status)), filtros.ordem, COLUNAS_ORC)
+  const temFiltroOrc = Boolean(filtros.busca.trim()) || situacaoOrc.id !== 'todas' || filtros.periodo !== 'tudo'
+  const descricaoFiltroOrc = [situacaoOrc.status ? situacaoOrc.rotulo : '', nomeDoPeriodo(filtros)].filter(Boolean).join(' · ')
+  const ordenarOrc = (col) => mudarFiltros({ ordem: proximaOrdem(filtros.ordem, col.campo, col.primeira) })
+  const limparFiltrosOrc = () => mudarFiltros({ busca: '', situacao: 'todas', periodo: 'tudo', de: '', ate: '' })
+
+  // Números do rodapé da lista — do que está NA TELA, como na lista de OS.
+  // Separa o que está PENDENTE porque é o único bolo em que ainda dá para
+  // mexer: é dinheiro parado esperando o cliente responder. Aprovado, recusado
+  // e convertido já saíram da mesa. `parseNum` porque orçamento antigo pode
+  // ter gravado o total como texto ("420,00"), que o `Number` lia como NaN — a
+  // linha mostrava "NaN" e o valor ficava fora da soma.
+  const totalSalvos = orcFiltrados.reduce((s, o) => s + parseNum(o.total), 0)
+  const pendentes = orcFiltrados.filter(o => o.status === 'Pendente')
+  const totalPendente = pendentes.reduce((s, o) => s + parseNum(o.total), 0)
 
   const veiculosCliente = dados.clienteId ? veiculosPorCliente(Number(dados.clienteId)) : []
 
@@ -480,6 +523,30 @@ export default function Orcamentos() {
       </div>
 
       {/* === ABA SALVOS === */}
+      {aba === 'salvos' && orcamentos.length > 0 && (
+        <div className="space-y-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-3">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input type="text" placeholder="Buscar por cliente, placa ou carro..." value={filtros.busca}
+                onChange={e => mudarFiltros({ busca: e.target.value })}
+                className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            </div>
+            <FiltroSituacao situacoes={SITUACOES_ORC} valor={situacaoOrc.id} contagem={contagemOrc}
+              onMudar={id => mudarFiltros({ situacao: id })} />
+            <FiltroPeriodo filtros={filtros} onMudar={mudarFiltros} />
+            {temFiltroOrc && (
+              <div className="flex justify-end">
+                <button type="button" onClick={limparFiltrosOrc} className="flex items-center gap-1 text-xs font-semibold text-primary-600 hover:underline">
+                  <X size={13} />Limpar filtros
+                </button>
+              </div>
+            )}
+          </div>
+          <FaixaOrdem cols={COLS_ORC} ordem={filtros.ordem} padrao={ORDEM_PADRAO} onVoltar={() => mudarFiltros({ ordem: null })} />
+        </div>
+      )}
+
       {aba === 'salvos' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           {orcamentos.length === 0 ? (
@@ -488,21 +555,22 @@ export default function Orcamentos() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cliente</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Veículo</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide"
+                    title="O número do orçamento é sorteado — não diz a ordem em que foi feito. Para o mais novo, ordene pela Data.">#</th>
+                  <ThOrdenavel col={colOrc('cliente')} ordem={filtros.ordem} onOrdenar={ordenarOrc} />
+                  <ThOrdenavel col={colOrc('veiculo')} ordem={filtros.ordem} onOrdenar={ordenarOrc} />
                   {/* Quantos itens o orçamento tem só se sabia abrindo. É o que
                       diz de cara se aquela linha é uma troca de óleo ou uma
                       revisão de vinte itens — e no computador sobra largura. */}
-                  <th className="hidden lg:table-cell text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Itens</th>
-                  <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Data</th>
+                  <ThOrdenavel col={colOrc('itens')} ordem={filtros.ordem} onOrdenar={ordenarOrc} className="hidden lg:table-cell" />
+                  <ThOrdenavel col={colOrc('total')} ordem={filtros.ordem} onOrdenar={ordenarOrc} />
+                  <ThOrdenavel col={colOrc('status')} ordem={filtros.ordem} onOrdenar={ordenarOrc} />
+                  <ThOrdenavel col={colOrc('data')} ordem={filtros.ordem} onOrdenar={ordenarOrc} />
                   <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {orcamentos.map(o => (
+                {orcFiltrados.map(o => (
                   <tr key={o.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-5 py-3.5 text-sm font-mono text-slate-500">{o.numero}</td>
                     <td className="px-5 py-3.5 text-sm font-medium text-slate-800">{o.nome}</td>
@@ -510,7 +578,7 @@ export default function Orcamentos() {
                     <td className="hidden lg:table-cell px-5 py-3.5 text-right text-sm text-slate-500 tabular-nums">
                       {o.itens?.length || <span className="text-slate-300">—</span>}
                     </td>
-                    <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-700 tabular-nums">{fmtValor(o.total)}</td>
+                    <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-700 tabular-nums">{fmtValor(parseNum(o.total))}</td>
                     <td className="px-5 py-3.5">
                       <select value={o.status} onChange={e => mudarStatus(o.id, e.target.value)}
                         className={`text-xs px-2 py-1 rounded-full font-medium border-0 cursor-pointer focus:outline-none ${statusColor[o.status]}`}>
@@ -538,12 +606,21 @@ export default function Orcamentos() {
                 ))}
               </tbody>
             </table>
+            {orcFiltrados.length === 0 && (
+              <div className="text-center py-10">
+                <p className="text-sm text-slate-400">Nenhum orçamento encontrado com estes filtros.</p>
+                <button type="button" onClick={limparFiltrosOrc} className="mt-2 text-xs font-semibold text-primary-600 hover:underline">Limpar filtros</button>
+              </div>
+            )}
             {/* Rodapé de sistema: o dono queria abrir a tela e já saber quanto
                 mandou de orçamento e quanto ainda está na mão do cliente, sem
-                somar linha por linha nem abrir relatório. */}
+                somar linha por linha nem abrir relatório. Com filtro, conta só
+                o que está na tela — o "(de N)" avisa que não é tudo. */}
             <div className="hidden lg:flex items-center justify-between gap-4 px-3 py-1.5 bg-slate-100 border-t border-slate-300 text-[11px] text-slate-600">
               <span>
-                {orcamentos.length} {orcamentos.length === 1 ? 'orçamento' : 'orçamentos'}
+                {orcFiltrados.length} {orcFiltrados.length === 1 ? 'orçamento' : 'orçamentos'}
+                {temFiltroOrc && ` (de ${orcamentos.length})`}
+                {descricaoFiltroOrc && <span className="ml-2">· {descricaoFiltroOrc}</span>}
                 {pendentes.length > 0 && (
                   <span className="ml-2 text-yellow-700">· {pendentes.length} aguardando resposta</span>
                 )}
