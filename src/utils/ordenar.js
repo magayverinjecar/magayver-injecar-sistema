@@ -22,9 +22,14 @@ function chaveTexto(v) {
 }
 
 // O próximo estado do clique naquela coluna.
-export function proximaOrdem(atual, campo) {
-  if (!atual || atual.campo !== campo) return { campo, direcao: 'asc' }
-  if (atual.direcao === 'asc') return { campo, direcao: 'desc' }
+//
+// `primeira` é o sentido do 1º clique. O padrão é crescente (Estoque), mas há
+// coluna em que o útil é o contrário: em data, a mais nova primeiro; em número
+// da OS e em valor, o maior primeiro. O 2º clique inverte; o 3º volta ao natural.
+export function proximaOrdem(atual, campo, primeira = 'asc') {
+  const outra = primeira === 'asc' ? 'desc' : 'asc'
+  if (!atual || atual.campo !== campo) return { campo, direcao: primeira }
+  if (atual.direcao === primeira) return { campo, direcao: outra }
   return null   // terceiro clique: volta ao natural
 }
 
@@ -37,6 +42,9 @@ export function proximaOrdem(atual, campo) {
 // crescente" trazer para o topo justamente as peças sem custo, que é quando
 // alguém ordena por custo. Em coluna de texto o vazio vai para o fim nas duas
 // direções: nome em branco no topo do A-Z é ruído, não informação.
+// Coluna de número com `vazioNoFim: true` trata vazio (null, '') como o texto:
+// sempre no fim. É o caso da data (OS sem data de entrega) e do número da OS
+// (ficha migrada não tem número).
 export function ordenarPor(lista, ordem, colunas = {}) {
   const itens = [...(lista || [])]
   if (!ordem?.campo) return itens
@@ -52,6 +60,13 @@ export function ordenarPor(lista, ordem, colunas = {}) {
     .map((item, i) => ({ item, i, v: col.valor(item) }))
     .sort((a, b) => {
       if (ehNumero) {
+        if (col.vazioNoFim) {
+          const va = a.v === null || a.v === undefined || a.v === ''
+          const vb = b.v === null || b.v === undefined || b.v === ''
+          if (va && vb) return a.i - b.i
+          if (va) return 1
+          if (vb) return -1
+        }
         const x = parseValorBR(a.v), y = parseValorBR(b.v)
         if (x !== y) return (x - y) * sinal
         return a.i - b.i
