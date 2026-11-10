@@ -21,6 +21,16 @@
 // qualquer área (até a H). São SEPARADAS das fotos do reparo (`os.fotos`):
 // mostram ao cliente o que foi visto na checagem, e saem no papel embaixo da
 // área a que pertencem.
+//
+// Serviço a fazer: `avaliacao.ajustes[itemId].servico` ("Trocar pastilhas e
+// discos dianteiros"). É o reparador dizendo o que fazer, não só o que viu.
+// Quando existe, é ele que vai na recomendação, com o que foi visto embaixo.
+//
+// Item fora da lista: defeito que aparece e não está na checagem fixa (ex.:
+// roda fônica quebrada). O reparador digita o nome, e o item vale SÓ para
+// aquela OS: `avaliacao.itensExtras = [{ id, area, label }]`. A situação e a
+// nota dele ficam em `avaliacao.itens[id]`, como nas áreas B–G, e as fotos em
+// `avaliacao.fotos[id]` — então ele funciona igual aos outros em tudo.
 
 import { DIAGNOSTICO_ITENS, valorDoItem } from './diagnostico'
 import { INSPECAO_ITENS } from './vistoria'
@@ -105,13 +115,48 @@ function medicaoVerificada(item) {
     || item.status === ATENCAO || item.status === PROBLEMA)
 }
 
+// Os itens que o reparador digitou numa área (fora da lista fixa).
+export function itensForaDaLista(os, areaId) {
+  const lista = os?.avaliacao?.itensExtras
+  return Array.isArray(lista)
+    ? lista.filter(x => x && x.id && x.area === areaId && String(x.label || '').trim())
+    : []
+}
+
+// O que os botões de "Serviço a fazer" escrevem.
+export const VERBOS_SERVICO = ['Trocar', 'Reparar', 'Limpar', 'Regular', 'Revisar']
+
+// O verbo com que o serviço começa, se começar por um dos botões.
+export function verboDoServico(servico) {
+  const s = String(servico || '').trim().toLowerCase()
+  return VERBOS_SERVICO.find(v => s === v.toLowerCase() || s.startsWith(v.toLowerCase() + ' ')) || null
+}
+
+// Um toque no botão: "Trocar" + "Pastilhas e discos dianteiros" →
+// "Trocar pastilhas e discos dianteiros". Se o texto já começa com outro
+// verbo dos botões, troca só o verbo e mantém o resto que ele escreveu. O que
+// está entre parênteses sai ("Bateria (teste de carga)" → "bateria"), e o
+// nome vai em minúscula, menos sigla (ABS continua ABS).
+export function servicoSugerido(verbo, label, atual = '') {
+  const a = String(atual || '').trim()
+  const antes = verboDoServico(a)
+  if (antes) return verbo + a.slice(antes.length)
+  const nome = String(label || '').replace(/\s*\([^)]*\)/g, '').trim()
+    .split(/\s+/)
+    .map(p => (p.length > 1 && p === p.toUpperCase() && /\p{Lu}/u.test(p) ? p : p.toLowerCase()))
+    .join(' ')
+  return nome ? `${verbo} ${nome}` : verbo
+}
+
 // Todos os itens de todas as áreas, já com status/nota/valor, no formato da
-// tela e do papel: { area, id, label, unidade?, valor?, status|null, nota, verificado, somenteLeitura, fotos }
+// tela e do papel: { area, id, label, unidade?, valor?, status|null, nota, verificado, somenteLeitura, foraDaLista, fotos }
+// Os itens fora da lista entram no fim da área deles.
 export function itensDaAvaliacao(os) {
   const porIdDiag = new Map((os?.diagnosticoItens || []).map(i => [i.id, i]))
   const porIdVist = new Map((os?.inspecaoVisual || []).map(i => [i.id, i]))
   const salvos = os?.avaliacao?.itens || {}
   const lista = []
+  const statusSalvo = (s) => ([NORMAL, ATENCAO, PROBLEMA].includes(s?.status) ? s.status : null)
   for (const area of AREAS) {
     if (area.fonte === 'diagnostico') {
       for (const p of DIAGNOSTICO_ITENS) {
@@ -132,9 +177,17 @@ export function itensDaAvaliacao(os) {
     } else {
       for (const p of area.itens) {
         const s = salvos[p.id]
-        const status = [NORMAL, ATENCAO, PROBLEMA].includes(s?.status) ? s.status : null
+        const status = statusSalvo(s)
         lista.push({ area: area.id, id: p.id, label: p.label, status, nota: s?.nota || '', verificado: !!status, fotos: fotosDoItem(os, p.id) })
       }
+    }
+    for (const x of itensForaDaLista(os, area.id)) {
+      const s = salvos[x.id]
+      const status = statusSalvo(s)
+      lista.push({
+        area: area.id, id: x.id, label: String(x.label).trim(), status, nota: s?.nota || '',
+        verificado: !!status, foraDaLista: true, fotos: fotosDoItem(os, x.id),
+      })
     }
   }
   return lista
@@ -165,16 +218,22 @@ export function recomendacoesDaAvaliacao(os, itens = itensDaAvaliacao(os)) {
     if (i.status !== ATENCAO && i.status !== PROBLEMA) continue
     const a = ajustes[i.id] || {}
     if (a.removida) continue
+    // Com serviço escrito, a recomendação é o serviço e o que foi visto vai
+    // embaixo ("Encontrado: …"). Sem serviço, sai como antes: o texto que ele
+    // ajustou (`texto`, gravado antes de existir o serviço) ou nome — nota.
+    const servico = String(a.servico || '').trim()
     recs.push({
       chave: i.id, itemId: i.id, area: i.area,
-      texto: String(a.texto || '').trim() || textoPadrao(i),
+      servico,
+      encontrado: servico ? String(i.nota || '').trim() : '',
+      texto: servico || String(a.texto || '').trim() || textoPadrao(i),
       urgencia: a.urgencia || (i.status === PROBLEMA ? 'urgente' : 'recomendado'),
       automatica: true,
     })
   }
   for (const e of os?.avaliacao?.extras || []) {
     if (!String(e?.texto || '').trim()) continue
-    recs.push({ chave: e.id, itemId: null, area: e.area || '', texto: e.texto.trim(), urgencia: e.urgencia || 'recomendado', automatica: false })
+    recs.push({ chave: e.id, itemId: null, area: e.area || '', servico: '', encontrado: '', texto: e.texto.trim(), urgencia: e.urgencia || 'recomendado', automatica: false })
   }
   const ordemArea = (a) => { const k = AREAS.findIndex(x => x.id === a); return k < 0 ? 99 : k }
   return recs.sort((x, y) => (ORDEM_URGENCIA[x.urgencia] ?? 9) - (ORDEM_URGENCIA[y.urgencia] ?? 9) || ordemArea(x.area) - ordemArea(y.area))

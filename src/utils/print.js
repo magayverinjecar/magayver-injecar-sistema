@@ -883,13 +883,20 @@ export function gerarAvaliacaoTecnica(os, veiculo, cliente, cfg, { fotos = false
   const km = String(os.kmEntrada || '').trim() || (os.kmIlegivel ? 'não deu para ler' : '—')
   const quando = os.diagnosticadoEm || os.dataEntrada || ''
 
+  // Com o serviço escrito pelo reparador: o serviço em negrito e, embaixo, o
+  // que foi encontrado. Sem ele, a linha de sempre.
+  const textoRec = (r) => (r.servico
+    ? `<b>${esc(r.servico)}</b>${refFotos(r.itemId)}${r.encontrado ? `<span class="enc">Encontrado: ${esc(r.encontrado)}</span>` : ''}`
+    : `${esc(r.texto)}${refFotos(r.itemId)}`)
   const linhasRec = recs.map(r =>
-    `<tr><td class="urg">${esc(rotuloUrg[r.urgencia] || '')}</td><td class="area-cod">${esc(r.area)}</td><td>${esc(r.texto)}${refFotos(r.itemId)}</td></tr>`
+    `<tr><td class="urg">${esc(rotuloUrg[r.urgencia] || '')}</td><td class="area-cod">${esc(r.area)}</td><td>${textoRec(r)}</td></tr>`
   ).join('') || '<tr><td colspan="3" class="vazio">Nenhum item precisa de troca ou atenção.</td></tr>'
 
   const blocos = AREAS.map(area => {
     const daArea = itens.filter(i => i.area === area.id)
-    const mostrar = completa ? daArea : daArea.filter(i => i.verificado)
+    // Na completa, item da lista sem verificar sai como "não verificado". O
+    // item que o reparador digitou e não marcou não sai: não tem o que dizer.
+    const mostrar = completa ? daArea.filter(i => i.verificado || !i.foraDaLista) : daArea.filter(i => i.verificado)
     if (mostrar.length === 0) return ''
     const linhas = mostrar.map(i => {
       const simbolo = !i.verificado ? '—' : (SIMBOLO[i.status] || '✓')
@@ -937,6 +944,7 @@ export function gerarAvaliacaoTecnica(os, veiculo, cliente, cfg, { fotos = false
     .urg { font-weight: bold; white-space: nowrap; width: 96px; }
     .area-cod { font-weight: bold; width: 22px; }
     .vazio { color: #555; font-style: italic; }
+    table.rec .enc { display: block; font-size: 10px; font-style: italic; color: #333; }
     .caixa-texto { border: 1px solid #000; padding: 5px 8px; font-size: 10.5px; white-space: pre-line; }
     .legenda { font-size: 9.5px; margin: 2px 0 4px; }
     .areas { columns: 2; column-gap: 14px; }
