@@ -7,6 +7,7 @@
 // Funções puras, testáveis em Node.
 
 import { AREAS } from './avaliacao'
+import { normalizarBusca } from './busca'
 
 // Uma peça em qualquer formato que já foi gravado: { descricao }, { nome } ou
 // só o texto.
@@ -32,6 +33,32 @@ export function pecasPorArea(pecas) {
   const outras = lista.filter(p => !p.area)
   if (outras.length) grupos.push({ area: '', nome: 'Outras peças', pecas: outras })
   return grupos
+}
+
+// "Lançar no orçamento": as peças do reparador que ainda NÃO estão nos itens
+// da OS, prontas para entrar como peça avulsa (sem ligação com o estoque —
+// não reserva nem baixa nada) e sem preço, que a oficina preenche depois.
+// "Já está" = já existe peça com o mesmo nome (sem acento e sem maiúscula):
+// clicar duas vezes não duplica.
+export function pecasParaLancar(pecas, itensDaOS) {
+  const nome = (s) => normalizarBusca(s).replace(/\s+/g, ' ')
+  const jaNaOS = new Set((itensDaOS || []).filter(i => i?.tipo === 'peca').map(i => nome(i.descricao)))
+  const todas = pecasPorArea(pecas).flatMap(g => g.pecas)
+  const novas = []
+  let jaEstavam = 0
+  for (const p of todas) {
+    const chave = nome(p.descricao)
+    if (jaNaOS.has(chave)) { jaEstavam++; continue }
+    // A mesma peça em duas áreas da lista do reparador entra duas vezes, cada
+    // uma com a sua quantidade: juntar perderia uma das quantidades.
+    novas.push({
+      tipo: 'peca', produtoId: null, servicoId: null,
+      descricao: p.descricao.toUpperCase(),
+      quantidade: Number(String(p.quantidade).replace(',', '.')) > 0 ? Number(String(p.quantidade).replace(',', '.')) : 1,
+      valorUnitario: '0', desconto: '0', mecanicoId: null,
+    })
+  }
+  return { novas, jaEstavam }
 }
 
 // O texto do "Copiar lista", para colar no WhatsApp do fornecedor: o carro em

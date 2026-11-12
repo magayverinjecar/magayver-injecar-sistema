@@ -12,6 +12,7 @@ import { separarItens } from '../utils/itensOS'
 import { nomeVeiculo } from '../utils/datas'
 import { TIPOS_ATENDIMENTO } from '../utils/tipoAtendimento'
 import PecasDoReparador from '../components/PecasDoReparador'
+import { pecasParaLancar } from '../utils/pecasPorArea'
 import PedidoCotacao from '../components/PedidoCotacao'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
@@ -100,6 +101,8 @@ export default function OrdemDetalhe() {
   const [pgtos, setPgtos] = useState([])
   const [modalReabrir, setModalReabrir] = useState(false)
   const [editandoItem, setEditandoItem] = useState(null)
+  // Aviso depois do "Lançar no orçamento" (quantas entraram, quantas já estavam)
+  const [avisoLancar, setAvisoLancar] = useState('')
 
   const [diagnosticoLocal, setDiagnosticoLocal] = useState(null)
   const [inspecaoLocal, setInspecaoLocal] = useState(null)
@@ -438,7 +441,17 @@ export default function OrdemDetalhe() {
                       )}
                     </td>
                     <td className="py-2.5 text-center text-sm text-slate-600">{it.quantidade}</td>
-                    <td className="py-2.5 text-right text-sm text-slate-600">{fmt(pNum(it.valorUnitario))}</td>
+                    <td className="py-2.5 text-right text-sm text-slate-600">
+                      {/* Peça sem preço (ex.: lançada da lista do reparador):
+                          o preço se digita aqui mesmo, sem abrir a edição. */}
+                      {it.tipo === 'peca' && !(pNum(it.valorUnitario) > 0) && !osFinalizada ? (
+                        <input type="text" inputMode="decimal" placeholder="preço" defaultValue=""
+                          aria-label={`Preço de ${it.descricao}`} title="Digite o preço e aperte Enter"
+                          onBlur={e => precoNaLinha(it, e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') precoNaLinha(it, e.currentTarget.value) }}
+                          className="w-24 text-right border border-amber-300 bg-amber-50 rounded-md px-2 py-1 text-sm placeholder:text-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                      ) : fmt(pNum(it.valorUnitario))}
+                    </td>
                     <td className="py-2.5 text-right text-sm text-slate-500">{pNum(it.desconto) > 0 ? fmt(pNum(it.desconto)) : '—'}</td>
                     <td className="py-2.5 text-right text-sm font-semibold text-slate-700">{fmt(pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto))}</td>
                     <td className="py-2.5 text-right">
@@ -679,6 +692,30 @@ export default function OrdemDetalhe() {
     const pct = parseFloat(taxaPct) || 0
     if (!pct) return
     editarItemOrdem(os.id, item.id, { valorUnitario: (pNum(item.valorUnitario) * (1 + pct / 100)).toFixed(2).replace('.', ','), quantidade: item.quantidade })
+  }
+
+  // "Lançar no orçamento": as peças que o reparador pediu entram de uma vez
+  // como peça avulsa (não mexe no estoque) e sem preço — a oficina só digita o
+  // preço de cada uma na própria linha. Peça que já está no orçamento é pulada.
+  const lancamento = pecasParaLancar(os.pecasNecessarias, os.itens)
+  const semPreco = (os.itens || []).filter(i => !(pNum(i.valorUnitario) > 0)).length
+  function lancarPecasDoReparador() {
+    const { novas, jaEstavam } = lancamento
+    if (novas.length === 0) return
+    adicionarItensOrdem(os.id, novas)
+    setAvisoLancar(
+      `${novas.length} ${novas.length === 1 ? 'peça lançada' : 'peças lançadas'} sem preço — digite o preço de cada uma na lista abaixo.`
+      + (jaEstavam ? ` ${jaEstavam} já ${jaEstavam === 1 ? 'estava' : 'estavam'} no orçamento.` : ''),
+    )
+    setTimeout(() => setAvisoLancar(''), 8000)
+  }
+
+  // Preço digitado direto na linha da peça sem preço. Só grava quando é um
+  // valor de verdade; em branco, a linha continua pedindo o preço.
+  function precoNaLinha(item, texto) {
+    const v = pNum(texto)
+    if (!(v > 0)) return
+    editarItemOrdem(os.id, item.id, { valorUnitario: String(texto).trim(), quantidade: item.quantidade })
   }
 
   function aplicarTaxaTodos() {
@@ -1236,7 +1273,21 @@ export default function OrdemDetalhe() {
               <div className="mt-3 pt-3 border-t border-blue-200">
                 {/* Separadas pela área da avaliação em que o reparador lançou,
                     com o "Copiar lista" para mandar ao fornecedor. */}
-                <PecasDoReparador pecas={os.pecasNecessarias} carro={carroDasPecas} titulo="Peças que ele pediu" />
+                <PecasDoReparador pecas={os.pecasNecessarias} carro={carroDasPecas} titulo="Peças que ele pediu"
+                  extra={
+                    <button type="button" onClick={lancarPecasDoReparador}
+                      disabled={osFinalizada || lancamento.novas.length === 0}
+                      title={osFinalizada ? 'OS finalizada — reabra a OS para alterar os itens'
+                        : lancamento.novas.length === 0 ? 'Todas as peças do reparador já estão no orçamento'
+                          : 'Lança todas como peça avulsa, sem preço — depois é só digitar o preço de cada uma'}
+                      className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap bg-primary-500 hover:bg-primary-600 text-white disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed">
+                      <Plus size={13} />
+                      {lancamento.novas.length === 0 ? 'Já estão no orçamento' : `Lançar no orçamento (${lancamento.novas.length})`}
+                    </button>
+                  } />
+                {avisoLancar && (
+                  <p className="mt-2 text-xs font-medium text-green-800 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5">{avisoLancar}</p>
+                )}
                 <p className="text-xs text-blue-700 mt-2">
                   Lance cada uma como item abaixo para entrar no valor e sair do estoque.
                 </p>
@@ -1254,7 +1305,11 @@ export default function OrdemDetalhe() {
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <div>
               <h3 className="font-semibold text-slate-800">Itens / Orçamento</h3>
-              <p className="text-sm text-slate-500">Total: {fmt(total)}{descGeral > 0 ? ` (desc. ${fmt(descGeral)})` : ''}</p>
+              <p className="text-sm text-slate-500">
+                Total: {fmt(total)}{descGeral > 0 ? ` (desc. ${fmt(descGeral)})` : ''}
+                {/* Para nenhum orçamento sair com peça a R$ 0,00 sem ninguém ver. */}
+                {semPreco > 0 && <span className="ml-1 font-semibold text-amber-700">· {semPreco} {semPreco === 1 ? 'item sem preço' : 'itens sem preço'}</span>}
+              </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">

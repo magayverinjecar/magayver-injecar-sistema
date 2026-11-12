@@ -6,7 +6,9 @@ import { copiarTexto } from '../utils/copiar'
 // As peças que o reparador pediu, separadas pela área da avaliação, com o
 // botão de copiar a lista inteira (o carro vai junto, para o fornecedor).
 // Quando nenhuma peça tem área (OS antiga), mostra a lista corrida de sempre.
-export default function PecasDoReparador({ pecas, carro, titulo = 'Peças que o reparador pediu', classeTitulo = 'text-xs font-bold text-blue-800 uppercase tracking-wide' }) {
+// `extra`: um botão a mais ao lado do "Copiar lista" (na aba Orçamento, o
+// "Lançar no orçamento").
+export default function PecasDoReparador({ pecas, carro, titulo = 'Peças que o reparador pediu', classeTitulo = 'text-xs font-bold text-blue-800 uppercase tracking-wide', extra = null }) {
   const [copiado, setCopiado] = useState(false)
   const grupos = pecasPorArea(pecas)
   if (grupos.length === 0) return null
@@ -30,12 +32,15 @@ export default function PecasDoReparador({ pecas, carro, titulo = 'Peças que o 
     <div>
       <div className="flex items-center justify-between gap-2 mb-2">
         <p className={classeTitulo}>{titulo} ({total})</p>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+        {extra}
         <button type="button" onClick={copiar} title="Copia a lista com o carro, para colar no WhatsApp do fornecedor"
           className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
             copiado ? 'bg-green-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'
           }`}>
           {copiado ? <><Check size={13} />Copiado</> : <><Copy size={13} />Copiar lista</>}
         </button>
+        </div>
       </div>
       {comAreas ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
