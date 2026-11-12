@@ -12,6 +12,7 @@ import { separarItens } from '../utils/itensOS'
 import { nomeVeiculo } from '../utils/datas'
 import { TIPOS_ATENDIMENTO } from '../utils/tipoAtendimento'
 import PecasDoReparador from '../components/PecasDoReparador'
+import PedidoCotacao from '../components/PedidoCotacao'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
@@ -1243,6 +1244,11 @@ export default function OrdemDetalhe() {
             )}
           </div>
         )}
+
+        {/* O pedido pronto para colar no ChatGPT: peças com preço e link e a
+            mão de obra pela hora da oficina (Configurações). Só aparece quando
+            o reparador deixou serviço ou peça para cotar. */}
+        <PedidoCotacao os={os} veiculo={veiculo} valorHora={config?.valorHoraMaoObra} />
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
