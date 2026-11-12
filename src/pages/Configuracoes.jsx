@@ -6,7 +6,8 @@ import {
   PRAZOS, novaMaquina, maquinasDoConfig, ordenarFaixas,
   problemasDaMaquina, calcularPagamentoCartao, TAXA_MAXIMA_PCT,
 } from '../utils/cartao'
-import { capacidadeDoConfig, problemasDaCapacidade, avisoDaOcupacao } from '../utils/capacidade'
+import { capacidadeDoConfig, problemasDaCapacidade, avisoDaOcupacao, custoHoraDaOficina } from '../utils/capacidade'
+import { parseValorBR } from '../utils/numero'
 import { custoFixoMensal, custoDaHora } from '../utils/margem'
 import gerarId from '../utils/id'
 
@@ -98,6 +99,8 @@ export default function Configuracoes() {
       </div>
 
       <CapacidadeDaOficina />
+
+      <ValorDaHora />
 
       <Maquininhas />
 
@@ -253,6 +256,77 @@ function CapacidadeDaOficina() {
           <button onClick={salvar} disabled={!alterado}
             className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
             <Save size={15} />{salvo ? 'Salvo!' : 'Salvar capacidade'}
+          </button>
+          {alterado && (
+            <span className="text-xs text-amber-700 flex items-center gap-1 ml-auto">
+              <AlertTriangle size={12} /> Não salvo
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Quanto a oficina COBRA pela hora de mão de obra (o custo da hora, acima, é
+// o piso; este é o preço). Vai no "pedido de cotação" da OS
+// (utils/cotacao.js): o ChatGPT estima o tempo de cada serviço e a mão de obra
+// sai tempo × esta hora — ele não conhece o preço desta oficina.
+function ValorDaHora() {
+  const { config, setConfig, gastos } = useApp()
+  const [edicao, setEdicao] = useState(null)
+  const [salvo, setSalvo] = useState(false)
+
+  const valor = edicao ?? String(config?.valorHoraMaoObra ?? '')
+  const alterado = edicao !== null
+  const cobra = parseValorBR(valor)
+  const custoHora = custoHoraDaOficina({ gastos, config })
+  const fmt = (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  function salvar() {
+    setConfig(c => ({ ...c, valorHoraMaoObra: valor.trim() }))
+    setEdicao(null)
+    setSalvo(true)
+    setTimeout(() => setSalvo(false), 2000)
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100">
+        <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+          <Timer size={17} className="text-violet-500" />Valor da hora de mão de obra
+        </h2>
+        <p className="text-xs text-slate-500 mt-1">
+          Quanto a oficina cobra por hora de serviço. Vai no pedido de cotação da OS: o ChatGPT estima o tempo
+          de cada serviço e calcula a mão de obra com este valor.
+        </p>
+      </div>
+      <div className="p-5 space-y-3">
+        <div className="flex items-center gap-2 max-w-xs">
+          <span className="text-sm text-slate-500">R$</span>
+          <input type="text" inputMode="decimal" value={valor} placeholder="0,00"
+            onChange={e => setEdicao(e.target.value)} aria-label="Valor da hora de mão de obra"
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          <span className="text-sm text-slate-500">/ hora</span>
+        </div>
+        {cobra > 0 && custoHora > 0 && (
+          cobra <= custoHora ? (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 leading-snug">
+                Abaixo do custo da hora ({fmt(custoHora)}): cada hora vendida a {fmt(cobra)} não paga a estrutura.
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 tabular-nums">
+              A hora custa {fmt(custoHora)} para a oficina; cobrando {fmt(cobra)}, sobram {fmt(cobra - custoHora)} por hora.
+            </p>
+          )
+        )}
+        <div className="flex items-center gap-2 pt-1">
+          <button onClick={salvar} disabled={!alterado}
+            className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <Save size={15} />{salvo ? 'Salvo!' : 'Salvar valor da hora'}
           </button>
           {alterado && (
             <span className="text-xs text-amber-700 flex items-center gap-1 ml-auto">
