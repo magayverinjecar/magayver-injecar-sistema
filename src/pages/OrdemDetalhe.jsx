@@ -15,6 +15,8 @@ import PecasDoReparador from '../components/PecasDoReparador'
 import { pecasParaLancar } from '../utils/pecasPorArea'
 import PedidoCotacao from '../components/PedidoCotacao'
 import CustoNaLinha from '../components/CustoNaLinha'
+import TrocarPorCadastro from '../components/TrocarPorCadastro'
+import { podeTrocarPorCadastro, itemDaTroca } from '../utils/trocaPeca'
 import { margemDaConfig, vendaPelaMargem, valorParaCampo, mostrarMargem } from '../utils/margemPeca'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
@@ -83,7 +85,7 @@ export default function OrdemDetalhe() {
   const {
     ordens, getCliente, getVeiculo, getFuncionario, funcionarios, servicos, estoque, reservadoDe,
     setClientes, setVeiculos,
-    atualizarOrdem, adicionarItemOrdem, adicionarItensOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
+    atualizarOrdem, adicionarItemOrdem, adicionarItensOrdem, trocarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
     excluirOrdem, subtotalOrdem, totalOrdem, caixaTurno, caixaCarregado, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
     concluirOrdem, entregarOrdem, salvarDiagnostico, salvarVistoria,
     aprovarOrcamento, recusarOrcamento, fecharRecusa, concluirReparo, entregarSemCobrar,
@@ -96,6 +98,9 @@ export default function OrdemDetalhe() {
   const [modalCliente, setModalCliente] = useState(false)
   // Painel de lançar item — embutido no quadro de itens, não é mais popup
   const [painelItem, setPainelItem] = useState(false)
+  // A peça avulsa que está sendo trocada por uma do cadastro (a busca abre
+  // embaixo da linha dela). Uma por vez.
+  const [trocandoItemId, setTrocandoItemId] = useState(null)
   const [menuImpressao, setMenuImpressao] = useState(false)
   const [escolhaAvaliacao, setEscolhaAvaliacao] = useState(false)
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
@@ -421,11 +426,19 @@ export default function OrdemDetalhe() {
                     : itemBaixado(it, os) ? 'baixada'
                     : STATUS_RESERVA.includes(os.status) ? 'reservada'
                     : null  // OS encerrada sem usar a peça: nem reservada nem baixada
+                  // Peça avulsa (sem ligação com o cadastro): ganha a marca e o
+                  // atalho para virar a peça do cadastro no mesmo lugar.
+                  const avulsa = podeTrocarPorCadastro(it)
                   return (
-                  <tr key={it.id} className={zerada ? 'bg-red-50' : ''}>
+                  <Fragment key={it.id}>
+                  <tr className={zerada ? 'bg-red-50' : ''}>
                     <td className="py-2.5">
                       <span className={`text-sm ${zerada ? 'text-red-700 font-medium' : 'text-slate-700'}`}>{it.descricao} </span>
                       <span className={`text-xs px-1.5 py-0.5 rounded ${it.tipo === 'servico' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>{it.tipo === 'servico' ? 'serviço' : 'peça'}</span>
+                      {avulsa && (
+                        <span title="Peça sem ligação com o cadastro: não reserva nem baixa do estoque"
+                          className="ml-1 text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-500">avulsa</span>
+                      )}
                       {zerada && (
                         <span className="ml-1 inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 font-medium">
                           <AlertTriangle size={11} />sem estoque
@@ -440,6 +453,13 @@ export default function OrdemDetalhe() {
                       )}
                       {it.tipo === 'servico' && it.mecanicoId && (
                         <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">{getFuncionario(it.mecanicoId)?.nome || ''}</span>
+                      )}
+                      {avulsa && !osFinalizada && trocandoItemId !== it.id && (
+                        <button type="button" onClick={() => setTrocandoItemId(it.id)}
+                          title="Troca esta peça avulsa por uma peça do cadastro, no mesmo lugar"
+                          className="mt-1 flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700">
+                          <ArrowRightLeft size={12} />Trocar por peça do cadastro
+                        </button>
                       )}
                     </td>
                     <td className="py-2.5 text-center text-sm text-slate-600">{it.quantidade}</td>
@@ -481,7 +501,26 @@ export default function OrdemDetalhe() {
                       </div>
                     </td>
                   </tr>
+                  {avulsa && trocandoItemId === it.id && !osFinalizada && (
+                    <tr>
+                      <td colSpan={6} className="pb-3">
+                        <TrocarPorCadastro avulsa={it} estoque={estoque} reservadoDe={reservadoDe}
+                          onCancelar={() => setTrocandoItemId(null)}
+                          onEscolher={produto => trocarPorCadastro(it, produto)} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                   )
+  }
+
+  // Peça avulsa → peça do cadastro, no mesmo lugar (utils/trocaPeca). Quem
+  // grava é o contexto, com id novo: assim o estoque trata a peça do cadastro
+  // como recém-lançada (reserva ou baixa pelo status da OS) e o avulso some
+  // sem movimento nenhum.
+  function trocarPorCadastro(avulsa, produto) {
+    trocarItemOrdem(os.id, avulsa.id, itemDaTroca(avulsa, produto))
+    setTrocandoItemId(null)
   }
 
   // Mesma regra de quem adiciona: serviço não fica sem dono. Sem isto daria

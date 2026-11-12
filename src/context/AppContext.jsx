@@ -1731,6 +1731,28 @@ export function AppProvider({ children }) {
     return setOrdens(prev => prev.map(o => o.id === id ? { ...o, itens: [...(o.itens || []), ...novos] } : o))
   }
 
+  // Troca um item por outro NO MESMO LUGAR da lista — a peça avulsa lançada
+  // às pressas no orçamento vira a peça do cadastro.
+  //
+  // O item novo ganha id NOVO de propósito. Trocar só o `produtoId` do item
+  // avulso faria a regra do estoque (utils/reserva) ler o avulso — que nunca
+  // teve marca de baixa — como item antigo "já baixado", e devolver ao saldo
+  // uma peça que nunca saiu. Com id novo, o avulso some sem mexer no estoque e
+  // a peça do cadastro entra como qualquer peça lançada: reserva antes da
+  // aprovação, baixa depois. Mesmo congelamento de custo do adicionarItemOrdem;
+  // uma gravação só.
+  function trocarItemOrdem(osId, itemId, item) {
+    const novo = { ...item, id: gerarId() }
+    delete novo.custoUnitario
+    if (item.tipo === 'peca' && item.produtoId) {
+      const produto = r.current.estoque.find(p => String(p.id) === String(item.produtoId))
+      const custo = parseBR(produto?.precoCusto)
+      if (custo > 0) novo.custoUnitario = produto.precoCusto
+    }
+    return setOrdens(prev => prev.map(o => o.id === osId
+      ? { ...o, itens: (o.itens || []).map(i => i.id === itemId ? novo : i) } : o))
+  }
+
   // JUNTAR PEÇAS DUPLICADAS.
   //
   // O cadastro nunca bloqueou código repetido, então a mesma peça virou vários
@@ -2863,7 +2885,7 @@ export function AppProvider({ children }) {
       clientes, setClientes,
       veiculos, setVeiculos,
       ordens, setOrdens, novaOrdem, pagarOrdem, reabrirOrdem, concluirOrdem, entregarOrdem, entregarSemCobrar,
-      atualizarOrdem, adicionarItemOrdem, adicionarItensOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
+      atualizarOrdem, adicionarItemOrdem, adicionarItensOrdem, trocarItemOrdem, removerItemOrdem, editarItemOrdem, mudarStatusOrdem,
       adicionarFotoOrdem, removerFotoOrdem, excluirOrdem, subtotalOrdem, totalOrdem,
       salvarDiagnostico, salvarVistoria, encontrarOSDaFicha,
       // Fluxo do pátio — o status é consequência destas ações
