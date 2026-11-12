@@ -2,7 +2,7 @@ import { useRef, useState, useMemo } from 'react'
 import { Plus, X, Search, Check, AlertTriangle } from 'lucide-react'
 import { parseValorBR } from '../utils/numero'
 import { pecaAtiva, casaBusca } from '../utils/pecas'
-import { historicoDePreco, conferirPiso, DIFICULDADES } from '../utils/precoHistorico'
+import { historicoDePreco, conferirPiso } from '../utils/precoHistorico'
 import { categoriasDoTexto, servicoEhRevisao } from '../utils/revisao'
 
 // Painel de lançar item — embutido no quadro de itens, não em popup.
@@ -56,7 +56,7 @@ export default function PainelAdicionarItem({
   selecaoExterna = null,
   tipoInicial = 'servico',
   modoInicial = 'cadastrado',
-  // --- PRECIFICACAO POR DIFICULDADE (Orcamento e OS) ---
+  // --- REFERENCIA DE PRECO DO SERVICO (Orcamento e OS) ---
   // Nascem desligadas: quem ja usa este painel continua vendo o de sempre.
   //
   // A oficina nao cobra por hora nem por tabela fixa — cobra por dificuldade
@@ -93,11 +93,12 @@ export default function PainelAdicionarItem({
   const [descricao, setDescricao] = useState('')
   const [quantidade, setQuantidade] = useState('1')
   const [valorUnitario, setValorUnitario] = useState('')
-  // Horas e dificuldade so existem para servico. Horas e OPCIONAL: sem ela o
-  // painel funciona como sempre funcionou — ela e o que permite conferir se o
-  // preco cobre o tempo de bancada, e o que alimenta o historico depois.
+  // Horas so existe para servico, e e OPCIONAL: sem ela o painel funciona como
+  // sempre funcionou — ela e o que permite conferir se o preco cobre o tempo
+  // de bancada, e o que alimenta o historico depois.
+  // (A "dificuldade tecnica" saiu em 12/11/2026, a pedido do dono: ninguem
+  // usava. Os itens antigos que tem o campo continuam com ele, sem efeito.)
   const [horas, setHoras] = useState('')
-  const [dificuldade, setDificuldade] = useState(null)
   const [custoAvulso, setCustoAvulso] = useState('')
   const [desconto, setDesconto] = useState('0')
   const [mecanicoId, setMecanicoId] = useState('')
@@ -132,7 +133,6 @@ export default function PainelAdicionarItem({
     setQuantidade('1')
     setDesconto('0')
     setHoras('')
-    setDificuldade(null)
   }
 
   function trocarModo(m) {
@@ -217,7 +217,6 @@ export default function PainelAdicionarItem({
       // Guardados so quando preenchidos: item antigo nao ganha campo vazio, e
       // o historico de amanha nasce de quem preencheu hoje.
       ...(tipo === 'servico' && pNum(horas) > 0 ? { horas } : {}),
-      ...(tipo === 'servico' && dificuldade ? { dificuldade } : {}),
     }
     // Peça comprada na hora: sem isto a margem da OS fica incompleta e o CMV
     // sai por baixo. Só vai quando o dono realmente digitou o custo.
@@ -489,29 +488,6 @@ export default function PainelAdicionarItem({
               Últimas: {referencia.ultimas.slice(0, 3).map(u => `${u.modelo || 'sem carro'} ${fmt(u.valor)}`).join(' · ')}
             </p>
           )}
-        </div>
-      )}
-
-      {/* Dificuldade tecnica: e por ela que esta oficina precifica. Tres niveis
-          e nao cinco — quem escolhe esta com o cliente na frente, e escala longa
-          vira "sempre o do meio". */}
-      {tipo === 'servico' && !!ordens && (
-        <div>
-          <label className={ROTULO}>Dificuldade técnica <span className="font-normal text-slate-400">(opcional)</span></label>
-          <div className="grid grid-cols-3 gap-2">
-            {DIFICULDADES.map(d => {
-              const ativo = dificuldade === d.id
-              return (
-                <button key={d.id} type="button" title={d.ajuda}
-                  onClick={() => setDificuldade(ativo ? null : d.id)}
-                  className={`px-2 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                    ativo ? 'bg-primary-50 border-primary-400 text-primary-700' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
-                  }`}>
-                  {d.rotulo}
-                </button>
-              )
-            })}
-          </div>
         </div>
       )}
 
