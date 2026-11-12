@@ -113,19 +113,22 @@ function FotosDoItem({ item, enviando, ocupado, onCamera, onGaleria, onRemover }
 }
 
 // "Serviço a fazer" de um item marcado Atenção ou Trocar: o reparador diz o
-// que fazer, não só o que viu. Os botões escrevem "Trocar <nome do item>" num
-// toque; o texto continua livre. É o mesmo texto que aparece em "O que
-// recomendamos fazer" (avaliacao.ajustes[id].servico).
+// que fazer, não só o que viu. É só tocar no botão — sem digitar: "Trocar"
+// grava "Trocar <nome do item>", que é o que vai na recomendação e no papel
+// (avaliacao.ajustes[id].servico). Tocar de novo no mesmo botão desmarca.
+// Pedido do dono (12/11): a caixa de texto atrasava e não precisava — as
+// peças já ficam em cada área.
 function ServicoAFazer({ item, valor, onMudar }) {
   const ativo = verboDoServico(valor)
   return (
     <div className="mt-2">
       <p className="text-[10px] font-bold uppercase text-primary-600 mb-1">
-        Serviço a fazer{!String(valor || '').trim() && <span className="font-normal normal-case text-slate-400"> (opcional)</span>}
+        Serviço a fazer{!ativo && <span className="font-normal normal-case text-slate-400"> (opcional)</span>}
       </p>
-      <div className="flex gap-1 flex-wrap mb-1.5">
+      <div className="flex gap-1 flex-wrap">
         {VERBOS_SERVICO.map(v => (
-          <button key={v} type="button" onClick={() => onMudar(servicoSugerido(v, item.label, valor))}
+          <button key={v} type="button" aria-pressed={ativo === v}
+            onClick={() => onMudar(ativo === v ? '' : servicoSugerido(v, item.label, valor))}
             className={`px-2 py-1 rounded-full text-[11px] font-semibold border transition-colors ${
               ativo === v ? 'bg-primary-500 border-primary-500 text-white' : 'bg-primary-50 border-orange-200 text-primary-700 hover:bg-primary-100'
             }`}>
@@ -133,9 +136,6 @@ function ServicoAFazer({ item, valor, onMudar }) {
           </button>
         ))}
       </div>
-      <input value={valor || ''} onChange={e => onMudar(e.target.value)}
-        placeholder={`Ex.: ${servicoSugerido('Trocar', item.label)}`}
-        className="w-full rounded-lg text-xs px-2.5 py-2 border border-slate-200 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-300" />
     </div>
   )
 }
@@ -170,7 +170,9 @@ export default function OficinaDiagnosticoDetalhe() {
   const [conclusao, setConclusao] = useState(null)
   const [pecas, setPecas] = useState(null)
   const [avaliacaoLocal, setAvaliacaoLocal] = useState(null)
-  const [abertas, setAbertas] = useState(() => new Set(['A']))
+  // Todas as áreas começam fechadas — a Injeção também (pedido do dono,
+  // 12/11): o reparador abre só a que vai fazer.
+  const [abertas, setAbertas] = useState(() => new Set())
   // O item fora da lista sendo digitado: { area, label } ou null.
   const [novoItem, setNovoItem] = useState(null)
   const [salvando, setSalvando] = useState(false)
@@ -290,7 +292,19 @@ export default function OficinaDiagnosticoDetalhe() {
     const novo = prompt('Nome do item:', item.label)
     const label = String(novo ?? '').trim()
     if (!label || label === item.label) return
-    mudarAval(a => ({ ...a, itensExtras: (a.itensExtras || []).map(x => x.id === item.id ? { ...x, label } : x) }))
+    mudarAval(a => {
+      // O serviço foi escrito pelo botão com o nome antigo ("Trocar roda
+      // fônica")? Acompanha o nome novo. Sem caixa de texto, não haveria como
+      // corrigir de outro jeito.
+      const servico = a.ajustes?.[item.id]?.servico
+      const verbo = verboDoServico(servico)
+      const doBotao = verbo && servico === servicoSugerido(verbo, item.label)
+      return {
+        ...a,
+        itensExtras: (a.itensExtras || []).map(x => x.id === item.id ? { ...x, label } : x),
+        ...(doBotao ? { ajustes: { ...a.ajustes, [item.id]: { ...a.ajustes[item.id], servico: servicoSugerido(verbo, label) } } } : {}),
+      }
+    })
   }
   function removerItemFora(item) {
     const n = item.fotos?.length || 0
@@ -760,7 +774,7 @@ export default function OficinaDiagnosticoDetalhe() {
           <div className="bg-white border-2 border-primary-200 rounded-2xl p-4">
             <p className="text-sm font-bold text-slate-800">O que recomendamos fazer</p>
             <p className="text-[11px] text-slate-400 mb-3">
-              Montado sozinho com o que foi marcado Atenção ou Trocar. Ajuste a urgência e o serviço.
+              Montado sozinho com o que foi marcado Atenção ou Trocar. Aqui é só ajustar a urgência.
             </p>
 
             {recomendacoes.length === 0 && (aval.extras || []).length === 0 && (
@@ -772,17 +786,14 @@ export default function OficinaDiagnosticoDetalhe() {
                 <div key={rec.chave} className="border border-slate-200 rounded-xl p-2.5">
                   <div className="flex items-start gap-2">
                     <span className="text-xs font-bold text-slate-700 mt-1.5 w-4">{rec.area}</span>
-                    {/* O serviço é o MESMO texto do campo "Serviço a fazer" do
-                        item: mudar aqui muda lá. Duas linhas: no celular uma
-                        linha só cortava a frase no meio. */}
-                    <div className="flex-1 min-w-0">
-                      <textarea rows={2} value={aval.ajustes?.[rec.itemId]?.servico ?? ''}
-                        placeholder="Serviço a fazer (ex.: trocar…)"
-                        onChange={e => ajustar(rec.itemId, { servico: e.target.value })}
-                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium leading-snug resize-none focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                    {/* O que vai no papel, já pronto: o serviço escolhido no
+                        item (botões Trocar, Reparar…) com o que foi visto
+                        embaixo. Para mudar o serviço, é no item. */}
+                    <div className="flex-1 min-w-0 pt-1">
+                      <p className={`text-xs leading-snug ${rec.servico ? 'font-semibold text-slate-800' : 'text-slate-700'}`}>{rec.texto}</p>
                       {rec.servico
                         ? rec.encontrado && <p className="text-[11px] text-slate-500 italic mt-0.5">Encontrado: {rec.encontrado}</p>
-                        : <p className="text-[10px] text-slate-400 mt-0.5">Sem serviço escrito, sai assim: {rec.texto}</p>}
+                        : <p className="text-[10px] text-slate-400 mt-0.5">Sem serviço escolhido — toque em Trocar, Reparar… no item.</p>}
                     </div>
                     <button type="button" title="Não recomendar" onClick={() => ajustar(rec.itemId, { removida: true })}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50">
