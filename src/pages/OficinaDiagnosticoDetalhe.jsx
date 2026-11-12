@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Car, User, Clock, Gauge, Fuel, AlertTriangle,
   MessageSquare, Save, CheckCircle2, FileText, Camera, Plus, Trash2, ChevronDown, ChevronRight, RotateCcw,
-  ImagePlus, X, Loader2, Pencil,
+  ImagePlus, X, Loader2, Pencil, Package,
 } from 'lucide-react'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
@@ -236,6 +236,8 @@ export default function OficinaDiagnosticoDetalhe() {
   // descrição, então contar `listaPecas` cru mostrava "3 peça(s)" para três
   // linhas em branco recém-criadas no "+" — número que some ao salvar.
   const pecasPreenchidas = listaPecas.filter(p => String(p.descricao || '').trim())
+  // Peça sem área (ou de área que não existe mais) fica em "Outras peças".
+  const outrasPecas = listaPecas.filter(p => !AREAS.some(a => a.id === p.area))
   // Depois de aprovado o carro já saiu da fase de diagnóstico: a tela vira
   // consulta, para o reparador reler o laudo enquanto executa o serviço.
   const naFaseDiagnostico = ['Recepção', 'Em Diagnóstico', 'Diagnóstico'].includes(os.status)
@@ -306,8 +308,11 @@ export default function OficinaDiagnosticoDetalhe() {
     setAbertas(s => { const n = new Set(s); if (n.has(areaId)) n.delete(areaId); else n.add(areaId); return n })
   }
 
-  function addPeca() {
-    setPecas([...listaPecas, { id: gerarId(), descricao: '', quantidade: '1' }])
+  // A peça nasce na área em que o reparador estava (Freios, Suspensão…): é
+  // assim que a OS mostra as peças separadas para quem faz o orçamento. Sem
+  // área, é das "Outras peças".
+  function addPeca(area = '') {
+    setPecas([...listaPecas, { id: gerarId(), descricao: '', quantidade: '1', ...(area ? { area } : {}) }])
   }
   function editarPeca(pid, campo, valor) {
     setPecas(listaPecas.map(p => p.id === pid ? { ...p, [campo]: valor } : p))
@@ -322,7 +327,7 @@ export default function OficinaDiagnosticoDetalhe() {
       diagnosticoItens: estado.diagItens,
       falhasScanner: estado.scanner,
       observacoesTecnicas: estado.parecer,
-      pecasNecessarias: estado.listaPecas.filter(p => p.descricao.trim()),
+      pecasNecessarias: estado.listaPecas.filter(p => String(p.descricao || '').trim()),
       // Só grava a avaliação quando alguém mexeu nela: OS antiga não ganha
       // um objeto vazio só por ter sido salva.
       ...(avaliacao ? {
@@ -435,6 +440,44 @@ export default function OficinaDiagnosticoDetalhe() {
           </>
         )}
         {i.verificado && fotosDe(i)}
+      </div>
+    )
+  }
+
+  // Uma linha de peça: nome, quantidade e lixeira. A mesma nas áreas e em
+  // "Outras peças".
+  const linhaPeca = (p) => (
+    <div key={p.id} className="flex items-center gap-2">
+      <input value={p.descricao || ''} autoFocus={!p.descricao}
+        onChange={e => editarPeca(p.id, 'descricao', e.target.value.toUpperCase())}
+        placeholder="Nome da peça..."
+        className="flex-1 min-w-0 border border-slate-200 rounded-lg px-3 py-2 text-sm uppercase bg-white focus:outline-none focus:ring-2 focus:ring-orange-300" />
+      <input value={p.quantidade} inputMode="decimal"
+        onChange={e => editarPeca(p.id, 'quantidade', e.target.value)}
+        aria-label="Quantidade"
+        className="w-14 border border-slate-200 rounded-lg px-2 py-2 text-sm text-center bg-white focus:outline-none focus:ring-2 focus:ring-orange-300" />
+      <button type="button" onClick={() => removerPeca(p.id)} aria-label="Remover peça"
+        className="p-2 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors">
+        <Trash2 size={16} />
+      </button>
+    </div>
+  )
+
+  // No fim de cada área: as peças que o reparador viu que vai precisar ali.
+  // Na OS elas aparecem separadas por área, para quem faz o orçamento.
+  const pecasDaArea = (area) => {
+    const daArea = listaPecas.filter(p => p.area === area.id)
+    const preenchidas = daArea.filter(p => String(p.descricao || '').trim()).length
+    return (
+      <div className="px-4 py-3 bg-slate-50/70">
+        <p className="text-[10px] font-bold uppercase text-slate-500 mb-1.5 flex items-center gap-1">
+          <Package size={12} />Peças desta área{preenchidas > 0 && ` (${preenchidas})`}
+        </p>
+        {daArea.length > 0 && <div className="space-y-1.5 mb-2">{daArea.map(linhaPeca)}</div>}
+        <button type="button" onClick={() => addPeca(area.id)}
+          className="w-full flex items-center justify-center gap-1 py-1.5 border-2 border-dashed border-slate-200 rounded-lg text-xs font-semibold text-slate-500 hover:border-orange-300 hover:text-primary-600 transition-colors">
+          <Plus size={13} /> Adicionar peça
+        </button>
       </div>
     )
   }
@@ -650,6 +693,8 @@ export default function OficinaDiagnosticoDetalhe() {
             const daArea = todosItens.filter(i => i.area === area.id)
             const r = resumoDaArea(daArea)
             const aberta = abertas.has(area.id)
+            // Com a área fechada, o cabeçalho avisa que ela tem peça pedida.
+            const nPecas = pecasPreenchidas.filter(p => p.area === area.id).length
             return (
               <div key={area.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
                 <button type="button" onClick={() => alternarArea(area.id)}
@@ -660,6 +705,7 @@ export default function OficinaDiagnosticoDetalhe() {
                   </span>
                   <span className={`flex items-center gap-1 text-[11px] font-semibold whitespace-nowrap ${r.cor}`}>
                     {r.texto}
+                    {nPecas > 0 && <span className="text-primary-600">· {nPecas} {nPecas === 1 ? 'peça' : 'peças'}</span>}
                     {aberta ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
                   </span>
                 </button>
@@ -696,6 +742,7 @@ export default function OficinaDiagnosticoDetalhe() {
                         vistoria: esse ele marca aqui. */}
                     {daArea.filter(i => i.foraDaLista).map(i => linhaItem(i, area))}
                     {novoItemDaArea(area)}
+                    {pecasDaArea(area)}
                   </div>
                 )}
 
@@ -703,6 +750,7 @@ export default function OficinaDiagnosticoDetalhe() {
                   <div className="divide-y divide-slate-100">
                     {daArea.map(i => linhaItem(i, area))}
                     {novoItemDaArea(area)}
+                    {pecasDaArea(area)}
                   </div>
                 )}
               </div>
@@ -804,38 +852,24 @@ export default function OficinaDiagnosticoDetalhe() {
 
           <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
             <div>
+              {/* As peças de cada área ficam dentro da área (lá em cima). Aqui
+                  só o que não é de nenhuma — e as lançadas antes de existir a
+                  separação por área. */}
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-bold text-slate-600 uppercase">
-                  Peças Necessárias
+                  Outras peças <span className="font-normal normal-case text-xs text-slate-400">(o que não é de nenhuma área)</span>
                 </label>
                 {pecasPreenchidas.length > 0 && (
-                  <span className="text-xs text-slate-400">{pecasPreenchidas.length} peça(s)</span>
+                  <span className="text-xs text-slate-400 whitespace-nowrap">{pecasPreenchidas.length} peça(s) no total</span>
                 )}
               </div>
 
-              {listaPecas.length > 0 && (
-                <div className="space-y-2 mb-2">
-                  {listaPecas.map(p => (
-                    <div key={p.id} className="flex items-center gap-2">
-                      <input value={p.descricao} autoFocus={!p.descricao}
-                        onChange={e => editarPeca(p.id, 'descricao', e.target.value.toUpperCase())}
-                        placeholder="Nome da peça..."
-                        className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-primary-300" />
-                      <input value={p.quantidade} inputMode="decimal"
-                        onChange={e => editarPeca(p.id, 'quantidade', e.target.value)}
-                        aria-label="Quantidade"
-                        className="w-16 border border-slate-200 rounded-lg px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary-300" />
-                      <button onClick={() => removerPeca(p.id)} aria-label="Remover peça"
-                        className="p-2 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+              {outrasPecas.length > 0 && (
+                <div className="space-y-2 mb-2">{outrasPecas.map(linhaPeca)}</div>
               )}
 
-              <button onClick={addPeca}
-                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 text-slate-500 py-2.5 rounded-lg text-sm font-medium hover:border-primary-300 hover:text-primary-600 transition-colors">
+              <button onClick={() => addPeca()}
+                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 text-slate-500 py-2.5 rounded-lg text-sm font-medium hover:border-orange-300 hover:text-primary-600 transition-colors">
                 <Plus size={15} /> Adicionar peça
               </button>
               <p className="text-xs text-slate-400 mt-2">

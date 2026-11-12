@@ -11,6 +11,7 @@ import { temAvaliacao, itensDaAvaliacao, resumoDaAvaliacao, recomendacoesDaAvali
 import { separarItens } from '../utils/itensOS'
 import { nomeVeiculo } from '../utils/datas'
 import { TIPOS_ATENDIMENTO } from '../utils/tipoAtendimento'
+import PecasDoReparador from '../components/PecasDoReparador'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
@@ -147,6 +148,11 @@ export default function OrdemDetalhe() {
 
   const cliente = getCliente(os.clienteId)
   const veiculo = getVeiculo(os.veiculoId)
+  // O carro que vai em cima da lista de peças copiada para o fornecedor.
+  const carroDasPecas = {
+    nome: nomeVeiculo(veiculo, os), placa: veiculo?.placa || os.veiculoPlaca,
+    ano: veiculo?.ano, motor: veiculo?.motor,
+  }
   // Piso para conferir o preço do serviço. Fica `null` enquanto os gastos fixos
   // e a capacidade não estiverem preenchidos — e aí o painel simplesmente não
   // mostra régua nenhuma, em vez de mostrar uma errada.
@@ -909,12 +915,9 @@ export default function OrdemDetalhe() {
             )}
             {os.pecasNecessarias?.length > 0 && (
               <div className="pt-3 mt-2 border-t border-slate-50">
-                <p className="text-xs text-slate-400 mb-1">Peças que ele pediu</p>
-                <ul className="text-sm text-slate-600 space-y-0.5">
-                  {os.pecasNecessarias.map((p, i) => (
-                    <li key={i}>• {p.quantidade || 1}x {p.nome || p.descricao || p}</li>
-                  ))}
-                </ul>
+                {/* Separadas pela área da avaliação em que o reparador lançou. */}
+                <PecasDoReparador pecas={os.pecasNecessarias} carro={carroDasPecas}
+                  titulo="Peças que ele pediu" classeTitulo="text-xs text-slate-400" />
               </div>
             )}
           </div>
@@ -1223,18 +1226,9 @@ export default function OrdemDetalhe() {
 
             {os.pecasNecessarias?.length > 0 && (
               <div className="mt-3 pt-3 border-t border-blue-200">
-                <p className="text-xs font-bold text-blue-800 uppercase tracking-wide mb-2">
-                  Peças que ele pediu ({os.pecasNecessarias.length})
-                </p>
-                <ul className="space-y-1">
-                  {os.pecasNecessarias.map(p => (
-                    <li key={p.id} className="text-sm text-slate-700 flex items-center gap-2">
-                      <span className="text-blue-400">•</span>
-                      <span className="font-medium">{p.quantidade}x</span>
-                      <span>{p.descricao}</span>
-                    </li>
-                  ))}
-                </ul>
+                {/* Separadas pela área da avaliação em que o reparador lançou,
+                    com o "Copiar lista" para mandar ao fornecedor. */}
+                <PecasDoReparador pecas={os.pecasNecessarias} carro={carroDasPecas} titulo="Peças que ele pediu" />
                 <p className="text-xs text-blue-700 mt-2">
                   Lance cada uma como item abaixo para entrar no valor e sair do estoque.
                 </p>
