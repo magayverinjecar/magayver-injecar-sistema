@@ -14,6 +14,8 @@ import { TIPOS_ATENDIMENTO } from '../utils/tipoAtendimento'
 import PecasDoReparador from '../components/PecasDoReparador'
 import { pecasParaLancar } from '../utils/pecasPorArea'
 import PedidoCotacao from '../components/PedidoCotacao'
+import CustoNaLinha from '../components/CustoNaLinha'
+import { margemDaConfig, vendaPelaMargem, valorParaCampo, mostrarMargem } from '../utils/margemPeca'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
@@ -85,7 +87,7 @@ export default function OrdemDetalhe() {
     excluirOrdem, subtotalOrdem, totalOrdem, caixaTurno, caixaCarregado, registrarVendaCaixa, pagarOrdem, reabrirOrdem,
     concluirOrdem, entregarOrdem, salvarDiagnostico, salvarVistoria,
     aprovarOrcamento, recusarOrcamento, fecharRecusa, concluirReparo, entregarSemCobrar,
-    config, gastos,
+    config, setConfig, gastos,
   } = useApp()
   const { currentUser, temPermissao } = useAuth()
 
@@ -443,14 +445,31 @@ export default function OrdemDetalhe() {
                     <td className="py-2.5 text-center text-sm text-slate-600">{it.quantidade}</td>
                     <td className="py-2.5 text-right text-sm text-slate-600">
                       {/* Peça sem preço (ex.: lançada da lista do reparador):
-                          o preço se digita aqui mesmo, sem abrir a edição. */}
+                          o preço se resolve aqui mesmo, sem abrir a edição.
+                          Peça AVULSA pede o custo e a venda sai com a margem;
+                          peça do cadastro já tem o custo congelado, então
+                          continua pedindo o preço de venda direto. */}
                       {it.tipo === 'peca' && !(pNum(it.valorUnitario) > 0) && !osFinalizada ? (
-                        <input type="text" inputMode="decimal" placeholder="preço" defaultValue=""
-                          aria-label={`Preço de ${it.descricao}`} title="Digite o preço e aperte Enter"
-                          onBlur={e => precoNaLinha(it, e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') precoNaLinha(it, e.currentTarget.value) }}
-                          className="w-24 text-right border border-amber-300 bg-amber-50 rounded-md px-2 py-1 text-sm placeholder:text-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-300" />
-                      ) : fmt(pNum(it.valorUnitario))}
+                        !it.produtoId ? (
+                          <CustoNaLinha descricao={it.descricao} margem={margemPeca}
+                            onSalvar={custo => custoNaLinha(it, custo)} />
+                        ) : (
+                          <input type="text" inputMode="decimal" placeholder="preço" defaultValue=""
+                            aria-label={`Preço de ${it.descricao}`} title="Digite o preço e aperte Enter"
+                            onBlur={e => precoNaLinha(it, e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') precoNaLinha(it, e.currentTarget.value) }}
+                            className="w-24 text-right border border-amber-300 bg-amber-50 rounded-md px-2 py-1 text-sm placeholder:text-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                        )
+                      ) : (
+                        <>
+                          {fmt(pNum(it.valorUnitario))}
+                          {/* O custo da peça avulsa embaixo do preço: quem monta
+                              o orçamento confere a margem sem abrir nada. */}
+                          {it.tipo === 'peca' && !it.produtoId && pNum(it.custoUnitario) > 0 && (
+                            <span className="block text-[11px] text-slate-400 tabular-nums">custo {fmt(pNum(it.custoUnitario))}</span>
+                          )}
+                        </>
+                      )}
                     </td>
                     <td className="py-2.5 text-right text-sm text-slate-500">{pNum(it.desconto) > 0 ? fmt(pNum(it.desconto)) : '—'}</td>
                     <td className="py-2.5 text-right text-sm font-semibold text-slate-700">{fmt(pNum(it.valorUnitario) * (Number(it.quantidade) || 1) - pNum(it.desconto))}</td>
@@ -704,7 +723,7 @@ export default function OrdemDetalhe() {
     if (novas.length === 0) return
     adicionarItensOrdem(os.id, novas)
     setAvisoLancar(
-      `${novas.length} ${novas.length === 1 ? 'peça lançada' : 'peças lançadas'} sem preço — digite o preço de cada uma na lista abaixo.`
+      `${novas.length} ${novas.length === 1 ? 'peça lançada' : 'peças lançadas'} sem preço — digite o custo de cada uma na lista abaixo; a venda sai com ${mostrarMargem(margemPeca)}% em cima.`
       + (jaEstavam ? ` ${jaEstavam} já ${jaEstavam === 1 ? 'estava' : 'estavam'} no orçamento.` : ''),
     )
     setTimeout(() => setAvisoLancar(''), 8000)
@@ -716,6 +735,25 @@ export default function OrdemDetalhe() {
     const v = pNum(texto)
     if (!(v > 0)) return
     editarItemOrdem(os.id, item.id, { valorUnitario: String(texto).trim(), quantidade: item.quantidade })
+  }
+
+  // Margem da peça avulsa (utils/margemPeca): uma só para a oficina, em cima
+  // do custo. O painel de adicionar muda; a linha abaixo usa a que estiver.
+  const margemPeca = margemDaConfig(config)
+  function mudarMargemPeca(m) {
+    setConfig(c => ({ ...c, margemPecaAvulsa: m }))
+  }
+
+  // Custo digitado na linha da peça avulsa sem preço: grava o custo (a margem
+  // da OS fica completa) e a venda com a margem, de uma vez só.
+  function custoNaLinha(item, texto) {
+    const custo = pNum(texto)
+    if (!(custo > 0)) return
+    editarItemOrdem(os.id, item.id, {
+      custoUnitario: valorParaCampo(custo),
+      valorUnitario: valorParaCampo(vendaPelaMargem(custo, margemPeca)),
+      quantidade: item.quantidade,
+    })
   }
 
   function aplicarTaxaTodos() {
@@ -1279,7 +1317,7 @@ export default function OrdemDetalhe() {
                       disabled={osFinalizada || lancamento.novas.length === 0}
                       title={osFinalizada ? 'OS finalizada — reabra a OS para alterar os itens'
                         : lancamento.novas.length === 0 ? 'Todas as peças do reparador já estão no orçamento'
-                          : 'Lança todas como peça avulsa, sem preço — depois é só digitar o preço de cada uma'}
+                          : 'Lança todas como peça avulsa, sem preço — depois é só digitar o custo de cada uma (a venda sai com a margem)'}
                       className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap bg-primary-500 hover:bg-primary-600 text-white disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed">
                       <Plus size={13} />
                       {lancamento.novas.length === 0 ? 'Já estão no orçamento' : `Lançar no orçamento (${lancamento.novas.length})`}
@@ -1353,6 +1391,8 @@ export default function OrdemDetalhe() {
                 getModeloDaOS={o => nomeVeiculo(getVeiculo(o.veiculoId), o)}
                 onFechar={() => setPainelItem(false)}
                 onAdd={item => adicionarItemOrdem(os.id, item)}
+                margemPeca={margemPeca}
+                onMudarMargem={mudarMargemPeca}
               />
             </div>
           )}
