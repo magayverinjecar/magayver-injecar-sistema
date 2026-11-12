@@ -1,8 +1,9 @@
 import { useRef, useState, useMemo } from 'react'
-import { Plus, X, Search, Check, AlertTriangle } from 'lucide-react'
+import { Plus, Minus, X, Search, Check, AlertTriangle } from 'lucide-react'
 import { parseValorBR } from '../utils/numero'
 import { pecaAtiva, casaBusca } from '../utils/pecas'
 import { historicoDePreco, conferirPiso } from '../utils/precoHistorico'
+import { lerMargem, passoDaMargem, vendaPelaMargem, margemSobreCusto, valorParaCampo, mostrarMargem } from '../utils/margemPeca'
 import { categoriasDoTexto, servicoEhRevisao } from '../utils/revisao'
 
 // Painel de lançar item — embutido no quadro de itens, não em popup.
@@ -85,6 +86,13 @@ export default function PainelAdicionarItem({
   // Sem "Avulso": item de kit sem vínculo com o cadastro entraria por R$ 0,00
   // toda vez que o kit fosse aplicado.
   permitirAvulso = true,
+  // --- MARGEM DA PEÇA AVULSA (OS e Orçamento) ---
+  // Com `margemPeca` (número, % em cima do custo — utils/margemPeca), a peça
+  // avulsa ganha o campo de margem: digitou o custo, a venda sai sozinha.
+  // `onMudarMargem` guarda a margem nova para a oficina inteira. Sem a prop
+  // (kit), o painel fica como sempre foi.
+  margemPeca = null,
+  onMudarMargem = null,
 }) {
   const [modo, setModo] = useState(modoInicial)   // 'cadastrado' | 'avulso'
   const [tipo, setTipo] = useState(tipoInicial)   // 'servico' | 'peca'
@@ -100,6 +108,11 @@ export default function PainelAdicionarItem({
   // usava. Os itens antigos que tem o campo continuam com ele, sem efeito.)
   const [horas, setHoras] = useState('')
   const [custoAvulso, setCustoAvulso] = useState('')
+  // O texto do campo da margem. Começa na margem da oficina e NÃO volta a ela
+  // sozinho enquanto o painel está aberto: quem está digitando não pode ver o
+  // campo mudar embaixo do dedo.
+  const [margemTxt, setMargemTxt] = useState(() => mostrarMargem(margemPeca ?? 0))
+  const timerMargem = useRef(null)
   const [desconto, setDesconto] = useState('0')
   const [mecanicoId, setMecanicoId] = useState('')
   const [ultimaExterna, setUltimaExterna] = useState(null)
@@ -196,7 +209,37 @@ export default function PainelAdicionarItem({
   const vendaNum = pNum(valorUnitario)
   const temMargem = pedeCusto && custoNum > 0 && vendaNum > 0
   const lucroUn = temMargem ? vendaNum - custoNum : 0
-  const margemPct = temMargem ? (lucroUn / vendaNum) * 100 : 0
+  // "Em cima do custo", a mesma conta do campo da margem — se a frase usasse
+  // o lucro sobre a venda, 65% escolhido apareceria como 39% embaixo.
+  const margemReal = temMargem ? margemSobreCusto(custoNum, vendaNum) : null
+
+  // O campo da margem só existe na peça avulsa, e só onde a tela passou a
+  // margem da oficina (OS e Orçamento; o kit não tem preço).
+  const usaMargem = pedeCusto && margemPeca !== null && !esconderPrecos
+  const margemNum = lerMargem(margemTxt)
+
+  // Mudou o custo ou a margem: a venda é recalculada. Mudou a venda na mão:
+  // fica a da pessoa, e a frase embaixo mostra a margem que deu.
+  function mudarCusto(texto) {
+    setCustoAvulso(texto)
+    if (!usaMargem) return
+    const c = pNum(texto)
+    setValorUnitario(c > 0 ? valorParaCampo(vendaPelaMargem(c, margemNum)) : '')
+  }
+
+  function mudarMargem(texto) {
+    setMargemTxt(texto)
+    const m = lerMargem(texto)
+    if (custoNum > 0) setValorUnitario(valorParaCampo(vendaPelaMargem(custoNum, m)))
+    // Guarda para a oficina inteira, mas só quando a pessoa para de mexer:
+    // cada clique no + gravaria a configuração de novo. Campo apagado (a
+    // pessoa vai digitar outro número) não grava 0% para todo mundo.
+    clearTimeout(timerMargem.current)
+    if (!/\d/.test(texto)) return
+    timerMargem.current = setTimeout(() => {
+      if (m !== margemPeca) onMudarMargem?.(m)
+    }, 800)
+  }
 
   function adicionar() {
     if (!descricao.trim()) return
@@ -258,7 +301,7 @@ export default function PainelAdicionarItem({
   // Quantas colunas a linha de números ocupa no desktop. Sem isto, esconder os
   // preços deixaria o botão "Adicionar" perdido no meio de colunas vazias.
   const mostraHoras = tipo === 'servico' && !!ordens && !esconderPrecos
-  const colunasNumeros = 1 + (pedeCusto ? 1 : 0) + (esconderPrecos ? 0 : 2) + (mostraHoras ? 1 : 0) + 1
+  const colunasNumeros = 1 + (pedeCusto ? 1 : 0) + (usaMargem ? 1 : 0) + (esconderPrecos ? 0 : 2) + (mostraHoras ? 1 : 0) + 1
   const gridNumeros = { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4', 5: 'sm:grid-cols-5', 6: 'sm:grid-cols-6' }[colunasNumeros]
 
   return (
@@ -503,16 +546,37 @@ export default function PainelAdicionarItem({
         {pedeCusto && (
           <div>
             <label className={ROTULO} htmlFor="painel-custo-item">Preço de custo (R$)</label>
-            <input id="painel-custo-item" value={custoAvulso} onChange={e => setCustoAvulso(e.target.value)}
-              placeholder="0,00" className={`${INP} text-right tabular-nums`} />
+            <input id="painel-custo-item" value={custoAvulso} onChange={e => mudarCusto(e.target.value)}
+              inputMode="decimal" placeholder="0,00" className={`${INP} text-right tabular-nums`} />
+          </div>
+        )}
+        {usaMargem && (
+          <div>
+            <label className={ROTULO} htmlFor="painel-margem-item">Margem (%)</label>
+            <div className="flex items-stretch gap-1">
+              <button type="button" onClick={() => mudarMargem(mostrarMargem(passoDaMargem(margemNum, -1)))}
+                aria-label="Diminuir a margem" title="Diminuir 5%"
+                className="flex-shrink-0 w-8 flex items-center justify-center border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-100 transition-colors">
+                <Minus size={14} />
+              </button>
+              <input id="painel-margem-item" value={margemTxt} onChange={e => mudarMargem(e.target.value)}
+                onBlur={() => setMargemTxt(mostrarMargem(margemNum))}
+                inputMode="decimal" title="Em cima do custo: custo R$ 100 com 65% vende por R$ 165"
+                className={`${INP} px-1 text-center tabular-nums min-w-0`} />
+              <button type="button" onClick={() => mudarMargem(mostrarMargem(passoDaMargem(margemNum, 1)))}
+                aria-label="Aumentar a margem" title="Aumentar 5%"
+                className="flex-shrink-0 w-8 flex items-center justify-center border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-100 transition-colors">
+                <Plus size={14} />
+              </button>
+            </div>
           </div>
         )}
         {!esconderPrecos && (
           <>
             <div>
-              <label className={ROTULO} htmlFor="painel-valor-item">Valor unit. (R$)</label>
+              <label className={ROTULO} htmlFor="painel-valor-item">{usaMargem ? 'Venda (R$)' : 'Valor unit. (R$)'}</label>
               <input id="painel-valor-item" value={valorUnitario} onChange={e => setValorUnitario(e.target.value)}
-                placeholder="0,00" className={`${INP} text-right tabular-nums`} />
+                inputMode="decimal" placeholder="0,00" className={`${INP} text-right tabular-nums`} />
             </div>
             <div>
               <label className={ROTULO} htmlFor="painel-desc-item">Desconto (R$)</label>
@@ -560,8 +624,10 @@ export default function PainelAdicionarItem({
         <p className="text-xs text-slate-500">
           {temMargem ? (
             <span className={lucroUn >= 0 ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
-              Margem prevista: {fmt(lucroUn)} por unidade ({margemPct.toFixed(0)}%)
+              Lucro: {fmt(lucroUn)} por unidade ({mostrarMargem(margemReal)}% em cima do custo)
             </span>
+          ) : usaMargem ? (
+            'Digite o preço de custo: a venda sai sozinha com a margem. A margem que você deixar aqui vale para todos.'
           ) : (
             'Preço de custo: quanto você pagou nela. Sem isso, a margem desta OS fica incompleta.'
           )}

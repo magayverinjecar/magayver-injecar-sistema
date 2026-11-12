@@ -8,6 +8,7 @@ import gerarId from '../utils/id'
 import { imprimirOrcamento } from '../utils/print'
 import { parseValorBR } from '../utils/numero'
 import PainelAdicionarItem from '../components/PainelAdicionarItem'
+import { margemDaConfig } from '../utils/margemPeca'
 import SeletorKit from '../components/SeletorKit'
 import { avisoDeFalta, pecaSemEstoque } from '../utils/kits'
 import { pecaComCodigo } from '../utils/pecas'
@@ -62,7 +63,7 @@ const fmt = (v) => 'R$ ' + fmtValor(v)
 export default function Orcamentos() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, movimentarEstoque, reservadoDe, getCliente, getVeiculo, novaOrdem, ordens, gastos, config } = useApp()
+  const { orcamentos, setOrcamentos, clientes, veiculos, veiculosPorCliente, servicos, setServicos, estoque, setEstoque, movimentarEstoque, reservadoDe, getCliente, getVeiculo, novaOrdem, ordens, gastos, config, setConfig } = useApp()
   // Piso para conferir o preço do serviço no orçamento — o mesmo da OS. Fica
   // `null` até os gastos fixos e a capacidade estarem preenchidos.
   const custoHoraOficina = custoHoraDaOficina({ gastos, config })
@@ -752,6 +753,8 @@ export default function Orcamentos() {
                   getModeloDaOS={o => nomeVeiculo(getVeiculo(o.veiculoId), o)}
                   esconderLista={criarNovo}
                   selecaoExterna={selecaoPainel}
+                  margemPeca={margemDaConfig(config)}
+                  onMudarMargem={m => setConfig(c => ({ ...c, margemPecaAvulsa: m }))}
                   onTrocarTipo={t => { setTipoPainel(t); setCriarNovo(false); setSelecaoPainel(null) }}
                   onTrocarModo={() => { setCriarNovo(false); setSelecaoPainel(null) }}
                   acaoCadastro={
