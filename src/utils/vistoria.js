@@ -3,10 +3,26 @@
 // gravado no banco (715 fotos e 70 vistorias). Mudar um rótulo aqui faz o
 // registro antigo cair na categoria errada ou sumir da tela.
 
+// As categorias oferecidas para foto NOVA. Desde 11/2026 cada roda tem a sua
+// (Roda 1 a 4); antes era uma foto só, "Rodas".
 export const CATEGORIAS_FOTO = [
   'Frente', 'Traseira', 'Lateral Esq.', 'Lateral Dir.',
-  'Painel', 'Motor', 'Chassi', 'Teto', 'Interior', 'Rodas', 'Outros',
+  'Painel', 'Motor', 'Chassi', 'Teto', 'Interior',
+  'Roda 1', 'Roda 2', 'Roda 3', 'Roda 4', 'Outros',
 ]
+
+// As categorias que a tela mostra para um conjunto de fotos: as de sempre e,
+// além delas, qualquer categoria que já tenha foto gravada e não esteja mais
+// na lista — senão a foto some da tela. A "Rodas" antiga entra antes da
+// Roda 1, e só nas OS que têm foto nela; as outras entram antes de "Outros".
+export function categoriasDaTela(fotos) {
+  const usadas = new Set((fotos || []).map(f => f?.categoria).filter(Boolean))
+  const lista = [...CATEGORIAS_FOTO]
+  if (usadas.has('Rodas')) lista.splice(lista.indexOf('Roda 1'), 0, 'Rodas')
+  const sobrando = [...usadas].filter(c => !lista.includes(c))
+  lista.splice(lista.indexOf('Outros'), 0, ...sobrando)
+  return lista
+}
 
 // Fotos do reparo são outra coisa: provam o serviço executado, não o estado de
 // chegada. Ficam separadas para não se misturarem no link que o cliente recebe.

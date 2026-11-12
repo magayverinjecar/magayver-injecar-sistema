@@ -10,7 +10,7 @@ import { nomeVeiculo } from '../utils/datas'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import {
-  CATEGORIAS_FOTO, normalizarInspecao, linkVistoria,
+  categoriasDaTela, normalizarInspecao, linkVistoria,
   MOMENTO_ENTRADA, fotosDaEntrada, fotosDoReparo,
 } from '../utils/vistoria'
 import gerarId from '../utils/id'
@@ -119,7 +119,8 @@ export default function VistoriaEntrada() {
   const listaFotos = fotosDaEntrada(todasFotos)
   const listaInspecao = inspecao ?? normalizarInspecao(os.inspecaoVisual)
   const inspecaoDone = listaInspecao.filter(i => i.status !== undefined).length
-  const fotosPorCat = CATEGORIAS_FOTO.map(cat => ({ cat, lista: listaFotos.filter(f => f.categoria === cat) }))
+  // Roda 1 a 4 separadas; a "Rodas" antiga só aparece na OS que tem foto nela.
+  const fotosPorCat = categoriasDaTela(listaFotos).map(cat => ({ cat, lista: listaFotos.filter(f => f.categoria === cat) }))
 
   // Grava na hora, como era antes — o reparador não perde trabalho se sair sem
   // clicar em salvar. O array de fotos da OS é único: esta tela mexe só nas de
