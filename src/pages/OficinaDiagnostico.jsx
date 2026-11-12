@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { momentoEntrada, nomeVeiculo } from '../utils/datas'
 import { statusColor } from './OrdensServico'
 import { casaBusca } from '../utils/busca'
+import { tipoDaOS } from '../utils/tipoAtendimento'
 
 // Há quanto tempo o carro espera. Usa o momento de entrada porque `etapaEm`
 // ficou igual em todas as OS antigas depois da migração.
@@ -129,6 +130,11 @@ export default function OficinaDiagnostico() {
                 <span className="font-mono text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{os.placa}</span>
               )}
               {os.meu && <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">seu</span>}
+              {/* O que o cliente veio fazer: antes de pegar, o reparador sabe
+                  se o carro é de 1 hora ou de dias. */}
+              {tipoDaOS(os) && (
+                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${tipoDaOS(os).etiqueta}`}>{tipoDaOS(os).rotulo}</span>
+              )}
             </div>
 
             <p className="text-sm text-slate-600 mt-1 flex items-center gap-1">

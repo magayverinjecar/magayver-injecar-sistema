@@ -10,6 +10,7 @@ import { imprimirOS, imprimirOrcamento, imprimirOrdemExecucao, podeImprimirOrdem
 import { temAvaliacao, itensDaAvaliacao, resumoDaAvaliacao, recomendacoesDaAvaliacao, fotosNumeradas } from '../utils/avaliacao'
 import { separarItens } from '../utils/itensOS'
 import { nomeVeiculo } from '../utils/datas'
+import { TIPOS_ATENDIMENTO } from '../utils/tipoAtendimento'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
@@ -878,6 +879,18 @@ export default function OrdemDetalhe() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
             <h3 className="font-semibold text-slate-800 mb-4">Informações</h3>
+            {/* O que o cliente veio fazer, marcado na entrada. Dá para corrigir
+                aqui se a recepção marcou errado — é o que o reparador vê na
+                fila e o que decide se a avaliação abre completa. */}
+            <div className="flex items-center justify-between gap-3 py-2 border-b border-slate-50">
+              <span className="text-sm text-slate-400">Tipo de atendimento</span>
+              <select value={os.tipoAtendimento || ''} onChange={e => atualizarOrdem(os.id, { tipoAtendimento: e.target.value })}
+                aria-label="Tipo de atendimento"
+                className={`text-sm font-medium text-right border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500 ${os.tipoAtendimento ? 'text-slate-700' : 'text-slate-400'}`}>
+                <option value="">Não informado</option>
+                {TIPOS_ATENDIMENTO.map(t => <option key={t.id} value={t.id}>{t.rotulo}</option>)}
+              </select>
+            </div>
             <Linha label="Data Entrada" valor={os.dataEntrada || os.data} />
             <Linha label="Data Conclusão" valor={os.dataConclusao || '—'} />
             <Linha label="KM Entrada" valor={os.kmEntrada || '—'} />

@@ -1604,6 +1604,9 @@ export function AppProvider({ children }) {
       historico: [evento(dados.textoCriacao || 'OS criada')],
       pago: false,
       etapaEm: Date.now(),
+      // O que o cliente veio fazer (utils/tipoAtendimento.js), marcado na
+      // entrada. Só grava quando vem: OS criada por outro caminho fica sem.
+      ...(dados.tipoAtendimento ? { tipoAtendimento: dados.tipoAtendimento } : {}),
       // Campos de entrada/vistoria (absorvidos do antigo checklist)
       luzesPainel: dados.luzesPainel || [],
       relatoCliente: dados.relatoCliente || '',

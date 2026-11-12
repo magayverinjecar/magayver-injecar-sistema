@@ -16,8 +16,9 @@ import { normalizarDiagnostico } from '../utils/diagnostico'
 import {
   AREAS, NORMAL, ATENCAO, PROBLEMA, URGENCIAS, MAX_FOTOS_POR_ITEM,
   itensDaAvaliacao, resumoDaAvaliacao, recomendacoesDaAvaliacao,
-  VERBOS_SERVICO, servicoSugerido, verboDoServico,
+  VERBOS_SERVICO, servicoSugerido, verboDoServico, modoDaAvaliacao,
 } from '../utils/avaliacao'
+import { tipoDaOS } from '../utils/tipoAtendimento'
 
 // Tela de diagnóstico do reparador. Traz tudo que ele precisa para trabalhar —
 // veículo, contexto, relato do cliente — sem depender de acesso à OS, onde
@@ -188,7 +189,9 @@ export default function OficinaDiagnosticoDetalhe() {
   const scanner = falhasScanner ?? os?.falhasScanner ?? ''
   const parecer = conclusao ?? os?.observacoesTecnicas ?? ''
   const listaPecas = pecas ?? os?.pecasNecessarias ?? []
-  const aval = avaliacaoLocal ?? { ...AVALIACAO_VAZIA, ...(os?.avaliacao || {}) }
+  // O modo, quando ninguém escolheu ainda, segue o tipo de atendimento da
+  // entrada: revisão preventiva já abre completa (utils/avaliacao.js).
+  const aval = avaliacaoLocal ?? { ...AVALIACAO_VAZIA, ...(os?.avaliacao || {}), modo: modoDaAvaliacao(os) }
   const pendente = itens !== null || falhasScanner !== null || conclusao !== null || pecas !== null || avaliacaoLocal !== null
 
   useEffect(() => {
@@ -218,6 +221,7 @@ export default function OficinaDiagnosticoDetalhe() {
 
   const cliente = getCliente(os.clienteId)
   const veiculo = getVeiculo(os.veiculoId)
+  const tipo = tipoDaOS(os)
   const luzes = os.luzesPainel || []
   // A OS como ficaria se salvasse agora — é dela que saem as áreas, o
   // progresso e as recomendações.
@@ -520,6 +524,12 @@ export default function OficinaDiagnosticoDetalhe() {
                 da recepção, que vê o número na OS e no cadastro. */}
             <span className="flex items-center gap-1"><Clock size={11} /> {os.dataEntrada || os.data}</span>
           </div>
+          {/* O que o cliente veio fazer, marcado na entrada. */}
+          {tipo && (
+            <span className={`inline-block mt-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${tipo.etiqueta}`}>
+              {tipo.rotulo} · {tipo.tempo}
+            </span>
+          )}
         </div>
         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0 ${statusColor[os.status] || 'bg-slate-100 text-slate-600'}`}>
           {os.status}

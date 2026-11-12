@@ -1,7 +1,7 @@
 import qrcode from 'qrcode-generator'
 import { parseValorBR } from './numero'
 import { separarItens } from './itensOS'
-import { AREAS, ATENCAO, PROBLEMA, URGENCIAS, itensDaAvaliacao, resumoDaAvaliacao, recomendacoesDaAvaliacao, fotosNumeradas } from './avaliacao'
+import { AREAS, ATENCAO, PROBLEMA, URGENCIAS, itensDaAvaliacao, resumoDaAvaliacao, recomendacoesDaAvaliacao, fotosNumeradas, modoDaAvaliacao } from './avaliacao'
 
 function getConfig() {
   try {
@@ -878,7 +878,7 @@ export function gerarAvaliacaoTecnica(os, veiculo, cliente, cfg, { fotos = false
     const texto = curto ? ns.join(', ') : (ns.length > 1 ? 'fotos ' : 'foto ') + juntarNumeros(ns)
     return ` <span class="fref">📷 ${esc(texto)}</span>`
   }
-  const completa = os?.avaliacao?.modo === 'completa'
+  const completa = modoDaAvaliacao(os) === 'completa'
   const rotuloUrg = Object.fromEntries(URGENCIAS.map(u => [u.id, u.rotulo.toUpperCase()]))
   const km = String(os.kmEntrada || '').trim() || (os.kmIlegivel ? 'não deu para ler' : '—')
   const quando = os.diagnosticadoEm || os.dataEntrada || ''

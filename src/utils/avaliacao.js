@@ -34,6 +34,7 @@
 
 import { DIAGNOSTICO_ITENS, valorDoItem } from './diagnostico'
 import { INSPECAO_ITENS } from './vistoria'
+import { tipoDaOS } from './tipoAtendimento'
 
 export const NORMAL = 'normal'
 export const ATENCAO = 'atencao'
@@ -47,6 +48,16 @@ export const URGENCIAS = [
 const ORDEM_URGENCIA = { urgente: 0, recomendado: 1, pode_esperar: 2 }
 
 export const MAX_FOTOS_POR_ITEM = 4
+
+// "Só a queixa" ou "Avaliação completa". O que o reparador escolheu vale; se
+// ele ainda não mexeu, segue o tipo de atendimento marcado na entrada: a
+// revisão preventiva já abre completa. A tela e o papel usam esta mesma regra,
+// para nunca discordarem.
+export function modoDaAvaliacao(os) {
+  const escolhido = os?.avaliacao?.modo
+  if (escolhido === 'completa' || escolhido === 'queixa') return escolhido
+  return tipoDaOS(os)?.modoAvaliacao || 'queixa'
+}
 
 export function fotosDoItem(os, itemId) {
   const lista = os?.avaliacao?.fotos?.[itemId]

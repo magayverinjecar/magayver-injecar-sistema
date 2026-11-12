@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase, uploadAssinatura } from '../supabase'
 import { ORIGENS_CLIENTE } from '../utils/origemCliente'
+import { TIPOS_ATENDIMENTO } from '../utils/tipoAtendimento'
 
 const DASHBOARD_LIGHTS = [
   'Injeção (Check Engine)', 'Bateria / Alternador', 'Pressão de Óleo',
@@ -225,6 +226,10 @@ export default function NovaEntrada() {
   })
   const [luzesPainel, setLuzesPainel] = useState([])
   const [relatoCliente, setRelatoCliente] = useState('')
+  // Revisão preventiva, serviço rápido ou diagnóstico avançado
+  // (utils/tipoAtendimento.js). Obrigatório: é o que diz ao reparador se o
+  // carro é de 1 hora ou de dias.
+  const [tipoAtendimento, setTipoAtendimento] = useState('')
   const [assinatura, setAssinatura] = useState(null)
 
 
@@ -240,6 +245,7 @@ export default function NovaEntrada() {
         if (d.veiculoId) setVeiculoId(d.veiculoId)
         if (d.luzesPainel) setLuzesPainel(d.luzesPainel)
         if (d.relatoCliente) setRelatoCliente(d.relatoCliente)
+        if (d.tipoAtendimento) setTipoAtendimento(d.tipoAtendimento)
         if (d.buscaCliente) setBuscaCliente(d.buscaCliente)
       }
     } catch {}
@@ -252,12 +258,12 @@ export default function NovaEntrada() {
     rascunhoRef.current = setTimeout(() => {
       try {
         localStorage.setItem(RASCUNHO_KEY, JSON.stringify({
-          cliente, veiculo, clienteId, veiculoId, luzesPainel, relatoCliente, buscaCliente,
+          cliente, veiculo, clienteId, veiculoId, luzesPainel, relatoCliente, tipoAtendimento, buscaCliente,
         }))
       } catch {}
     }, 2000)
     return () => clearTimeout(rascunhoRef.current)
-  }, [cliente, veiculo, clienteId, veiculoId, luzesPainel, relatoCliente, buscaCliente])
+  }, [cliente, veiculo, clienteId, veiculoId, luzesPainel, relatoCliente, tipoAtendimento, buscaCliente])
 
   const clientesFiltrados = clientes.filter(c =>
     buscaCliente.trim().length >= 2 &&
@@ -394,6 +400,9 @@ export default function NovaEntrada() {
       if (!veiculo.placa.trim()) e.placa = 'Placa obrigatória'
       if (faltaKm) e.km = 'Obrigatório'
     }
+    if (tudo || passo === 3) {
+      if (!tipoAtendimento) e.tipoAtendimento = 'Escolha o que o cliente vai fazer'
+    }
     setErros(e)
     return Object.keys(e).length === 0
   }
@@ -407,6 +416,7 @@ export default function NovaEntrada() {
     !veiculo.modelo.trim() && 'modelo',
     !veiculo.placa.trim() && 'placa',
     faltaKm && 'km',
+    !tipoAtendimento && 'o que o cliente vai fazer',
   ].filter(Boolean)
 
   function proximo() {
@@ -488,6 +498,7 @@ export default function NovaEntrada() {
       kmIlegivel: !!veiculo.kmIlegivel,
       descricaoProblema: relatoCliente,
       status: 'Recepção',
+      tipoAtendimento,
       luzesPainel,
       relatoCliente,
       assinatura: assinaturaFinal || null,
@@ -822,6 +833,33 @@ export default function NovaEntrada() {
           <div>
             <h3 className="text-xl lg:text-sm lg:font-semibold text-slate-800 mb-0.5">Motivo da Entrada</h3>
             <p className="text-sm text-slate-400 lg:hidden">Relato do cliente para orientação do reparador</p>
+          </div>
+          {/* O que o cliente veio fazer. O reparador vê na fila antes de pegar
+              o carro: revisão e serviço rápido são de 1 hora; diagnóstico
+              avançado fica dias. */}
+          <div>
+            <p className={`text-[11px] font-bold uppercase mb-1.5 ${erros.tipoAtendimento ? 'text-red-600' : 'text-slate-500'}`}>
+              O que o cliente vai fazer? <span className="text-red-500">*</span>
+            </p>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-1.5" role="radiogroup" aria-label="O que o cliente vai fazer">
+              {TIPOS_ATENDIMENTO.map(t => {
+                const ativo = tipoAtendimento === t.id
+                return (
+                  <button key={t.id} type="button" role="radio" aria-checked={ativo}
+                    onClick={() => { setTipoAtendimento(t.id); setErros(e => { const n = { ...e }; delete n.tipoAtendimento; return n }) }}
+                    className={`flex items-start gap-2 text-left rounded-xl p-2.5 lg:p-2 transition-colors ${
+                      ativo ? `border-2 ${t.escolhido}` : `border bg-white ${erros.tipoAtendimento ? 'border-red-300' : 'border-slate-200'} hover:bg-slate-50`
+                    }`}>
+                    <span className={`mt-0.5 w-4 h-4 rounded-full flex-shrink-0 bg-white ${ativo ? `border-[5px] ${t.bolinha}` : 'border-2 border-slate-300'}`} />
+                    <span>
+                      <span className={`block text-sm font-bold ${ativo ? '' : 'text-slate-800'}`}>{t.rotulo}</span>
+                      <span className={`block text-[11px] leading-snug ${ativo ? 'opacity-90' : 'text-slate-500'}`}>{t.descricao}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            {erros.tipoAtendimento && <p className="text-xs text-red-600 mt-1">{erros.tipoAtendimento}</p>}
           </div>
             <textarea rows={10} value={relatoCliente}
               onChange={e => setRelatoCliente(e.target.value.toUpperCase())}
