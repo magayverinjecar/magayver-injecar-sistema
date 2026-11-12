@@ -45,6 +45,8 @@ const COLUNAS_ORC = Object.fromEntries(COLS_ORC.map(c => [c.campo, c]))
 const colOrc = (campo) => COLUNAS_ORC[campo]
 
 const VAZIO_CLIENTE = { clienteId: '', nome: '', telefone: '', veiculo: '', placa: '', km: '' }
+// % de acréscimo com que o orçamento começa, até alguém mudar nele.
+const ACRESCIMO_PADRAO = '10'
 const VAZIO_ITEM = { tipo: 'Serviço', refId: '', descricao: '', quantidade: '1', valorUnitario: '', desconto: '0' }
 
 // Parser único em utils/numero.js — a cópia local lia "1.500" como 1,5.
@@ -83,7 +85,9 @@ export default function Orcamentos() {
   const [selecaoPainel, setSelecaoPainel] = useState(null) // item recém-cadastrado que o painel deve selecionar
   const [criarNovo, setCriarNovo] = useState(false)
   const [novoForm, setNovoForm] = useState({ nome: '', categoria: '', preco: '', tempo: '', codigo: '', precoCusto: '', estoque: '0', minimo: '0' })
-  const [taxaPct, setTaxaPct] = useState('10')
+  // O % de acréscimo é de cada orçamento: vai junto ao salvar e volta ao
+  // abrir para editar. Orçamento novo começa em ACRESCIMO_PADRAO.
+  const [taxaPct, setTaxaPct] = useState(ACRESCIMO_PADRAO)
   const [filtros, mudarFiltros] = useFiltrosGuardados('filtros:orcamentos', FILTROS_INICIAIS)
 
   // Pré-preenche o formulário quando vem de uma OS via location.state.fromOS
@@ -131,6 +135,7 @@ export default function Orcamentos() {
     setItens(orc.itens || [])
     setObservacoes(orc.observacoes || '')
     setValidade(orc.validade || '7 dias')
+    setTaxaPct(String(orc.acrescimoPct ?? ACRESCIMO_PADRAO))
     setOrcamentoEditandoId(orc.id)
     setAba('novo')
   }
@@ -351,6 +356,7 @@ export default function Orcamentos() {
     setItens([])
     setObservacoes('')
     setValidade('7 dias')
+    setTaxaPct(ACRESCIMO_PADRAO)
     setOrcamentoEditandoId(null)
     setAba('novo')
   }
@@ -373,6 +379,7 @@ export default function Orcamentos() {
         itens,
         observacoes,
         validade,
+        acrescimoPct: taxaPct,
         total: totalGeral,
       } : o))
       setOrcamentoEditandoId(null)
@@ -400,6 +407,7 @@ export default function Orcamentos() {
         itens,
         observacoes,
         validade,
+        acrescimoPct: taxaPct,
         total: totalGeral,
         status: 'Pendente',
         data: new Date().toLocaleDateString('pt-BR'),
@@ -412,6 +420,7 @@ export default function Orcamentos() {
     setItens([])
     setObservacoes('')
     setValidade('7 dias')
+    setTaxaPct(ACRESCIMO_PADRAO)
     setAba('salvos')
   }
 
