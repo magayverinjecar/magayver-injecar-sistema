@@ -18,6 +18,7 @@ import CustoNaLinha from '../components/CustoNaLinha'
 import TrocarPorCadastro from '../components/TrocarPorCadastro'
 import { podeTrocarPorCadastro, itemDaTroca } from '../utils/trocaPeca'
 import { margemDaConfig, vendaPelaMargem, valorParaCampo, mostrarMargem } from '../utils/margemPeca'
+import { custoDaPeca } from '../utils/margem'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
 import SeletorMaquina from '../components/ui/SeletorMaquina'
@@ -91,7 +92,7 @@ export default function OrdemDetalhe() {
     aprovarOrcamento, recusarOrcamento, fecharRecusa, concluirReparo, entregarSemCobrar,
     config, setConfig, gastos,
   } = useApp()
-  const { currentUser, temPermissao } = useAuth()
+  const { currentUser, temPermissao, podeVerPrecos } = useAuth()
 
   const os = ordens.find(o => o.id === osId)
   const [aba, setAba] = useState('Dados')
@@ -483,10 +484,14 @@ export default function OrdemDetalhe() {
                       ) : (
                         <>
                           {fmt(pNum(it.valorUnitario))}
-                          {/* O custo da peça avulsa embaixo do preço: quem monta
-                              o orçamento confere a margem sem abrir nada. */}
-                          {it.tipo === 'peca' && !it.produtoId && pNum(it.custoUnitario) > 0 && (
-                            <span className="block text-[11px] text-slate-400 tabular-nums">custo {fmt(pNum(it.custoUnitario))}</span>
+                          {/* O custo da peça embaixo do preço — avulsa ou do
+                              cadastro: quem monta o orçamento confere a margem
+                              sem abrir nada. O custo é o congelado no item (ou,
+                              nas peças antigas, o do cadastro), a mesma regra da
+                              margem da OS. Só para quem vê preços: é a mesma
+                              trava que esconde o custo do reparador. */}
+                          {it.tipo === 'peca' && podeVerPrecos && custoDaPeca(it, estoque) > 0 && (
+                            <span className="block text-[11px] text-slate-400 tabular-nums">custo {fmt(custoDaPeca(it, estoque))}</span>
                           )}
                         </>
                       )}
