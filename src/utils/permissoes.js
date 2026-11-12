@@ -60,6 +60,9 @@ export const GRUPOS_MENU = [
       // Gastos da família pagos pelo caixa. Ninguém recebe sozinho: o dono
       // marca no próprio cadastro (Funcionários) quem pode ver.
       { id: 'gastos-pessoais', label: 'Gastos pessoais (Pessoal × Oficina)' },
+      // Quanto cada OS deixou e quanto é do fornecedor (aba no Financeiro).
+      // Mesma regra: ninguém recebe sozinho, o dono marca quem pode ver.
+      { id: 'lucro-por-os', label: 'Lucro por OS (peça, mão de obra e fornecedor)' },
     ],
   },
   {

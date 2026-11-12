@@ -31,6 +31,7 @@ import Fornecedores from './pages/Fornecedores'
 import Insumos from './pages/Insumos'
 import Gastos from './pages/Gastos'
 import Financeiro from './pages/Financeiro'
+import LucroPorOS from './pages/LucroPorOS'
 import Caixa from './pages/Caixa'
 import NovaVenda from './pages/NovaVenda'
 import CaixaHistorico from './pages/CaixaHistorico'
@@ -155,6 +156,9 @@ export default function App() {
           <Route path="gastos/novo"         element={<Rota perm="gastos"><GastoCadastro /></Rota>} />
           <Route path="gastos/:id"          element={<Rota perm="gastos"><GastoCadastro /></Rota>} />
           <Route path="financeiro"          element={<Rota perm="financeiro"><Financeiro /></Rota>} />
+          {/* Quanto cada OS deixou e quanto e do fornecedor. Permissao propria:
+              o dono marca em Funcionarios quem pode ver. */}
+          <Route path="lucro-por-os"        element={<Rota perm="lucro-por-os"><LucroPorOS /></Rota>} />
           {/* Faturamento, margem, quem fatura quanto e de quem a oficina
               depende. Permissao propria: nao e tela de balcao. */}
           <Route path="gestao"              element={<Rota perm="gestao"><Gestao /></Rota>} />

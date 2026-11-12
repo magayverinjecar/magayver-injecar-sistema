@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Car, CalendarDays, ClipboardList,
   Wrench, Package, DollarSign, ShoppingCart, UserCog, Settings,
   BarChart3, FileText, Truck, Factory, Droplets, Receipt, Brain,
-  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid, History, Tag, PieChart, PhoneCall } from 'lucide-react'
+  Plus, Camera, FolderOpen, ClipboardCheck, LayoutGrid, History, Tag, PieChart, PhoneCall, TrendingUp } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 const grupos = [
@@ -70,6 +70,8 @@ const grupos = [
       { to: '/caixa', icon: ShoppingCart, label: 'Caixa' },
       { to: '/gestao', icon: PieChart, label: 'Gestão' },
       { to: '/financeiro', icon: DollarSign, label: 'Financeiro' },
+      // Só para quem o dono liberou (Funcionários → "Lucro por OS").
+      { to: '/lucro-por-os', icon: TrendingUp, label: 'Lucro por OS', permissao: 'lucro-por-os' },
       { to: '/gastos', icon: Receipt, label: 'Gastos' },
     ],
   },

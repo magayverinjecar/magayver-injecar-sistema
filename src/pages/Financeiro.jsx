@@ -11,6 +11,7 @@ import SeletorMaquina from '../components/ui/SeletorMaquina'
 import SeletorPeriodo from '../components/ui/SeletorPeriodo'
 import PainelOrigem from '../components/PainelOrigem'
 import PainelPessoal from '../components/PainelPessoal'
+import LucroPorOSConteudo from '../components/LucroPorOSConteudo'
 import { useAuth } from '../context/AuthContext'
 import { ehCartao, maquinaPadrao } from '../utils/cartao'
 import { intervaloDe, periodoAnteriorDe, resumirFinanceiro, dentroDoPeriodo, variacao } from '../utils/periodo'
@@ -90,6 +91,9 @@ export default function Financeiro() {
   // Gastos da família: aba só para quem o dono liberou no cadastro.
   const { temPermissao } = useAuth()
   const veGastosPessoais = temPermissao('gastos-pessoais')
+  // Lucro de cada OS (peça, mão de obra, o que é do fornecedor): também só
+  // para quem o dono liberou.
+  const veLucroPorOS = temPermissao('lucro-por-os')
 
   const [modalBoleto, setModalBoleto] = useState(null)
   const [formaPagamento, setFormaPagamento] = useState('PIX')
@@ -420,6 +424,7 @@ const pNum = parseValorBR
           { key: 'devedores',   label: `A Receber${aReceber.itens.length ? ` (${aReceber.itens.length})` : ''}` },
           { key: 'cartoes',     label: 'Cartões' },
           { key: 'origem',      label: 'Origem' },
+          ...(veLucroPorOS ? [{ key: 'lucro', label: 'Lucro por OS' }] : []),
           ...(veGastosPessoais ? [{ key: 'pessoal', label: 'Pessoal × Oficina' }] : []),
         ].map(({ key, label }) => (
           <button key={key} onClick={() => setAba(key)}
@@ -654,6 +659,10 @@ const pNum = parseValorBR
           de onde colocar verba de anúncio. Recebe o mesmo `intervalo` do topo,
           que é o que dá o recorte mês a mês e ano a ano. */}
       {aba === 'origem' && <PainelOrigem intervalo={intervalo} />}
+
+      {/* Tem os próprios botões de data (hoje, ontem, semana…): a pergunta
+          aqui é "quanto deixou a OS de hoje", que o seletor de cima não tem. */}
+      {aba === 'lucro' && veLucroPorOS && <LucroPorOSConteudo embutido />}
 
       {aba === 'pessoal' && veGastosPessoais && <PainelPessoal />}
 

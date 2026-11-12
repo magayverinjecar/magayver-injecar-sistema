@@ -22,6 +22,7 @@ const titles = {
   '/insumos': 'Insumos',
   '/fornecedores': 'Fornecedores',
   '/financeiro': 'Financeiro',
+  '/lucro-por-os': 'Lucro por OS',
   '/caixa': 'Caixa',
   '/gastos': 'Gastos',
   '/configuracoes': 'Configurações',
