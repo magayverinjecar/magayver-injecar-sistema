@@ -34,6 +34,9 @@ const pNum = parseValorBR
 // Quantidade aceita vírgula ("1,5" litros de óleo) — Number() sozinho devolveria NaN
 function parseQtd(v) { const n = pNum(v); return n > 0 ? n : 1 }
 
+// % de acréscimo com que a OS começa, até alguém mudar nela.
+const ACRESCIMO_PADRAO = '10'
+
 // Status em que o serviço está sendo executado — daqui o carro vai para
 // conferência, nunca direto para "pronto para retirada".
 const EM_EXECUCAO = ['Em Execução', 'Aguardando Peça', 'Aberta', 'Aprovada', 'Em Andamento', 'Aprovado']
@@ -96,7 +99,6 @@ export default function OrdemDetalhe() {
   const [pgtos, setPgtos] = useState([])
   const [modalReabrir, setModalReabrir] = useState(false)
   const [editandoItem, setEditandoItem] = useState(null)
-  const [taxaPct, setTaxaPct] = useState('10')
 
   const [diagnosticoLocal, setDiagnosticoLocal] = useState(null)
   const [inspecaoLocal, setInspecaoLocal] = useState(null)
@@ -148,6 +150,11 @@ export default function OrdemDetalhe() {
 
   const cliente = getCliente(os.clienteId)
   const veiculo = getVeiculo(os.veiculoId)
+  // O % de acréscimo é de cada OS e fica gravado nela. Antes era um número só
+  // da tela: mudar numa OS e abrir outra levava o mesmo número junto, e
+  // recarregar voltava para 10. OS que nunca mexeu começa em 10%.
+  const taxaPct = String(os.acrescimoPct ?? ACRESCIMO_PADRAO)
+  const mudarTaxaPct = (v) => atualizarOrdem(os.id, { acrescimoPct: v })
   // O carro que vai em cima da lista de peças copiada para o fornecedor.
   const carroDasPecas = {
     nome: nomeVeiculo(veiculo, os), placa: veiculo?.placa || os.veiculoPlaca,
@@ -1246,7 +1253,8 @@ export default function OrdemDetalhe() {
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
                 <span className="text-xs font-medium text-amber-700 whitespace-nowrap">Acréscimo:</span>
-                <input type="number" value={taxaPct} onChange={e => setTaxaPct(e.target.value)} min="0" max="100" step="0.5"
+                <input type="number" value={taxaPct} onChange={e => mudarTaxaPct(e.target.value)} min="0" max="100" step="0.5"
+                  aria-label="Percentual de acréscimo desta OS" title="Fica gravado nesta OS"
                   className="w-12 text-sm text-right focus:outline-none bg-transparent font-semibold text-amber-800" />
                 <span className="text-sm font-semibold text-amber-700">%</span>
                 <button onClick={aplicarTaxaTodos}
