@@ -1453,6 +1453,7 @@ export default function OrdemDetalhe() {
                 onAdd={item => adicionarItemOrdem(os.id, item)}
                 margemPeca={margemPeca}
                 onMudarMargem={mudarMargemPeca}
+                exigirCusto
               />
             </div>
           )}

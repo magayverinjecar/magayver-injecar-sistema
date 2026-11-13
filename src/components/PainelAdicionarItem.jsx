@@ -93,6 +93,11 @@ export default function PainelAdicionarItem({
   // (kit), o painel fica como sempre foi.
   margemPeca = null,
   onMudarMargem = null,
+  // Custo OBRIGATÓRIO na peça (pedido do dono, 13/11/2026): sem ele o lucro
+  // da OS e o "separar p/ fornecedor" saem errados. Vale para a peça avulsa e
+  // para a peça do cadastro que está sem preço de custo no Estoque. Nasce
+  // desligado: OS e Orçamento ligam; o kit não (molde, sem preço).
+  exigirCusto = false,
 }) {
   const [modo, setModo] = useState(modoInicial)   // 'cadastrado' | 'avulso'
   const [tipo, setTipo] = useState(tipoInicial)   // 'servico' | 'peca'
@@ -165,6 +170,9 @@ export default function PainelAdicionarItem({
 
   function selecionar(item) {
     setSelId(item.id)
+    // O custo digitado era da peça anterior (sem custo no cadastro): não pode
+    // ir parar na peça escolhida agora.
+    setCustoAvulso('')
     setDescricao(tipo === 'servico' ? item.nome : `${item.nome}${item.codigo ? ` (${item.codigo})` : ''}`)
     setValorUnitario(item.preco)
   }
@@ -201,13 +209,19 @@ export default function PainelAdicionarItem({
   // do estoque. Saldo negativo, se acontecer, aparece em vermelho no Estoque.
   const semValor = pNum(valorUnitario) <= 0
 
-  // Custo só existe para peça AVULSA. Na peça do cadastro quem congela o custo
-  // é o adicionarItemOrdem (busca o precoCusto do estoque) — mandar daqui
-  // duplicaria a responsabilidade e os dois números podiam divergir.
+  // Custo da peça AVULSA: digitado aqui. Na peça do cadastro quem congela o
+  // custo é o adicionarItemOrdem (busca o precoCusto do estoque) — mandar
+  // daqui duplicaria a responsabilidade e os dois números podiam divergir.
+  // A exceção é a peça do cadastro SEM custo no Estoque, com o custo
+  // obrigatório ligado: aí o campo aparece e o custo digitado vale só para
+  // esta OS (o adicionarItemOrdem só troca pelo do estoque quando ele existe).
   const pedeCusto = modo === 'avulso' && tipo === 'peca'
+  const pedeCustoCadastro = exigirCusto && !esconderPrecos && modo === 'cadastrado'
+    && !!produtoSel && !(pNum(produtoSel.precoCusto) > 0)
+  const mostraCampoCusto = pedeCusto || pedeCustoCadastro
   const custoNum = pNum(custoAvulso)
   const vendaNum = pNum(valorUnitario)
-  const temMargem = pedeCusto && custoNum > 0 && vendaNum > 0
+  const temMargem = mostraCampoCusto && custoNum > 0 && vendaNum > 0
   const lucroUn = temMargem ? vendaNum - custoNum : 0
   // "Em cima do custo", a mesma conta do campo da margem — se a frase usasse
   // o lucro sobre a venda, 65% escolhido apareceria como 39% embaixo.
@@ -246,6 +260,7 @@ export default function PainelAdicionarItem({
     // O botão já está desabilitado; isto é a segunda tranca, para o Enter e
     // qualquer caminho que não passe pelo clique.
     if (faltaReparador) return
+    if (faltaCusto) return
     // Kit não tem preço para conferir — o preço só existe quando ele é aplicado.
     if (!esconderPrecos && semValor && !confirm('Este item está sem valor. Adicionar mesmo assim por R$ 0,00?')) return
     const item = {
@@ -263,7 +278,7 @@ export default function PainelAdicionarItem({
     }
     // Peça comprada na hora: sem isto a margem da OS fica incompleta e o CMV
     // sai por baixo. Só vai quando o dono realmente digitou o custo.
-    if (pedeCusto && custoNum > 0) item.custoUnitario = custoAvulso
+    if (mostraCampoCusto && custoNum > 0) item.custoUnitario = custoAvulso
     onAdd(item)
     // Fica aberto para o próximo item: limpa o lançamento, mantém tipo/modo e
     // o reparador escolhido (normalmente é o mesmo em vários serviços).
@@ -275,7 +290,9 @@ export default function PainelAdicionarItem({
   // Falta o reparador obrigatório? Só vale para serviço, e só onde o campo
   // aparece — exigir um campo escondido travaria a tela sem dizer por quê.
   const faltaReparador = exigirReparador && tipo === 'servico' && mostrarReparador && !mecanicoId
-  const podeAdicionar = !desabilitado && !!descricao.trim() && !faltaReparador
+  // Mesma ideia para o custo: só cobra onde o campo aparece.
+  const faltaCusto = exigirCusto && !esconderPrecos && mostraCampoCusto && !(custoNum > 0)
+  const podeAdicionar = !desabilitado && !!descricao.trim() && !faltaReparador && !faltaCusto
 
   // O que a oficina ja cobrou por este servico. So calcula quando ha um
   // servico escolhido e a tela passou as ordens — nas outras (kit) fica nulo.
@@ -301,7 +318,7 @@ export default function PainelAdicionarItem({
   // Quantas colunas a linha de números ocupa no desktop. Sem isto, esconder os
   // preços deixaria o botão "Adicionar" perdido no meio de colunas vazias.
   const mostraHoras = tipo === 'servico' && !!ordens && !esconderPrecos
-  const colunasNumeros = 1 + (pedeCusto ? 1 : 0) + (usaMargem ? 1 : 0) + (esconderPrecos ? 0 : 2) + (mostraHoras ? 1 : 0) + 1
+  const colunasNumeros = 1 + (mostraCampoCusto ? 1 : 0) + (usaMargem ? 1 : 0) + (esconderPrecos ? 0 : 2) + (mostraHoras ? 1 : 0) + 1
   const gridNumeros = { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4', 5: 'sm:grid-cols-5', 6: 'sm:grid-cols-6' }[colunasNumeros]
 
   return (
@@ -543,11 +560,12 @@ export default function PainelAdicionarItem({
           <input id="painel-qtd-item" type="text" inputMode="decimal" value={quantidade} onChange={e => setQuantidade(e.target.value)}
             className={`${INP} text-right tabular-nums ${semEstoque ? 'border-amber-300 bg-amber-50' : ''}`} />
         </div>
-        {pedeCusto && (
+        {mostraCampoCusto && (
           <div>
-            <label className={ROTULO} htmlFor="painel-custo-item">Preço de custo (R$)</label>
+            <label className={ROTULO} htmlFor="painel-custo-item">Preço de custo (R$){exigirCusto && ' *'}</label>
             <input id="painel-custo-item" value={custoAvulso} onChange={e => mudarCusto(e.target.value)}
-              inputMode="decimal" placeholder="0,00" className={`${INP} text-right tabular-nums`} />
+              inputMode="decimal" placeholder="0,00"
+              className={`${INP} text-right tabular-nums ${faltaCusto ? 'border-amber-400 bg-amber-50' : ''}`} />
           </div>
         )}
         {usaMargem && (
@@ -597,7 +615,7 @@ export default function PainelAdicionarItem({
           </div>
         )}
         <button type="button" onClick={adicionar} disabled={!podeAdicionar}
-          title={faltaReparador ? 'Escolha o reparador antes de adicionar o serviço' : undefined}
+          title={faltaReparador ? 'Escolha o reparador antes de adicionar o serviço' : faltaCusto ? 'Digite o preço de custo da peça antes de adicionar' : undefined}
           className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
           <Plus size={15} />{textoBotao}
         </button>
@@ -619,10 +637,19 @@ export default function PainelAdicionarItem({
         </p>
       )}
 
-      {/* Peça comprada na hora: sem custo a apuração de margem fica cega */}
-      {pedeCusto && (
+      {/* Peça comprada na hora: sem custo a apuração de margem fica cega.
+          Quando o custo é obrigatório, o motivo do botão travado fica aqui,
+          embaixo — botão cinza sem explicação parece sistema travado. */}
+      {mostraCampoCusto && (
         <p className="text-xs text-slate-500">
-          {temMargem ? (
+          {faltaCusto ? (
+            <span className="text-amber-700 font-medium">
+              Obrigatório: digite o preço de custo para adicionar a peça.
+              {pedeCustoCadastro
+                ? ' Esta peça está sem custo no cadastro do Estoque — o custo que você digitar vale só para esta OS.'
+                : ' Sem ele, o lucro da OS e o "separar p/ fornecedor" saem errados.'}
+            </span>
+          ) : temMargem ? (
             <span className={lucroUn >= 0 ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
               Lucro: {fmt(lucroUn)} por unidade ({mostrarMargem(margemReal)}% em cima do custo)
             </span>

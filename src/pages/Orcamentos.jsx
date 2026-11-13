@@ -755,6 +755,7 @@ export default function Orcamentos() {
                   selecaoExterna={selecaoPainel}
                   margemPeca={margemDaConfig(config)}
                   onMudarMargem={m => setConfig(c => ({ ...c, margemPecaAvulsa: m }))}
+                  exigirCusto
                   onTrocarTipo={t => { setTipoPainel(t); setCriarNovo(false); setSelecaoPainel(null) }}
                   onTrocarModo={() => { setCriarNovo(false); setSelecaoPainel(null) }}
                   acaoCadastro={
