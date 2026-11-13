@@ -17,7 +17,7 @@ import PedidoCotacao from '../components/PedidoCotacao'
 import CustoNaLinha from '../components/CustoNaLinha'
 import TrocarPorCadastro from '../components/TrocarPorCadastro'
 import { podeTrocarPorCadastro, itemDaTroca } from '../utils/trocaPeca'
-import { margemDaConfig, vendaPelaMargem, valorParaCampo, mostrarMargem } from '../utils/margemPeca'
+import { margemDaConfig, vendaPelaMargem, valorParaCampo, mostrarMargem, margemSobreCusto } from '../utils/margemPeca'
 import { custoDaPeca } from '../utils/margem'
 import { comprimirImagem, ACEITA_IMAGEM } from '../utils/imagem'
 import { uploadFoto, motivoDoErroDeFoto } from '../supabase'
@@ -501,7 +501,7 @@ export default function OrdemDetalhe() {
                     <td className="py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => aplicarTaxaItem(it)} disabled={osFinalizada} aria-label={`Aplicar acréscimo de ${taxaPct}%`} title={`+${taxaPct}%`} className="p-1 rounded hover:bg-amber-50 text-slate-500 hover:text-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-colors">%</button>
-                        <button onClick={() => setEditandoItem({ ...it, quantidade: String(it.quantidade), valorUnitario: String(it.valorUnitario), desconto: String(it.desconto || '0'), mecanicoId: it.mecanicoId || '' })} disabled={osFinalizada} aria-label="Editar item" className="p-1 rounded hover:bg-blue-50 text-slate-500 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"><Pencil size={14} /></button>
+                        <button onClick={() => setEditandoItem({ ...it, quantidade: String(it.quantidade), valorUnitario: String(it.valorUnitario), desconto: String(it.desconto || '0'), mecanicoId: it.mecanicoId || '', custoEdit: pNum(it.custoUnitario) > 0 ? String(it.custoUnitario) : '' })} disabled={osFinalizada} aria-label="Editar item" className="p-1 rounded hover:bg-blue-50 text-slate-500 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"><Pencil size={14} /></button>
                         <button onClick={() => { if (confirm(`Remover "${it.descricao}" da OS?`)) removerItemOrdem(os.id, it.id) }} disabled={osFinalizada} aria-label="Remover item" className="p-1 rounded hover:bg-red-50 text-slate-500 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"><Trash2 size={14} /></button>
                       </div>
                     </td>
@@ -547,9 +547,25 @@ export default function OrdemDetalhe() {
       valorUnitario: editandoItem.valorUnitario,
       desconto: editandoItem.desconto,
       mecanicoId: editandoItem.tipo === 'servico' ? (editandoItem.mecanicoId || null) : null,
+      // Preço de custo da peça: corrige o custo congelado NESTE item (a margem
+      // da OS e o "lucro por OS" passam a usar ele). Só grava valor de verdade
+      // — campo em branco deixa o custo como estava. Na peça do cadastro, o
+      // custo do Estoque não muda: é o custo desta OS.
+      ...(edicaoPedeCusto && pNum(editandoItem.custoEdit) > 0
+        ? { custoUnitario: valorParaCampo(pNum(editandoItem.custoEdit)) }
+        : {}),
     })
     setEditandoItem(null)
   }
+
+  // O campo de custo na edição: só peça, e só para quem vê preços (a mesma
+  // trava que esconde o custo do reparador na lista).
+  const edicaoPedeCusto = editandoItem?.tipo === 'peca' && podeVerPrecos
+  // O custo do cadastro, para lembrar na edição da peça que ainda não tem
+  // custo próprio gravado.
+  const custoDoCadastroNaEdicao = edicaoPedeCusto && editandoItem?.produtoId
+    ? pNum(estoque.find(p => String(p.id) === String(editandoItem.produtoId))?.precoCusto)
+    : 0
 
   const AVISO_PENDENCIA = 'Há alterações não salvas no diagnóstico ou na vistoria.\n\nSe sair agora, elas serão perdidas. Deseja sair mesmo assim?'
 
@@ -2015,6 +2031,37 @@ export default function OrdemDetalhe() {
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 </div>
               </div>
+              {edicaoPedeCusto && (() => {
+                const custo = pNum(editandoItem.custoEdit)
+                const venda = pNum(editandoItem.valorUnitario)
+                const sugerida = custo > 0 ? vendaPelaMargem(custo, margemPeca) : 0
+                const sobre = margemSobreCusto(custo, venda)
+                return (
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1.5">
+                    <label className="block text-sm font-medium text-slate-700" htmlFor="editar-custo-item">Preço de custo (R$)</label>
+                    <input id="editar-custo-item" type="text" inputMode="decimal" value={editandoItem.custoEdit}
+                      onChange={e => setEditandoItem(i => ({ ...i, custoEdit: e.target.value }))}
+                      placeholder={custoDoCadastroNaEdicao > 0 ? `do cadastro: ${valorParaCampo(custoDoCadastroNaEdicao)}` : '0,00'}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-right tabular-nums bg-white focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    {custo > 0 && venda > 0 && sobre != null && (
+                      <p className={`text-xs font-medium ${venda >= custo ? 'text-green-700' : 'text-red-600'}`}>
+                        Lucro: {fmt(venda - custo)} por unidade ({mostrarMargem(sobre)}% em cima do custo)
+                      </p>
+                    )}
+                    {custo > 0 && Math.abs(sugerida - venda) >= 0.01 && (
+                      <button type="button" onClick={() => setEditandoItem(i => ({ ...i, valorUnitario: valorParaCampo(sugerida) }))}
+                        className="text-xs font-medium text-primary-600 hover:text-primary-700">
+                        Usar a margem de {mostrarMargem(margemPeca)}%: venda {fmt(sugerida)}
+                      </button>
+                    )}
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      {editandoItem.produtoId
+                        ? 'Muda só o custo desta OS — o custo da peça no Estoque continua o mesmo.'
+                        : 'Quanto você pagou nela. Sem o custo, o lucro desta OS fica incompleto.'}
+                    </p>
+                  </div>
+                )
+              })()}
               {editandoItem.tipo === 'servico' && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Reparador</label>
